@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.92.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.1041.0",
     "@aws-sdk/client-s3": "^3.1041.0",
+    "@aws-sdk/rds-signer": "^3.1041.0",
     "@aws-sdk/s3-request-presigner": "^3.1041.0",
     "@types/nodemailer": "^8.0.0",
     "googleapis": "^171.4.0",

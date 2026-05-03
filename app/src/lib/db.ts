@@ -1,25 +1,18 @@
-/**
- * app/src/lib/db.ts
- *
- * PostgreSQL 接続プール
- * - 接続文字列は DATABASE_URL 環境変数から取得（zod で検証）
- * - CLAUDE.md 規約: 環境変数は zod 検証、型アサーション禁止
- * - 本番環境では DATABASE_URL を Secrets Manager から ECS タスク定義に注入する
- */
-
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import { z } from 'zod';
 
-// ── 環境変数スキーマ定義 ──────────────────────────────────────────
+// ── 環境変数スキーマ ──────────────────────────────────────────────
 const envSchema = z.object({
+  // 本番環境では IAM 接続を使うため DATABASE_URL は optional
   DATABASE_URL: z
-    .string({ error: '環境変数 DATABASE_URL が設定されていません' })
+    .string()
     .url({ message: 'DATABASE_URL は有効な URL 形式である必要があります' })
     .startsWith('postgresql://', {
       message: 'DATABASE_URL は postgresql:// で始まる必要があります',
-    }),
+    })
+    .optional(),
   DATABASE_MAX_CONNECTIONS: z.coerce
-    .number({ error: 'DATABASE_MAX_CONNECTIONS は数値である必要があります' })
+    .number()
     .int()
     .positive()
     .default(10),
@@ -28,7 +21,6 @@ const envSchema = z.object({
     .default('development'),
 });
 
-// 環境変数を検証（失敗時は起動を中断）
 const parseResult = envSchema.safeParse(process.env);
 if (!parseResult.success) {
   const messages = parseResult.error.issues
@@ -39,51 +31,127 @@ if (!parseResult.success) {
 
 const env = parseResult.data;
 
-// ── 接続プール シングルトン ────────────────────────────────────────
-// Next.js の開発モードではホットリロードで Pool が重複生成されるため
-// globalThis にキャッシュする
+// ── 本番 RDS 接続情報 ─────────────────────────────────────────────
+const RDS_HOSTNAME =
+  'govlink-db.cluster-cbgussy88a25.ap-northeast-1.rds.amazonaws.com';
+const RDS_PORT = 5432;
+const RDS_USER = 'postgres';
+const RDS_REGION = 'ap-northeast-1';
+const RDS_DATABASE = 'govlink';
+
+// ── IAM トークンキャッシュ ────────────────────────────────────────
+// IAM 認証トークンの有効期限は 15 分。2 分前にリフレッシュする。
+let _tokenCache: { token: string; expiresAt: number } | null = null;
+
+async function getIamAuthToken(): Promise<string> {
+  const now = Date.now();
+  const refreshThreshold = 2 * 60 * 1000; // トークン期限 2 分前
+
+  if (_tokenCache && _tokenCache.expiresAt > now + refreshThreshold) {
+    return _tokenCache.token;
+  }
+
+  const { Signer } = await import('@aws-sdk/rds-signer');
+  const signer = new Signer({
+    hostname: RDS_HOSTNAME,
+    port: RDS_PORT,
+    username: RDS_USER,
+    region: RDS_REGION,
+  });
+
+  const token = await signer.getAuthToken();
+  _tokenCache = { token, expiresAt: now + 15 * 60 * 1000 };
+  return token;
+}
+
+// ── プールシングルトン管理 ────────────────────────────────────────
+// Next.js 開発モードのホットリロードおよび Lambda のウォームスタートで
+// プールが重複生成されないよう globalThis にキャッシュする。
 declare global {
   // eslint-disable-next-line no-var
   var __pgPool: Pool | undefined;
+  // eslint-disable-next-line no-var
+  var __pgPoolTokenExpiry: number | undefined;
 }
 
-function createPool(): Pool {
-  return new Pool({
-    connectionString: env.DATABASE_URL,
+/**
+ * 接続プールを返す。
+ * - development/test : DATABASE_URL をそのまま使用
+ * - production       : RDS IAM トークンを動的生成してパスワードとして使用。
+ *                      トークン期限 2 分前に自動でプールを再生成する。
+ */
+async function getPool(): Promise<Pool> {
+  const now = Date.now();
+  const refreshThreshold = 2 * 60 * 1000;
+
+  if (env.NODE_ENV !== 'production') {
+    // ── 開発・テスト環境 ──────────────────────────────────────────
+    if (!env.DATABASE_URL) {
+      throw new Error('開発環境では DATABASE_URL 環境変数が必要です');
+    }
+    if (!globalThis.__pgPool) {
+      globalThis.__pgPool = new Pool({
+        connectionString: env.DATABASE_URL,
+        max: env.DATABASE_MAX_CONNECTIONS,
+        idleTimeoutMillis: 30_000,
+        connectionTimeoutMillis: 5_000,
+        ssl: false,
+      });
+    }
+    return globalThis.__pgPool;
+  }
+
+  // ── 本番環境: IAM トークン認証 ──────────────────────────────────
+  const tokenExpiry = globalThis.__pgPoolTokenExpiry ?? 0;
+  const tokenStillValid = tokenExpiry > now + refreshThreshold;
+
+  if (globalThis.__pgPool && tokenStillValid) {
+    return globalThis.__pgPool;
+  }
+
+  // 期限切れ: 古いプールをドレインして新しいプールを作成
+  if (globalThis.__pgPool) {
+    const stalePool = globalThis.__pgPool;
+    globalThis.__pgPool = undefined;
+    stalePool.end().catch((err: unknown) => {
+      console.warn('[db] old pool end error (ignored):', err);
+    });
+  }
+
+  const token = await getIamAuthToken();
+
+  globalThis.__pgPool = new Pool({
+    host: RDS_HOSTNAME,
+    port: RDS_PORT,
+    user: RDS_USER,
+    password: token,
+    database: RDS_DATABASE,
+    ssl: { rejectUnauthorized: true },
     max: env.DATABASE_MAX_CONNECTIONS,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
-    ssl: env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : false,
   });
-}
+  globalThis.__pgPoolTokenExpiry = now + 15 * 60 * 1000;
 
-export const pool: Pool =
-  globalThis.__pgPool ?? (globalThis.__pgPool = createPool());
-
-// 開発モード以外ではキャッシュしない（globalThis への汚染を防ぐ）
-if (env.NODE_ENV !== 'development') {
-  globalThis.__pgPool = undefined;
+  return globalThis.__pgPool;
 }
 
 // ── 型安全なクエリヘルパー ────────────────────────────────────────
 
 /**
- * 単一のクエリを実行し、行の配列を返す
- * @example
- * const rows = await query<Municipality>('SELECT * FROM municipalities WHERE slug = $1', [slug]);
+ * 単一クエリを実行し行の配列を返す
  */
 export async function query<T extends QueryResultRow = Record<string, unknown>>(
   text: string,
   params?: unknown[],
 ): Promise<T[]> {
-  const result = await pool.query<T>(text, params);
+  const p = await getPool();
+  const result = await p.query<T>(text, params);
   return result.rows;
 }
 
 /**
- * 単一の行を返す。行が存在しない場合は null を返す
- * @example
- * const project = await queryOne<Project>('SELECT * FROM projects WHERE id = $1', [id]);
+ * 単一行を返す。存在しない場合は null
  */
 export async function queryOne<T extends QueryResultRow = Record<string, unknown>>(
   text: string,
@@ -94,19 +162,13 @@ export async function queryOne<T extends QueryResultRow = Record<string, unknown
 }
 
 /**
- * トランザクション内で複数クエリを実行する
- * エラー時は自動でロールバックされる
- * @example
- * const result = await transaction(async (client) => {
- *   await client.query('INSERT INTO projects ...', [...]);
- *   await client.query('INSERT INTO kpis ...', [...]);
- *   return { success: true };
- * });
+ * トランザクション内で複数クエリを実行する。エラー時は自動ロールバック。
  */
 export async function transaction<T>(
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
+  const p = await getPool();
+  const client = await p.connect();
   try {
     await client.query('BEGIN');
     const result = await fn(client);
@@ -122,7 +184,6 @@ export async function transaction<T>(
 
 // ── DB エラー型ガード ─────────────────────────────────────────────
 
-/** PostgreSQL エラーコード定数 */
 export const PgErrorCode = {
   UNIQUE_VIOLATION: '23505',
   FOREIGN_KEY_VIOLATION: '23503',
@@ -134,7 +195,6 @@ interface PgError extends Error {
   code: string;
 }
 
-/** PostgreSQL ネイティブエラーかどうかを判定する型ガード */
 export function isPgError(error: unknown): error is PgError {
   return (
     error instanceof Error &&
