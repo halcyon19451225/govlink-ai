@@ -3,7 +3,7 @@ import { getStripe } from "@/lib/stripe";
 import { query } from "@/lib/db";
 import type Stripe from "stripe";
 
-export const config = { api: { bodyParser: false } };
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   const stripe = getStripe();
