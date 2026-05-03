@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import UpgradeModal from "@/components/UpgradeModal";
 
 // ────────────────── 型定義 ──────────────────
 interface KpiRow { id: string; label: string; target: number; current: number; unit: string }
@@ -97,6 +98,7 @@ export default function EbpmClient({
   const [streamMode, setStreamMode] = useState<"idle" | "suggest" | "report">("idle");
   const [estatLoading, setEstatLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   // スコアを取得
@@ -119,9 +121,13 @@ export default function EbpmClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId }),
       });
-      const json = await res.json() as { data: SuggestionRow[] | null; error: string | null };
+      const json = await res.json() as { data: SuggestionRow[] | null; error: string | null; upgrade_url?: string };
       if (!res.ok || json.error) {
-        setError(json.error ?? "生成に失敗しました");
+        if (res.status === 403 && json.upgrade_url) {
+          setShowUpgrade(json.error ?? "AI生成回数の上限に達しました");
+        } else {
+          setError(json.error ?? "生成に失敗しました");
+        }
         return;
       }
       if (json.data && json.data.length > 0) {
@@ -205,6 +211,8 @@ export default function EbpmClient({
     score.total_score >= 40 ? "#f59e0b" : "#ef4444";
 
   return (
+    <>
+    {showUpgrade && <UpgradeModal message={showUpgrade} onClose={() => setShowUpgrade(null)} />}
     <div className="space-y-8">
       {error && (
         <div className="rounded-xl border px-4 py-3 text-sm text-red-400"
@@ -579,5 +587,6 @@ export default function EbpmClient({
         </div>
       </section>
     </div>
+    </>
   );
 }

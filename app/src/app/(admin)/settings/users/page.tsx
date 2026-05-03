@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import BackButton from "@/components/BackButton";
+import UpgradeModal from "@/components/UpgradeModal";
 
 interface UserRole {
   id: string;
@@ -33,6 +34,7 @@ export default function UsersPage() {
   const [editUser, setEditUser] = useState<UserRole | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState<string | null>(null);
 
   // Form state
   const [email, setEmail] = useState("");
@@ -93,8 +95,15 @@ export default function UsersPage() {
           }),
         });
       }
-      const json = (await res.json()) as { data: unknown; error: string | null };
-      if (!res.ok) { setError(json.error ?? "保存に失敗しました"); return; }
+      const json = (await res.json()) as { data: unknown; error: string | null; upgrade_url?: string };
+      if (!res.ok) {
+        if (res.status === 403 && json.upgrade_url) {
+          setShowUpgrade(json.error ?? "プランの上限に達しました");
+        } else {
+          setError(json.error ?? "保存に失敗しました");
+        }
+        return;
+      }
       setShowForm(false);
       await fetchUsers();
     } catch {
@@ -121,6 +130,7 @@ export default function UsersPage() {
 
   return (
     <div className="max-w-4xl space-y-8">
+      {showUpgrade && <UpgradeModal message={showUpgrade} onClose={() => setShowUpgrade(null)} />}
       {/* Form Modal */}
       {showForm && (
         <div

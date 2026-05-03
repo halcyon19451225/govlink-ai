@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import BackButton from "@/components/BackButton";
 import PdcaNav from "@/components/PdcaNav";
+import UpgradeModal from "@/components/UpgradeModal";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -743,6 +744,7 @@ export default function NewProjectWizard({ templates }: { templates: Template[] 
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState<string | null>(null);
 
   // When template is selected, pre-fill KPIs from suggestions
   const handleSelectTemplate = (t: Template | null) => {
@@ -806,9 +808,13 @@ export default function NewProjectWizard({ templates }: { templates: Template[] 
         }),
       });
 
-      const json = (await res.json()) as { data: { projectId: string } | null; error: string | null };
+      const json = (await res.json()) as { data: { projectId: string } | null; error: string | null; upgrade_url?: string };
       if (!res.ok) {
-        setSubmitError(json.error ?? "登録に失敗しました");
+        if (res.status === 403 && json.upgrade_url) {
+          setShowUpgrade(json.error ?? "プランの上限に達しました");
+        } else {
+          setSubmitError(json.error ?? "登録に失敗しました");
+        }
         return;
       }
       router.push("/dashboard");
@@ -820,6 +826,8 @@ export default function NewProjectWizard({ templates }: { templates: Template[] 
   };
 
   return (
+    <>
+    {showUpgrade && <UpgradeModal message={showUpgrade} onClose={() => setShowUpgrade(null)} />}
     <div className="max-w-2xl">
       <PdcaNav currentStage="P" currentStep="計画策定・スケジュール" />
       <div className="mb-4">
@@ -877,5 +885,6 @@ export default function NewProjectWizard({ templates }: { templates: Template[] 
         )}
       </div>
     </div>
+    </>
   );
 }

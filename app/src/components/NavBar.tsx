@@ -8,11 +8,13 @@ import { signOut } from "next-auth/react";
 const NAV_LINKS = [
   { href: "/dashboard", label: "ホーム" },
   { href: "/resources", label: "組織リソース" },
+  { href: "/contact", label: "お問い合わせ" },
 ];
 
 const SETTINGS_LINKS = [
   { href: "/templates", label: "テンプレート管理" },
   { href: "/settings/users", label: "ユーザー管理" },
+  { href: "/billing", label: "プラン・請求" },
 ];
 
 const HOWTO_TOOLTIP =

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import UpgradeModal from "@/components/UpgradeModal";
 
 export interface PhaseRow {
   id: string;
@@ -182,6 +183,7 @@ export default function ScheduleClient({
   const [generating, setGenerating] = useState(false);
   const [charCount, setCharCount] = useState(0);
   const [genError, setGenError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState<string | null>(null);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
@@ -214,8 +216,12 @@ export default function ScheduleClient({
       });
 
       if (!res.ok || !res.body) {
-        const json = (await res.json().catch(() => ({ error: null }))) as { error: string | null };
-        setGenError(json.error ?? "生成に失敗しました");
+        const json = (await res.json().catch(() => ({ error: null }))) as { error: string | null; upgrade_url?: string };
+        if (res.status === 403 && json.upgrade_url) {
+          setShowUpgrade(json.error ?? "AI生成回数の上限に達しました");
+        } else {
+          setGenError(json.error ?? "生成に失敗しました");
+        }
         setGenerating(false);
         return;
       }
@@ -311,6 +317,8 @@ export default function ScheduleClient({
   };
 
   return (
+    <>
+    {showUpgrade && <UpgradeModal message={showUpgrade} onClose={() => setShowUpgrade(null)} />}
     <div className="space-y-8">
       {/* 生成フォーム */}
       <div
@@ -550,5 +558,6 @@ export default function ScheduleClient({
         </>
       )}
     </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import UpgradeModal from "@/components/UpgradeModal";
 
 export interface LogicModel {
   inputs: string[];
@@ -113,6 +114,7 @@ export default function LogicModelSection({
   const [generating, setGenerating] = useState(false);
   const [charCount, setCharCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -133,9 +135,13 @@ export default function LogicModelSection({
 
       if (!res.ok || !res.body) {
         const json = (await res.json().catch(() => ({ error: null }))) as {
-          error: string | null;
+          error: string | null; upgrade_url?: string;
         };
-        setError(json.error ?? "生成に失敗しました");
+        if (res.status === 403 && json.upgrade_url) {
+          setShowUpgrade(json.error ?? "AI生成回数の上限に達しました");
+        } else {
+          setError(json.error ?? "生成に失敗しました");
+        }
         setGenerating(false);
         return;
       }
@@ -171,6 +177,8 @@ export default function LogicModelSection({
   };
 
   return (
+    <>
+    {showUpgrade && <UpgradeModal message={showUpgrade} onClose={() => setShowUpgrade(null)} />}
     <section>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
@@ -226,5 +234,6 @@ export default function LogicModelSection({
         </div>
       ) : null}
     </section>
+    </>
   );
 }

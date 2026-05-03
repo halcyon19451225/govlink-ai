@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import UpgradeModal from "@/components/UpgradeModal";
 
 interface KpiRow {
   id: string;
@@ -57,6 +58,7 @@ export default function EvidencesClient({
   const [submitting, setSubmitting] = useState(false);
   const [evaluating, setEvaluating] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState<string | null>(null);
 
   const [outputKpiId, setOutputKpiId] = useState("");
   const [outcomeKpiId, setOutcomeKpiId] = useState("");
@@ -123,8 +125,15 @@ export default function EvidencesClient({
           strength: ev.strength,
         }),
       });
-      const json = (await res.json()) as { data: unknown; error: string | null };
-      if (!res.ok) { setError(json.error ?? "評価に失敗しました"); return; }
+      const json = (await res.json()) as { data: unknown; error: string | null; upgrade_url?: string };
+      if (!res.ok) {
+        if (res.status === 403 && json.upgrade_url) {
+          setShowUpgrade(json.error ?? "AI生成回数の上限に達しました");
+        } else {
+          setError(json.error ?? "評価に失敗しました");
+        }
+        return;
+      }
       await load();
     } catch {
       setError("通信エラーが発生しました");
@@ -134,6 +143,8 @@ export default function EvidencesClient({
   };
 
   return (
+    <>
+    {showUpgrade && <UpgradeModal message={showUpgrade} onClose={() => setShowUpgrade(null)} />}
     <div className="space-y-8">
       {/* 登録フォーム */}
       <form
@@ -355,5 +366,6 @@ export default function EvidencesClient({
         </div>
       )}
     </div>
+    </>
   );
 }

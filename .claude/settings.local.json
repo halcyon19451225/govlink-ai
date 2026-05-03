@@ -38,7 +38,32 @@
       "Bash(curl *)",
       "Bash(npx next *)",
       "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/kpi-report)",
-      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/kpi-summary)"
+      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/kpi-summary)",
+      "Bash(sed -n '30,46p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/evaluate-evidence/route.ts)",
+      "Bash(sed -n '58,74p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-report/route.ts)",
+      "Bash(sed -n '112,128p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-schedule/route.ts)",
+      "Bash(sed -n '33,49p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-summary/route.ts)",
+      "Bash(sed -n '15,31p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/suggest-goals/route.ts)",
+      "Bash(sed -n '1,6p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-logic-model/route.ts)",
+      "Bash(sed -n '1,6p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/evaluate-evidence/route.ts)",
+      "Bash(sed -n '1,6p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-report/route.ts)",
+      "Bash(sed -n '1,6p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-schedule/route.ts)",
+      "Bash(sed -n '1,6p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-summary/route.ts)",
+      "Bash(sed -n '5,8p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-summary/route.ts)",
+      "Bash(sed -n '5,8p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/suggest-goals/route.ts)",
+      "Bash(sed -n '32,55p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/evaluate-evidence/route.ts)",
+      "Bash(sed -n '60,80p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-report/route.ts)",
+      "Bash(sed -n '113,130p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-schedule/route.ts)",
+      "Bash(sed -n '35,52p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/generate-summary/route.ts)",
+      "Bash(sed -n '17,35p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/suggest-goals/route.ts)",
+      "Bash(sed -n '42,60p' /Users/halcy/Documents/govlink-ai/app/src/app/api/ai/suggest-improvements/route.ts)",
+      "Bash(sed -n '1,6p' /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/settings/users/page.tsx)",
+      "Bash(sed -n '30,40p' /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/settings/users/page.tsx)",
+      "Bash(sed -n '119,133p' /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/ebpm/EbpmClient.tsx)",
+      "Bash(sed -n '141,155p' /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/ebpm/EbpmClient.tsx)",
+      "Bash(sed -n '125,132p' /Users/halcy/Documents/govlink-ai/app/src/app/legal/page.tsx)",
+      "Bash(sed -n '94,102p' /Users/halcy/Documents/govlink-ai/app/src/app/contact/page.tsx)",
+      "Bash(sed -n '243,250p' /Users/halcy/Documents/govlink-ai/app/src/app/contact/page.tsx)"
     ]
   }
 }

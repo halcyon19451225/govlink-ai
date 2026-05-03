@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { checkLimit } from "@/lib/plan-limits";
 import { query } from "@/lib/db";
 
 export async function GET(_req: NextRequest) { // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -51,6 +52,14 @@ export async function POST(req: NextRequest) {
   const municipalityId = session.user?.municipalityId;
   if (!municipalityId) {
     return NextResponse.json({ data: null, error: "自治体情報が取得できません" }, { status: 400 });
+  }
+
+  const limitCheck = await checkLimit(municipalityId, "users");
+  if (!limitCheck.allowed) {
+    return NextResponse.json(
+      { data: null, error: `プランの上限（${limitCheck.limit}名）に達しました`, upgrade_url: "/pricing" },
+      { status: 403 },
+    );
   }
 
   let raw: unknown;

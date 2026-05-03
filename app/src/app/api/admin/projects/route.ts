@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { transaction, isPgError, PgErrorCode } from "@/lib/db";
+import { checkLimit } from "@/lib/plan-limits";
 
 const kpiSchema = z.object({
   label: z.string().min(1, "KPI ラベルは必須です"),
@@ -63,6 +64,18 @@ export async function POST(req: NextRequest) {
     template_id, plan_start_date, plan_end_date, is_composite,
     goals, kpis,
   } = parsed.data;
+
+  // プラン制限チェック（セッションに自治体IDがある場合のみ）
+  const sessionMunId = session.user?.municipalityId;
+  if (sessionMunId) {
+    const limitCheck = await checkLimit(sessionMunId, "projects");
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { data: null, error: `プランの上限（${limitCheck.limit}件）に達しました`, upgrade_url: "/pricing" },
+        { status: 403 },
+      );
+    }
+  }
 
   try {
     const projectId = await transaction(async (client) => {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import UpgradeModal from "@/components/UpgradeModal";
 
 export interface KpiForForm {
   id: string;
@@ -36,6 +37,7 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
   const [aiSummary, setAiSummary] = useState("");
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState<string | null>(null);
   const [kpiUpdates, setKpiUpdates] = useState<Record<string, string>>(
     Object.fromEntries(kpis.map((k) => [k.id, String(k.current)])),
   );
@@ -67,9 +69,13 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
 
       if (!res.ok || !res.body) {
         const json = (await res.json().catch(() => ({ error: null }))) as {
-          error: string | null;
+          error: string | null; upgrade_url?: string;
         };
-        setSummaryError(json.error ?? "サマリー生成に失敗しました");
+        if (res.status === 403 && json.upgrade_url) {
+          setShowUpgrade(json.error ?? "AI生成回数の上限に達しました");
+        } else {
+          setSummaryError(json.error ?? "サマリー生成に失敗しました");
+        }
         setGeneratingSummary(false);
         return;
       }
@@ -137,6 +143,8 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
   };
 
   return (
+    <>
+    {showUpgrade && <UpgradeModal message={showUpgrade} onClose={() => setShowUpgrade(null)} />}
     <div className="max-w-2xl">
       <div className="mb-6">
         <a
@@ -299,5 +307,6 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
         </div>
       </form>
     </div>
+    </>
   );
 }

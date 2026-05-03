@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
 import { query } from "@/lib/db";
 
 const bodySchema = z.object({
@@ -60,6 +61,18 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
+  }
+
+  const munIdForLimit = session.user?.municipalityId;
+  if (munIdForLimit) {
+    const limitCheck = await checkLimit(munIdForLimit, "ai_calls");
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { data: null, error: "AI生成回数の上限に達しました", upgrade_url: "/pricing" },
+        { status: 403 },
+      );
+    }
+    await incrementAiUsage(munIdForLimit);
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
