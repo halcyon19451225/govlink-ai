@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import UpgradeModal from "@/components/UpgradeModal";
+import UpgradeModal from "../../../../../components/UpgradeModal";
 
 interface KpiRow {
   id: string;

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import UpgradeModal from "@/components/UpgradeModal";
+import UpgradeModal from "../../../../../components/UpgradeModal";
 
 export interface KpiForForm {
   id: string;

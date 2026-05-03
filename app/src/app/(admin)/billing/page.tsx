@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import BackButton from "@/components/BackButton";
+import BackButton from "../../../components/BackButton";
 import { type Plan } from "@/lib/plan-limits";
 
 const PLAN_LABELS: Record<Plan, string> = {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import UpgradeModal from "@/components/UpgradeModal";
+import UpgradeModal from "../../../../components/UpgradeModal";
 
 export interface LogicModel {
   inputs: string[];
