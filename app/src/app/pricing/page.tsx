@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 const PLANS = [
   {
@@ -92,7 +91,6 @@ const FAQS = [
 ];
 
 export default function PricingPage() {
-  const router = useRouter();
   const [annual, setAnnual] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 

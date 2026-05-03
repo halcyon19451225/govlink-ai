@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import BackButton from "@/components/BackButton";
-import { type Plan, PLAN_LIMITS } from "@/lib/plan-limits";
+import { type Plan } from "@/lib/plan-limits";
 
 const PLAN_LABELS: Record<Plan, string> = {
   free: "Free（試用）",

@@ -56,9 +56,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
   let y = margin;
 
   const lineH = 7;
-  const gray = "#94a3b8";
-  const dark = "#0f172a";
-  const blue = "#6366f1";
 
   // ── ヘッダー ──────────────────────────────
   doc.setFillColor(15, 17, 23);
