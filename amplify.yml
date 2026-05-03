@@ -8,8 +8,10 @@ frontend:
     build:
       commands:
         - npm run build
+        - cp -r public .next/standalone/
+        - cp -r .next/static .next/standalone/.next/
   artifacts:
-    baseDirectory: app/.next
+    baseDirectory: app/.next/standalone
     files:
       - '**/*'
   cache:
