@@ -11,14 +11,32 @@ const kpiSchema = z.object({
     .transform((v) => Number(v))
     .pipe(z.number({ message: "目標値は数値である必要があります" })),
   unit: z.string().default(""),
+  goal_index: z.number().int().optional().nullable(),
+  indicator_type: z
+    .enum(["process", "outcome_initial", "outcome_mid", "outcome_long", "efficiency"])
+    .default("process"),
+  previous_value: z.number().optional().nullable(),
+  previous_target: z.number().optional().nullable(),
+  sort_order: z.number().int().default(0),
+});
+
+const goalSchema = z.object({
+  title: z.string().min(1, "基本目標タイトルは必須です"),
+  description: z.string().default(""),
+  sort_order: z.number().int().default(0),
 });
 
 const bodySchema = z.object({
   title: z.string().min(1, "政策名は必須です"),
   description: z.string().default(""),
-  department: z.string().min(1, "担当課は必須です"),
+  department: z.string().default(""),
   status: z.enum(["draft", "active", "completed"]).default("draft"),
-  kpis: z.array(kpiSchema).max(5, "KPI は最大 5 件まで登録できます").default([]),
+  template_id: z.string().uuid().optional().nullable(),
+  plan_start_date: z.string().optional().nullable(),
+  plan_end_date: z.string().optional().nullable(),
+  is_composite: z.boolean().default(false),
+  goals: z.array(goalSchema).default([]),
+  kpis: z.array(kpiSchema).max(20, "KPI は最大 20 件まで登録できます").default([]),
 });
 
 export async function POST(req: NextRequest) {
@@ -40,41 +58,81 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: null, error: message }, { status: 400 });
   }
 
-  const { title, description, department, status, kpis } = parsed.data;
+  const {
+    title, description, department, status,
+    template_id, plan_start_date, plan_end_date, is_composite,
+    goals, kpis,
+  } = parsed.data;
 
   try {
     const projectId = await transaction(async (client) => {
-      // 担当課名で municipality を検索し、なければ新規作成
-      const existing = await client.query<{ id: string }>(
-        "SELECT id FROM municipalities WHERE name = $1 LIMIT 1",
-        [department],
-      );
+      // セッションから自治体ID取得、なければ担当課名でフォールバック
+      let municipalityId = session.user?.municipalityId ?? null;
 
-      let municipalityId: string;
-      if (existing.rows[0]) {
-        municipalityId = existing.rows[0].id;
-      } else {
-        const inserted = await client.query<{ id: string }>(
-          "INSERT INTO municipalities (name, slug, prefecture) VALUES ($1, $2, '未設定') RETURNING id",
-          [department, `dept-${crypto.randomUUID()}`],
+      if (!municipalityId) {
+        if (!department) throw new Error("自治体情報が取得できません");
+        const existing = await client.query<{ id: string }>(
+          "SELECT id FROM municipalities WHERE name = $1 LIMIT 1",
+          [department],
         );
-        if (!inserted.rows[0]) throw new Error("municipality の作成に失敗しました");
-        municipalityId = inserted.rows[0].id;
+        if (existing.rows[0]) {
+          municipalityId = existing.rows[0].id;
+        } else {
+          const inserted = await client.query<{ id: string }>(
+            "INSERT INTO municipalities (name, slug, prefecture) VALUES ($1, $2, '未設定') RETURNING id",
+            [department, `dept-${crypto.randomUUID()}`],
+          );
+          if (!inserted.rows[0]) throw new Error("municipality の作成に失敗しました");
+          municipalityId = inserted.rows[0].id;
+        }
       }
 
       const projectResult = await client.query<{ id: string }>(
-        `INSERT INTO projects (municipality_id, title, description, status)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO projects
+           (municipality_id, title, description, status,
+            template_id, plan_start_date, plan_end_date, is_composite)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id`,
-        [municipalityId, title, description, status],
+        [
+          municipalityId, title, description, status,
+          template_id ?? null,
+          plan_start_date ? plan_start_date : null,
+          plan_end_date ? plan_end_date : null,
+          is_composite,
+        ],
       );
       if (!projectResult.rows[0]) throw new Error("project の作成に失敗しました");
       const newProjectId = projectResult.rows[0].id;
 
+      // 基本目標を挿入し、goal_number → goal_id マップを作成
+      const goalIdMap: Record<number, string> = {};
+      let goalIdx = 0;
+      for (const g of goals) {
+        const gr = await client.query<{ id: string }>(
+          `INSERT INTO project_goals (project_id, goal_number, title, description, sort_order)
+           VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+          [newProjectId, goalIdx + 1, g.title, g.description, g.sort_order ?? goalIdx],
+        );
+        if (gr.rows[0]) goalIdMap[goalIdx] = gr.rows[0].id;
+        goalIdx++;
+      }
+
+      // KPIを挿入
       for (const kpi of kpis) {
+        const goalId =
+          kpi.goal_index != null && goalIdMap[kpi.goal_index] != null
+            ? goalIdMap[kpi.goal_index]
+            : null;
         await client.query(
-          "INSERT INTO kpis (project_id, label, target, unit) VALUES ($1, $2, $3, $4)",
-          [newProjectId, kpi.label, kpi.target, kpi.unit],
+          `INSERT INTO kpis
+             (project_id, label, target, unit, goal_id,
+              indicator_type, previous_value, previous_target)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            newProjectId, kpi.label, kpi.target, kpi.unit,
+            goalId, kpi.indicator_type,
+            kpi.previous_value ?? null, kpi.previous_target ?? null,
+          ],
         );
       }
 

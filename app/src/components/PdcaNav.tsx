@@ -39,6 +39,8 @@ const STAGES: {
     activeGradient: "linear-gradient(135deg, #06b6d4, #22d3ee)",
     items: [
       { label: "進捗報告・KPI更新", href: "PROJ/post" },
+      { label: "KPI実績を報告", href: "PROJ/kpi-report" },
+      { label: "KPI取りまとめ", href: "PROJ/kpi-summary" },
       { label: "ドキュメント管理", href: "PROJ/documents" },
       { label: "スケジュール進捗", href: "PROJ/schedule" },
     ],

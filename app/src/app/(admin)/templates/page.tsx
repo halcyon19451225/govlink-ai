@@ -1,5 +1,7 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import NewProjectWizard from "./NewProjectWizard";
+import TemplatesClient from "./TemplatesClient";
 
 interface Template {
   id: string;
@@ -10,6 +12,7 @@ interface Template {
   is_composite: boolean;
   description: string | null;
   is_system: boolean;
+  shared_by_municipality_id: string | null;
   kpi_suggestions: Array<{
     id: string;
     label: string;
@@ -19,10 +22,13 @@ interface Template {
   }>;
 }
 
-export default async function NewProjectPage() {
+export default async function TemplatesPage() {
+  const session = await getServerSession(authOptions);
+  const municipalityId = session?.user?.municipalityId ?? null;
+
   const templates = await query<Template>(
     `SELECT pt.id, pt.name, pt.category, pt.legal_basis, pt.plan_period_years,
-            pt.is_composite, pt.description, pt.is_system,
+            pt.is_composite, pt.description, pt.is_system, pt.shared_by_municipality_id,
             COALESCE(
               json_agg(
                 json_build_object(
@@ -35,9 +41,11 @@ export default async function NewProjectPage() {
      FROM plan_templates pt
      LEFT JOIN template_kpi_suggestions tks ON tks.template_id = pt.id
      WHERE pt.is_system = true
+        OR ($1::uuid IS NOT NULL AND pt.shared_by_municipality_id = $1::uuid)
      GROUP BY pt.id
      ORDER BY pt.is_system DESC, pt.category, pt.name`,
+    [municipalityId],
   );
 
-  return <NewProjectWizard templates={templates} />;
+  return <TemplatesClient templates={templates} municipalityId={municipalityId} />;
 }

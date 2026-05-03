@@ -340,9 +340,27 @@ export default async function AdminProjectDetailPage({
       {/* KPI */}
       {kpis.length > 0 && (
         <section>
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            KPI 進捗
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+              KPI 進捗
+            </h3>
+            <div className="flex gap-2">
+              <Link
+                href={`/projects/${project.id}/kpi-report`}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors duration-200"
+                style={{ background: "#06b6d410", borderColor: "#06b6d430", color: "#22d3ee" }}
+              >
+                実績を報告
+              </Link>
+              <Link
+                href={`/projects/${project.id}/kpi-summary`}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors duration-200"
+                style={{ background: "#6366f110", borderColor: "#6366f130", color: "#818cf8" }}
+              >
+                取りまとめ
+              </Link>
+            </div>
+          </div>
           <div className="rounded-2xl border p-5 space-y-4" style={cardStyle}>
             {kpis.map((kpi) => {
               const pct = kpi.target > 0 ? Math.min(100, (kpi.current / kpi.target) * 100) : 0;

@@ -10,6 +10,11 @@ const NAV_LINKS = [
   { href: "/resources", label: "組織リソース" },
 ];
 
+const SETTINGS_LINKS = [
+  { href: "/templates", label: "テンプレート管理" },
+  { href: "/settings/users", label: "ユーザー管理" },
+];
+
 const HOWTO_TOOLTIP =
   "QCストーリーに基づくPDCAサイクルで\n計画策定から改善まで一貫管理。\nP（計画）→ D（実行）→ C（評価）→ A（改善）\nの4ステージで政策の継続的改善を支援します。";
 
@@ -17,6 +22,7 @@ export default function NavBar() {
   const pathname = usePathname();
   const [showEbpmTip, setShowEbpmTip] = useState(false);
   const [showHowtoTip, setShowHowtoTip] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   return (
     <header
@@ -57,6 +63,39 @@ export default function NavBar() {
               </Link>
             );
           })}
+
+          {/* 設定ドロップダウン */}
+          <div className="relative">
+            <button
+              onMouseEnter={() => setShowSettings(true)}
+              onMouseLeave={() => setShowSettings(false)}
+              className="text-sm px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors duration-200 flex items-center gap-1"
+            >
+              設定
+              <svg width={12} height={12} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showSettings && (
+              <div
+                className="absolute left-0 top-full mt-1 w-44 rounded-xl border shadow-2xl overflow-hidden z-50"
+                style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+                onMouseEnter={() => setShowSettings(true)}
+                onMouseLeave={() => setShowSettings(false)}
+              >
+                {SETTINGS_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="block px-4 py-2.5 text-sm text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-colors duration-200"
+                    onClick={() => setShowSettings(false)}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* 使い方（ツールチップ付き） */}
           <div className="relative">

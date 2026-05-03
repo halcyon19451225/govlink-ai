@@ -35,7 +35,10 @@
       "Bash(curl -s -X POST http://localhost:3000/api/ai/suggest-improvements -H 'Content-Type: application/json' -d '{\"projectId\":\"00000000-0000-0000-0000-000000000000\"}')",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, ensure_ascii=False\\)\\)\")",
       "Bash(curl -sv -X POST http://localhost:3000/api/ai/suggest-improvements -H 'Content-Type: application/json' -d '{\"projectId\":\"00000000-0000-0000-0000-000000000000\"}')",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(npx next *)",
+      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/kpi-report)",
+      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/kpi-summary)"
     ]
   }
 }
