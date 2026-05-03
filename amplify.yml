@@ -1,10 +1,4 @@
 version: 1
-
-env:
-  variables:
-    # ビルド時に参照するリージョン（Lambda 実行時は自動設定される）
-    AWS_REGION: ap-northeast-1
-
 frontend:
   phases:
     preBuild:
@@ -13,12 +7,11 @@ frontend:
         - npm ci --legacy-peer-deps
     build:
       commands:
-        - cd app
         - npm run build
   artifacts:
     baseDirectory: app/.next
     files:
-      - "**/*"
+      - '**/*'
   cache:
     paths:
       - app/node_modules/**/*
