@@ -155,6 +155,7 @@ export async function GET(req: NextRequest) {
     prefCode,
     cityCode: cityCode ?? null,
     area: v["@area"] ?? usedArea,
+    tableTitle,
   }));
 
   // kpiId が指定されていれば benchmark_values に保存

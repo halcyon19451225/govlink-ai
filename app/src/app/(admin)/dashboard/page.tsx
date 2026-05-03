@@ -11,6 +11,16 @@ interface ProjectRow {
   status: "draft" | "active" | "completed" | "archived";
   department: string;
   created_at: Date;
+  post_count: number;
+  suggestion_count: number;
+}
+
+type PdcaStage = "P" | "D" | "C" | "A";
+
+function determinePdcaStage(row: ProjectRow): PdcaStage {
+  if (row.suggestion_count > 0) return "A";
+  if (row.post_count > 0) return "D";
+  return "P";
 }
 
 export default async function DashboardPage() {
@@ -22,9 +32,14 @@ export default async function DashboardPage() {
 
   try {
     projects = await query<ProjectRow>(
-      `SELECT p.id, p.title, p.description, p.status, m.name AS department, p.created_at
+      `SELECT p.id, p.title, p.description, p.status, m.name AS department, p.created_at,
+              COUNT(DISTINCT po.id)::int AS post_count,
+              COUNT(DISTINCT ps.id)::int AS suggestion_count
        FROM projects p
        JOIN municipalities m ON m.id = p.municipality_id
+       LEFT JOIN posts po ON po.project_id = p.id
+       LEFT JOIN policy_suggestions ps ON ps.project_id = p.id
+       GROUP BY p.id, p.title, p.description, p.status, m.name, p.created_at
        ORDER BY p.created_at DESC`,
     );
   } catch {
@@ -88,6 +103,7 @@ export default async function DashboardPage() {
                 description={project.description}
                 status={project.status}
                 department={project.department}
+                pdcaStage={determinePdcaStage(project)}
               />
             ))}
           </div>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { query } from "@/lib/db";
 import LogicModelSection, { type LogicModel } from "./LogicModelSection";
 import BackButton from "@/components/BackButton";
+import PdcaNav from "@/components/PdcaNav";
 
 interface ProjectRow {
   id: string;
@@ -171,6 +172,7 @@ export default async function AdminProjectDetailPage({
 
   return (
     <div className="max-w-3xl space-y-8">
+      <PdcaNav currentStage="P" currentStep="セオリー評価" projectId={project.id} />
       <div className="mb-2">
         <BackButton />
       </div>
@@ -230,6 +232,17 @@ export default async function AdminProjectDetailPage({
             style={{ borderColor: "#2a2d3a" }}
           >
             EBPMダッシュボード
+          </Link>
+          <Link
+            href={`/projects/${project.id}/pdca`}
+            className="text-sm font-semibold px-5 py-2 rounded-xl border transition-all duration-200"
+            style={{
+              borderColor: "#6366f140",
+              color: "#818cf8",
+              background: "#6366f108",
+            }}
+          >
+            PDCAサイクル全体図
           </Link>
           <Link
             href={`/public/${project.slug}`}

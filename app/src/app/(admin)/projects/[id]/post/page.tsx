@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import PostForm, { type KpiForForm } from "./PostForm";
 import BackButton from "@/components/BackButton";
+import PdcaNav from "@/components/PdcaNav";
 
 interface ProjectRow {
   id: string;
@@ -29,6 +30,7 @@ export default async function PostReportPage({
 
   return (
     <div>
+      <PdcaNav currentStage="D" currentStep="進捗報告・KPI更新" projectId={project.id} />
       <div className="mb-4">
         <BackButton />
       </div>

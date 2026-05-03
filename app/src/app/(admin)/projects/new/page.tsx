@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import BackButton from "@/components/BackButton";
+import PdcaNav from "@/components/PdcaNav";
 
 interface KpiRow {
   label: string;
@@ -74,6 +75,7 @@ export default function NewProjectPage() {
 
   return (
     <div className="max-w-2xl">
+      <PdcaNav currentStage="P" currentStep="計画策定・スケジュール" />
       <div className="mb-4">
         <BackButton />
       </div>

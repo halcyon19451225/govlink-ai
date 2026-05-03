@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import BackButton from "@/components/BackButton";
 import EbpmClient from "./EbpmClient";
+import PdcaNav from "@/components/PdcaNav";
 
 interface ProjectRow { id: string; title: string }
 interface KpiRow { id: string; label: string; target: number; current: number; unit: string }
@@ -66,6 +67,7 @@ export default async function EbpmPage({ params }: { params: { id: string } }) {
 
   return (
     <div className="max-w-5xl">
+      <PdcaNav currentStage="A" currentStep="AI改善提案" projectId={project.id} />
       <div className="mb-4">
         <BackButton />
       </div>

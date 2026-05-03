@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import BackButton from "@/components/BackButton";
 import DocumentsClient from "./DocumentsClient";
+import PdcaNav from "@/components/PdcaNav";
 
 interface ProjectRow {
   id: string;
@@ -28,6 +29,7 @@ export default async function DocumentsPage({ params }: { params: { id: string }
 
   return (
     <div className="max-w-4xl">
+      <PdcaNav currentStage="D" currentStep="ドキュメント管理" projectId={project.id} />
       <div className="mb-4">
         <BackButton />
       </div>
