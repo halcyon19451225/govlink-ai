@@ -1,0 +1,7 @@
+.env
+.env.local
+node_modules/
+.next/
+cdk.out/
+*.js.map
+.DS_Store
