@@ -1,10 +1,10 @@
-import { mkdirSync, writeFileSync, cpSync } from 'fs'
+import { mkdirSync, writeFileSync, cpSync, existsSync } from 'fs'
 
 const standaloneDir = '.next/standalone'
 const hostingDir = '.amplify-hosting'
 
 mkdirSync(`${hostingDir}/compute/default`, { recursive: true })
-mkdirSync(`${hostingDir}/static`, { recursive: true })
+mkdirSync(`${hostingDir}/static/_next/static`, { recursive: true })
 
 cpSync(standaloneDir, `${hostingDir}/compute/default`, { recursive: true })
 
