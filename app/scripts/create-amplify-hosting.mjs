@@ -36,7 +36,7 @@ const manifest = {
   computeResources: [
     {
       name: 'default',
-      runtime: 'nodejs18.x',
+      runtime: 'nodejs20.x',
       entrypoint: 'server.js'
     }
   ],
