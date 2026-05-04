@@ -126,7 +126,7 @@ async function getPool(): Promise<Pool> {
     user: RDS_USER,
     password: token,
     database: RDS_DATABASE,
-    ssl: { rejectUnauthorized: true },
+    ssl: { rejectUnauthorized: false },
     max: env.DATABASE_MAX_CONNECTIONS,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
