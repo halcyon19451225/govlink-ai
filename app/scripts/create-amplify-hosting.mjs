@@ -15,16 +15,22 @@ const manifest = {
   routes: [
     {
       path: '/_next/static/*',
-      target: { kind: 'Static' },
-      fallback: null
+      target: {
+        kind: 'Static'
+      }
+    },
+    {
+      path: '/favicon.ico',
+      target: {
+        kind: 'Static'
+      }
     },
     {
       path: '/*',
       target: {
         kind: 'Compute',
         src: 'default'
-      },
-      fallback: null
+      }
     }
   ],
   computeResources: [
@@ -36,7 +42,7 @@ const manifest = {
   ],
   framework: {
     name: 'next',
-    version: '14'
+    version: '14.2.35'
   }
 }
 
