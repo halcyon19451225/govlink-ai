@@ -10,8 +10,11 @@ function getPool(): Pool {
     throw new Error('DATABASE_URL が設定されていません')
   }
 
+  // sslmodeパラメータをURLから除去してssl設定で上書き
+  const cleanUrl = connectionString.replace(/[?&]sslmode=[^&]*/g, '')
+
   pool = new Pool({
-    connectionString,
+    connectionString: cleanUrl,
     ssl: process.env.NODE_ENV === 'production'
       ? { rejectUnauthorized: false }
       : false,
