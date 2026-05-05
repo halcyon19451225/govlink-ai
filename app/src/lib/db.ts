@@ -1,66 +1,35 @@
 import { Pool, type PoolClient, type QueryResultRow } from 'pg'
-import { Signer } from '@aws-sdk/rds-signer'
 
 let pool: Pool | null = null
-let tokenExpiry: number = 0
 
-async function getIamToken(): Promise<string> {
-  const signer = new Signer({
-    hostname: 'govlink-db.cluster-cbgussy88a25.ap-northeast-1.rds.amazonaws.com',
-    port: 5432,
-    region: 'ap-northeast-1',
-    username: 'postgres',
-  })
-  return signer.getAuthToken()
-}
-
-async function createPool(): Promise<Pool> {
-  if (process.env.NODE_ENV === 'production') {
-    const password = await getIamToken()
-    tokenExpiry = Date.now() + 14 * 60 * 1000
-
-    return new Pool({
-      host: 'govlink-db.cluster-cbgussy88a25.ap-northeast-1.rds.amazonaws.com',
-      port: 5432,
-      database: 'govlink',
-      user: 'postgres',
-      password,
-      ssl: { rejectUnauthorized: false },
-      max: 5,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 10_000,
-    })
-  }
+function getPool(): Pool {
+  if (pool) return pool
 
   const connectionString = process.env.DATABASE_URL
-  if (!connectionString) throw new Error('DATABASE_URL が設定されていません')
-  return new Pool({
-    connectionString,
-    max: 10,
-    idleTimeoutMillis: 30_000,
-  })
-}
-
-async function getPool(): Promise<Pool> {
-  if (pool && Date.now() < tokenExpiry) return pool
-
-  if (pool) {
-    await pool.end().catch(() => {})
-    pool = null
+  if (!connectionString) {
+    throw new Error('DATABASE_URL が設定されていません')
   }
 
-  pool = await createPool()
+  pool = new Pool({
+    connectionString,
+    ssl: process.env.NODE_ENV === 'production'
+      ? { rejectUnauthorized: false }
+      : false,
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  })
+
   return pool
 }
 
 export async function query<T extends QueryResultRow = Record<string, unknown>>(
-  text: string,
+  sql: string,
   params?: unknown[],
 ): Promise<T[]> {
-  const p = await getPool()
-  const client = await p.connect()
+  const client = await getPool().connect()
   try {
-    const result = await client.query<T>(text, params)
+    const result = await client.query<T>(sql, params)
     return result.rows
   } finally {
     client.release()
@@ -68,18 +37,17 @@ export async function query<T extends QueryResultRow = Record<string, unknown>>(
 }
 
 export async function queryOne<T extends QueryResultRow = Record<string, unknown>>(
-  text: string,
+  sql: string,
   params?: unknown[],
 ): Promise<T | null> {
-  const rows = await query<T>(text, params)
+  const rows = await query<T>(sql, params)
   return rows[0] ?? null
 }
 
 export async function transaction<T>(
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const p = await getPool()
-  const client = await p.connect()
+  const client = await getPool().connect()
   try {
     await client.query('BEGIN')
     const result = await fn(client)
