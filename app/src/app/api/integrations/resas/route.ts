@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // RESAS APIは2024年にサービス終了のため、総務省e-Stat地域別統計に代替実装
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";

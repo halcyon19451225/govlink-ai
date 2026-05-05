@@ -63,7 +63,16 @@
       "Bash(sed -n '141,155p' /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/ebpm/EbpmClient.tsx)",
       "Bash(sed -n '125,132p' /Users/halcy/Documents/govlink-ai/app/src/app/legal/page.tsx)",
       "Bash(sed -n '94,102p' /Users/halcy/Documents/govlink-ai/app/src/app/contact/page.tsx)",
-      "Bash(sed -n '243,250p' /Users/halcy/Documents/govlink-ai/app/src/app/contact/page.tsx)"
+      "Bash(sed -n '243,250p' /Users/halcy/Documents/govlink-ai/app/src/app/contact/page.tsx)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(python3 *)",
+      "Bash(git commit *)",
+      "Bash(psql --version)",
+      "Bash(PGSSLMODE=require PGPASSWORD='GovLink2026Pass#' psql *)",
+      "Bash(PGPASSWORD='GovLink2026Pass#' psql *)",
+      "Bash(npx supabase *)"
     ]
   }
 }
