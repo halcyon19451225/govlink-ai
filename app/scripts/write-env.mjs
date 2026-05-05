@@ -1,4 +1,4 @@
-import { writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync, readFileSync } from 'fs'
 
 mkdirSync('.amplify-hosting/compute/default', { recursive: true })
 
@@ -22,3 +22,6 @@ const content = Object.entries(env)
 
 writeFileSync('.amplify-hosting/compute/default/.env', content)
 console.log('ENV vars written:', Object.keys(env).filter(k => env[k]).join(', '))
+const written = readFileSync('.amplify-hosting/compute/default/.env', 'utf8')
+console.log('Written .env content (DATABASE_URL line):',
+  written.split('\n').find(l => l.startsWith('DATABASE_URL='))?.substring(0, 60))
