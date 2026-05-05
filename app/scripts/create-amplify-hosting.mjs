@@ -37,7 +37,7 @@ const manifest = {
     {
       name: 'default',
       runtime: 'nodejs20.x',
-      entrypoint: 'server.js'
+      entrypoint: 'run.js'
     }
   ],
   framework: {
