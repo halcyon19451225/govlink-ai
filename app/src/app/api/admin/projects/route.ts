@@ -57,8 +57,14 @@ export async function POST(req: NextRequest) {
 
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
-    const message = parsed.error.issues.map((i) => i.message).join("、");
-    return NextResponse.json({ data: null, error: message }, { status: 400 });
+    const details = parsed.error.issues.map((i) => ({
+      field: i.path.join(".") || "(root)",
+      message: i.message,
+      code: i.code,
+    }));
+    console.error("POST /api/admin/projects バリデーションエラー:", JSON.stringify(details, null, 2));
+    const message = details.map((d) => `${d.field}: ${d.message}`).join("、");
+    return NextResponse.json({ data: null, error: message, details }, { status: 400 });
   }
 
   const {

@@ -775,15 +775,19 @@ export default function NewProjectWizard({ templates }: { templates: Template[] 
 
     try {
       const validKpis = kpis
-        .filter((k) => k.label.trim() && k.target.trim())
+        .filter((k) => k.label.trim() && k.target.trim() && !isNaN(parseFloat(k.target)))
         .map((k, i) => ({
           label: k.label.trim(),
           target: parseFloat(k.target),
           unit: k.unit,
           goal_index: k.goal_index,
           indicator_type: k.indicator_type,
-          previous_value: k.previous_value ? parseFloat(k.previous_value) : null,
-          previous_target: k.previous_target ? parseFloat(k.previous_target) : null,
+          previous_value: k.previous_value.trim() && !isNaN(parseFloat(k.previous_value))
+            ? parseFloat(k.previous_value)
+            : null,
+          previous_target: k.previous_target.trim() && !isNaN(parseFloat(k.previous_target))
+            ? parseFloat(k.previous_target)
+            : null,
           sort_order: i,
         }));
 
@@ -791,21 +795,24 @@ export default function NewProjectWizard({ templates }: { templates: Template[] 
         .filter((g) => g.title.trim())
         .map((g, i) => ({ title: g.title.trim(), description: g.description, sort_order: i }));
 
+      const payload = {
+        title: basicInfo.title,
+        description: basicInfo.description,
+        department: basicInfo.department,
+        status: basicInfo.status,
+        template_id: selectedTemplate?.id ?? null,
+        plan_start_date: basicInfo.planStartDate || null,
+        plan_end_date: basicInfo.planEndDate || null,
+        is_composite: selectedTemplate?.is_composite ?? false,
+        goals: validGoals,
+        kpis: validKpis,
+      };
+      console.log("[NewProjectWizard] POST /api/admin/projects 送信データ:", JSON.stringify(payload, null, 2));
+
       const res = await fetch("/api/admin/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: basicInfo.title,
-          description: basicInfo.description,
-          department: basicInfo.department,
-          status: basicInfo.status,
-          template_id: selectedTemplate?.id ?? null,
-          plan_start_date: basicInfo.planStartDate || null,
-          plan_end_date: basicInfo.planEndDate || null,
-          is_composite: selectedTemplate?.is_composite ?? false,
-          goals: validGoals,
-          kpis: validKpis,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const json = (await res.json()) as { data: { projectId: string } | null; error: string | null; upgrade_url?: string };
