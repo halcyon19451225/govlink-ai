@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
@@ -19,6 +20,13 @@ const bodySchema = z.object({
 const cognitoClient = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION ?? "ap-northeast-1",
 });
+
+function getSecretHash(username: string): string | undefined {
+  const clientId = process.env.COGNITO_CLIENT_ID;
+  const clientSecret = process.env.COGNITO_CLIENT_SECRET;
+  if (!clientSecret || !clientId) return undefined;
+  return crypto.createHmac("sha256", clientSecret).update(username + clientId).digest("base64");
+}
 
 export async function POST(req: NextRequest) {
   let raw: unknown;
@@ -51,6 +59,7 @@ export async function POST(req: NextRequest) {
         ClientId: clientId,
         Username: email,
         Password: password,
+        SecretHash: getSecretHash(email),
         UserAttributes: [
           { Name: "email", Value: email },
           { Name: "name", Value: displayName },
