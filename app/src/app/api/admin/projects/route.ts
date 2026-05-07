@@ -34,7 +34,7 @@ const bodySchema = z.object({
   description: z.string().default(""),
   department: z.string().default(""),
   status: z.enum(["draft", "active", "completed"]).default("draft"),
-  template_id: z.string().uuid().optional().nullable(),
+  template_id: z.string().uuid().nullable().optional(),
   plan_start_date: z.string().optional().nullable(),
   plan_end_date: z.string().optional().nullable(),
   is_composite: z.boolean().default(false),

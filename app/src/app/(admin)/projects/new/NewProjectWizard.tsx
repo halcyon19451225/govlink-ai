@@ -800,7 +800,7 @@ export default function NewProjectWizard({ templates }: { templates: Template[] 
         description: basicInfo.description,
         department: basicInfo.department,
         status: basicInfo.status,
-        template_id: selectedTemplate?.id ?? null,
+        template_id: selectedTemplate?.id || undefined,
         plan_start_date: basicInfo.planStartDate || null,
         plan_end_date: basicInfo.planEndDate || null,
         is_composite: selectedTemplate?.is_composite ?? false,
