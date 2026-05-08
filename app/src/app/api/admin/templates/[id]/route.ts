@@ -8,15 +8,11 @@ import { query } from "@/lib/db";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
-  category: z.enum([
-    "elderly_care","disability","child","health",
-    "urban","disaster","environment","education","other",
-  ]).optional(),
-  legal_basis: z.string().optional().nullable(),
-  plan_period_years: z.number().int().optional().nullable(),
-  is_composite: z.boolean().optional(),
+  plan_type: z.enum(["kaigo_hoken", "shougai_fukushi", "kenko_zoshin", "chiiki_fukushi", "custom"]).optional(),
   description: z.string().optional().nullable(),
-  share: z.boolean().optional(),
+  plan_period_years: z.number().int().min(1).max(10).optional(),
+  module_config: z.record(z.string(), z.object({ enabled: z.boolean() })).optional(),
+  is_public: z.boolean().optional(),
 });
 
 type Params = { params: { id: string } };
@@ -32,17 +28,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: null, error: "自治体情報が取得できません" }, { status: 400 });
   }
 
-  // 所有権確認（システムテンプレートは変更不可）
-  const existing = await query<{ id: string; is_system: boolean; shared_by_municipality_id: string | null }>(
-    "SELECT id, is_system, shared_by_municipality_id FROM plan_templates WHERE id = $1",
+  const existing = await query<{ id: string; is_system_template: boolean; created_by: string | null }>(
+    "SELECT id, is_system_template, created_by FROM plan_templates WHERE id = $1",
     [params.id],
   );
   const tmpl = existing[0];
   if (!tmpl) {
     return NextResponse.json({ data: null, error: "テンプレートが見つかりません" }, { status: 404 });
   }
-  if (tmpl.is_system) {
+  if (tmpl.is_system_template) {
     return NextResponse.json({ data: null, error: "システムテンプレートは変更できません" }, { status: 403 });
+  }
+  if (tmpl.created_by && tmpl.created_by !== municipalityId) {
+    return NextResponse.json({ data: null, error: "このテンプレートを変更する権限がありません" }, { status: 403 });
   }
 
   let raw: unknown;
@@ -58,27 +56,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     );
   }
 
-  const { name, category, legal_basis, plan_period_years, is_composite, description, share } = parsed.data;
+  const { name, plan_type, description, plan_period_years, module_config, is_public } = parsed.data;
 
   const updates: string[] = [];
   const values: unknown[] = [];
   let idx = 1;
 
-  if (name !== undefined)               { updates.push(`name = $${idx++}`); values.push(name); }
-  if (category !== undefined)           { updates.push(`category = $${idx++}`); values.push(category); }
-  if (legal_basis !== undefined)        { updates.push(`legal_basis = $${idx++}`); values.push(legal_basis); }
-  if (plan_period_years !== undefined)  { updates.push(`plan_period_years = $${idx++}`); values.push(plan_period_years); }
-  if (is_composite !== undefined)       { updates.push(`is_composite = $${idx++}`); values.push(is_composite); }
-  if (description !== undefined)        { updates.push(`description = $${idx++}`); values.push(description); }
-  if (share !== undefined)              {
-    updates.push(`shared_by_municipality_id = $${idx++}`);
-    values.push(share ? municipalityId : null);
-  }
+  if (name !== undefined)              { updates.push(`name = $${idx++}`); values.push(name); }
+  if (plan_type !== undefined)         { updates.push(`plan_type = $${idx++}`); values.push(plan_type); }
+  if (description !== undefined)       { updates.push(`description = $${idx++}`); values.push(description); }
+  if (plan_period_years !== undefined) { updates.push(`plan_period_years = $${idx++}`); values.push(plan_period_years); }
+  if (module_config !== undefined)     { updates.push(`module_config = $${idx++}::jsonb`); values.push(JSON.stringify(module_config)); }
+  if (is_public !== undefined)         { updates.push(`is_public = $${idx++}`); values.push(is_public); }
 
   if (updates.length === 0) {
     return NextResponse.json({ data: { id: params.id }, error: null });
   }
 
+  updates.push(`updated_at = NOW()`);
   values.push(params.id);
   await query(
     `UPDATE plan_templates SET ${updates.join(", ")} WHERE id = $${idx}`,
@@ -94,15 +89,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
   }
 
-  const existing = await query<{ id: string; is_system: boolean }>(
-    "SELECT id, is_system FROM plan_templates WHERE id = $1",
+  const existing = await query<{ id: string; is_system_template: boolean }>(
+    "SELECT id, is_system_template FROM plan_templates WHERE id = $1",
     [params.id],
   );
   const tmpl = existing[0];
   if (!tmpl) {
     return NextResponse.json({ data: null, error: "テンプレートが見つかりません" }, { status: 404 });
   }
-  if (tmpl.is_system) {
+  if (tmpl.is_system_template) {
     return NextResponse.json({ data: null, error: "システムテンプレートは削除できません" }, { status: 403 });
   }
 

@@ -3,107 +3,125 @@
 import { useState } from "react";
 import Link from "next/link";
 import BackButton from "@/components/BackButton";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface KpiSuggestion {
-  id: string;
-  label: string;
-  unit: string | null;
-  indicator_type: string;
-  sort_order: number;
-}
-
-interface Template {
-  id: string;
-  name: string;
-  category: string;
-  legal_basis: string | null;
-  plan_period_years: number | null;
-  is_composite: boolean;
-  description: string | null;
-  is_system: boolean;
-  shared_by_municipality_id: string | null;
-  kpi_suggestions: KpiSuggestion[];
-}
-
-interface KpiFormRow {
-  label: string;
-  unit: string;
-  indicator_type: string;
-  sort_order: number;
-}
-
-interface FormState {
-  name: string;
-  category: string;
-  legal_basis: string;
-  plan_period_years: string;
-  is_composite: boolean;
-  description: string;
-  share: boolean;
-  kpi_suggestions: KpiFormRow[];
-}
+import type { PlanModule, PlanTemplate } from "./page";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const CATEGORY_OPTIONS = [
-  { value: "elderly_care", label: "高齢者介護" },
-  { value: "disability",   label: "障害福祉" },
-  { value: "child",        label: "子育て・教育" },
-  { value: "health",       label: "健康増進" },
-  { value: "urban",        label: "都市計画" },
-  { value: "disaster",     label: "防災" },
-  { value: "environment",  label: "環境" },
-  { value: "education",    label: "教育" },
-  { value: "other",        label: "その他" },
-];
+const PLAN_TYPE_LABELS: Record<string, string> = {
+  kaigo_hoken:    "介護保険",
+  shougai_fukushi:"障害福祉",
+  kenko_zoshin:   "健康増進",
+  chiiki_fukushi: "地域福祉",
+  custom:         "カスタム",
+};
 
-const INDICATOR_TYPE_OPTIONS = [
-  { value: "process",          label: "プロセス" },
-  { value: "outcome_initial",  label: "初期アウトカム" },
-  { value: "outcome_mid",      label: "中期アウトカム" },
-  { value: "outcome_long",     label: "長期アウトカム" },
-  { value: "efficiency",       label: "効率性" },
-];
+const PLAN_TYPE_OPTIONS = Object.entries(PLAN_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 
-const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
-  CATEGORY_OPTIONS.map((c) => [c.value, c.label]),
-);
+const PHASE_COLORS: Record<string, string> = {
+  P: "#6366f1", D: "#06b6d4", C: "#f59e0b", A: "#10b981",
+  "P-D": "#8b5cf6", "C-A": "#f97316",
+};
 
-const INDICATOR_LABELS: Record<string, string> = Object.fromEntries(
-  INDICATOR_TYPE_OPTIONS.map((c) => [c.value, c.label]),
-);
+const MODULE_ICONS: Record<string, string> = {
+  dataset_manager:    "🗄",
+  gap_analysis:       "📊",
+  issue_hypothesis:   "🔬",
+  logic_model:        "🔗",
+  program_evaluation: "📋",
+  cost_efficiency:    "💴",
+  service_volume:     "📈",
+  self_evaluation:    "✅",
+};
 
 const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
 const inputStyle = { background: "#161922", borderColor: "#2a2d3a" };
 
-const EMPTY_FORM: FormState = {
-  name: "", category: "other", legal_basis: "",
-  plan_period_years: "", is_composite: false, description: "",
-  share: false, kpi_suggestions: [],
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface FormState {
+  name: string;
+  plan_type: string;
+  description: string;
+  plan_period_years: string;
+  module_config: Record<string, boolean>;
+}
+
+const EMPTY_FORM = (modules: PlanModule[]): FormState => ({
+  name: "",
+  plan_type: "kaigo_hoken",
+  description: "",
+  plan_period_years: "3",
+  module_config: Object.fromEntries(modules.map((m) => [m.id, false])),
+});
+
+// ─── Module Chips ─────────────────────────────────────────────────────────────
+
+function ModuleChips({
+  moduleConfig,
+  modules,
+}: {
+  moduleConfig: Record<string, { enabled: boolean }>;
+  modules: PlanModule[];
+}) {
+  const enabled = modules.filter((m) => moduleConfig[m.id]?.enabled);
+  if (enabled.length === 0) return <span className="text-xs text-slate-600">モジュールなし</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {enabled.map((m) => (
+        <span
+          key={m.id}
+          className="text-xs px-2 py-0.5 rounded-full"
+          style={{ background: "#6366f112", color: "#a5b4fc", border: "1px solid #6366f125" }}
+          title={m.description ?? m.display_name}
+        >
+          {MODULE_ICONS[m.id] ?? "•"} {m.display_name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ─── PDCA Mini-Timeline ───────────────────────────────────────────────────────
+
+function PdcaMiniTimeline({ cycles }: { cycles: PlanTemplate["cycles"] }) {
+  if (cycles.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {cycles.map((c) => (
+        <span
+          key={c.id}
+          className="text-xs px-2 py-0.5 rounded font-mono font-bold"
+          style={{
+            background: `${PHASE_COLORS[c.phase] ?? "#64748b"}18`,
+            color: PHASE_COLORS[c.phase] ?? "#94a3b8",
+            border: `1px solid ${PHASE_COLORS[c.phase] ?? "#64748b"}30`,
+          }}
+          title={`${c.name}（${c.recurrence}）`}
+        >
+          {c.phase}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 // ─── Template Card ────────────────────────────────────────────────────────────
 
 function TemplateCard({
   tmpl,
+  modules,
   municipalityId,
-  onEdit,
   onDelete,
-  onToggleShare,
 }: {
-  tmpl: Template;
+  tmpl: PlanTemplate;
+  modules: PlanModule[];
   municipalityId: string | null;
-  onEdit: (t: Template) => void;
   onDelete: (id: string) => void;
-  onToggleShare: (id: string, share: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isOwned = !tmpl.is_system;
-  const isShared = tmpl.shared_by_municipality_id != null;
+  const isOwned = !tmpl.is_system_template;
 
   return (
     <div className="rounded-xl border overflow-hidden" style={cardStyle}>
@@ -115,18 +133,22 @@ function TemplateCard({
                 className="text-xs px-2 py-0.5 rounded-full font-medium"
                 style={{ background: "#6366f115", color: "#818cf8", border: "1px solid #6366f130" }}
               >
-                {CATEGORY_LABELS[tmpl.category] ?? tmpl.category}
+                {PLAN_TYPE_LABELS[tmpl.plan_type] ?? tmpl.plan_type}
               </span>
-              {tmpl.is_system && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{ background: "#10b98115", color: "#34d399", border: "1px solid #10b98130" }}>
+              {tmpl.is_system_template && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: "#10b98115", color: "#34d399", border: "1px solid #10b98130" }}
+                >
                   システム標準
                 </span>
               )}
-              {isShared && !tmpl.is_system && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{ background: "#06b6d415", color: "#22d3ee", border: "1px solid #06b6d430" }}>
-                  共有中
+              {tmpl.is_public && !tmpl.is_system_template && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: "#06b6d415", color: "#22d3ee", border: "1px solid #06b6d430" }}
+                >
+                  公開中
                 </span>
               )}
             </div>
@@ -134,33 +156,13 @@ function TemplateCard({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {isOwned && municipalityId && (
-              <>
-                <button
-                  onClick={() => onToggleShare(tmpl.id, !isShared)}
-                  className="text-xs px-2 py-1 rounded-lg border transition-colors duration-200"
-                  style={{
-                    borderColor: isShared ? "#06b6d440" : "#2a2d3a",
-                    color: isShared ? "#22d3ee" : "#64748b",
-                    background: isShared ? "#06b6d410" : "transparent",
-                  }}
-                >
-                  {isShared ? "共有解除" : "共有する"}
-                </button>
-                <button
-                  onClick={() => onEdit(tmpl)}
-                  className="text-xs px-2 py-1 rounded-lg border text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors duration-200"
-                  style={{ borderColor: "#2a2d3a" }}
-                >
-                  編集
-                </button>
-                <button
-                  onClick={() => onDelete(tmpl.id)}
-                  className="text-xs px-2 py-1 rounded-lg border text-red-500 hover:text-red-400 hover:border-red-500/50 transition-colors duration-200"
-                  style={{ borderColor: "#2a2d3a" }}
-                >
-                  削除
-                </button>
-              </>
+              <button
+                onClick={() => onDelete(tmpl.id)}
+                className="text-xs px-2 py-1 rounded-lg border text-red-500 hover:text-red-400 hover:border-red-500/50 transition-colors duration-200"
+                style={{ borderColor: "#2a2d3a" }}
+              >
+                削除
+              </button>
             )}
             <button
               onClick={() => setExpanded(!expanded)}
@@ -171,37 +173,52 @@ function TemplateCard({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-          {tmpl.legal_basis && <span>根拠法: {tmpl.legal_basis}</span>}
-          {tmpl.plan_period_years != null && tmpl.plan_period_years > 0 && (
-            <span>{tmpl.plan_period_years}年計画</span>
-          )}
-          {tmpl.is_composite && <span>複合計画</span>}
-          <span>推奨KPI {tmpl.kpi_suggestions.length}件</span>
+        <div className="flex flex-wrap gap-4 text-xs text-slate-500 mb-2">
+          <span>{tmpl.plan_period_years}年計画</span>
+          <span>
+            {Object.values(tmpl.module_config).filter((c) => c.enabled).length}モジュール
+          </span>
         </div>
+
+        <ModuleChips moduleConfig={tmpl.module_config} modules={modules} />
+        <PdcaMiniTimeline cycles={tmpl.cycles} />
 
         {tmpl.description && (
           <p className="text-xs text-slate-500 mt-2 leading-relaxed line-clamp-2">{tmpl.description}</p>
         )}
       </div>
 
-      {expanded && tmpl.kpi_suggestions.length > 0 && (
+      {expanded && (
         <div className="border-t px-4 pb-4 pt-3" style={{ borderColor: "#2a2d3a" }}>
-          <p className="text-xs font-semibold text-slate-500 mb-2">推奨KPI一覧</p>
-          <div className="space-y-1.5">
-            {tmpl.kpi_suggestions.map((k) => (
-              <div key={k.id} className="flex items-center gap-3">
-                <span
-                  className="text-xs px-1.5 py-0.5 rounded shrink-0"
-                  style={{ background: "#1e2133", color: "#64748b", border: "1px solid #2a2d3a" }}
-                >
-                  {INDICATOR_LABELS[k.indicator_type] ?? k.indicator_type}
-                </span>
-                <span className="text-xs text-slate-300 flex-1">{k.label}</span>
-                {k.unit && <span className="text-xs text-slate-600">{k.unit}</span>}
-              </div>
-            ))}
-          </div>
+          <p className="text-xs font-semibold text-slate-500 mb-2">PDCAサイクル</p>
+          {tmpl.cycles.length === 0 ? (
+            <p className="text-xs text-slate-600">サイクル定義なし</p>
+          ) : (
+            <div className="space-y-1.5">
+              {tmpl.cycles.map((c) => (
+                <div key={c.id} className="flex items-center gap-3">
+                  <span
+                    className="text-xs px-1.5 py-0.5 rounded font-mono font-bold shrink-0"
+                    style={{
+                      background: `${PHASE_COLORS[c.phase] ?? "#64748b"}18`,
+                      color: PHASE_COLORS[c.phase] ?? "#94a3b8",
+                    }}
+                  >
+                    {c.phase}
+                  </span>
+                  <span className="text-xs text-slate-300 flex-1">{c.name}</span>
+                  <span className="text-xs text-slate-600">{c.recurrence}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tmpl.description && (
+            <>
+              <p className="text-xs font-semibold text-slate-500 mt-3 mb-1">説明</p>
+              <p className="text-xs text-slate-400 leading-relaxed">{tmpl.description}</p>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -212,47 +229,34 @@ function TemplateCard({
 
 function TemplateFormModal({
   form,
-  editId,
+  modules,
   onFormChange,
+  onToggleModule,
   onSubmit,
   onClose,
   submitting,
   error,
 }: {
   form: FormState;
-  editId: string | null;
-  onFormChange: (k: string, v: unknown) => void;
+  modules: PlanModule[];
+  onFormChange: (k: keyof FormState, v: string) => void;
+  onToggleModule: (moduleId: string, enabled: boolean) => void;
   onSubmit: () => void;
   onClose: () => void;
   submitting: boolean;
   error: string | null;
 }) {
-  const addKpi = () =>
-    onFormChange("kpi_suggestions", [
-      ...form.kpi_suggestions,
-      { label: "", unit: "", indicator_type: "process", sort_order: form.kpi_suggestions.length },
-    ]);
-  const removeKpi = (i: number) =>
-    onFormChange("kpi_suggestions", form.kpi_suggestions.filter((_, idx) => idx !== i));
-  const updateKpi = (i: number, k: keyof KpiFormRow, v: string | number) =>
-    onFormChange(
-      "kpi_suggestions",
-      form.kpi_suggestions.map((row, idx) => (idx === i ? { ...row, [k]: v } : row)),
-    );
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.7)" }}
     >
       <div
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl"
+        className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl"
         style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#2a2d3a" }}>
-          <h3 className="text-base font-bold text-slate-100">
-            {editId ? "テンプレートを編集" : "新規テンプレートを作成"}
-          </h3>
+          <h3 className="text-base font-bold text-slate-100">新規テンプレートを作成</h3>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xl leading-none">×</button>
         </div>
 
@@ -264,23 +268,24 @@ function TemplateFormModal({
             </div>
           )}
 
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              テンプレート名 <span className="text-red-400">*</span>
+            </label>
+            <input type="text" value={form.name}
+              onChange={(e) => onFormChange("name", e.target.value)}
+              className={inputClass} style={inputStyle}
+              placeholder="例: 独自介護保険計画" />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-slate-400 mb-1">
-                テンプレート名 <span className="text-red-400">*</span>
-              </label>
-              <input type="text" value={form.name}
-                onChange={(e) => onFormChange("name", e.target.value)}
-                className={inputClass} style={inputStyle}
-                placeholder="例: 独自の高齢者支援計画" />
-            </div>
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">カテゴリ</label>
-              <select value={form.category}
-                onChange={(e) => onFormChange("category", e.target.value)}
+              <label className="block text-xs font-medium text-slate-400 mb-1">計画種別</label>
+              <select value={form.plan_type}
+                onChange={(e) => onFormChange("plan_type", e.target.value)}
                 className={inputClass} style={inputStyle}>
-                {CATEGORY_OPTIONS.map((c) => (
-                  <option key={c.value} value={c.value} style={{ background: "#161922" }}>{c.label}</option>
+                {PLAN_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value} style={{ background: "#161922" }}>{o.label}</option>
                 ))}
               </select>
             </div>
@@ -288,75 +293,37 @@ function TemplateFormModal({
               <label className="block text-xs font-medium text-slate-400 mb-1">計画期間（年）</label>
               <input type="number" value={form.plan_period_years}
                 onChange={(e) => onFormChange("plan_period_years", e.target.value)}
-                className={inputClass} style={inputStyle}
-                placeholder="例: 3" min="0" />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-slate-400 mb-1">根拠法令</label>
-              <input type="text" value={form.legal_basis}
-                onChange={(e) => onFormChange("legal_basis", e.target.value)}
-                className={inputClass} style={inputStyle}
-                placeholder="例: 介護保険法第117条" />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-slate-400 mb-1">説明</label>
-              <textarea value={form.description} rows={3}
-                onChange={(e) => onFormChange("description", e.target.value)}
-                className={inputClass} style={inputStyle}
-                placeholder="テンプレートの説明" />
-            </div>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={form.is_composite}
-                  onChange={(e) => onFormChange("is_composite", e.target.checked)}
-                  className="w-4 h-4 rounded accent-indigo-500" />
-                複合計画
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={form.share}
-                  onChange={(e) => onFormChange("share", e.target.checked)}
-                  className="w-4 h-4 rounded accent-cyan-500" />
-                他自治体と共有する
-              </label>
+                className={inputClass} style={inputStyle} min="1" max="10" />
             </div>
           </div>
 
-          {/* KPI suggestions */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium text-slate-400">推奨KPI</label>
-              <button type="button" onClick={addKpi}
-                className="text-xs font-semibold text-cyan-400 border rounded-lg px-3 py-1 transition-colors duration-200"
-                style={{ borderColor: "#06b6d430", background: "#06b6d408" }}>
-                ＋ 追加
-              </button>
-            </div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">説明</label>
+            <textarea value={form.description} rows={2}
+              onChange={(e) => onFormChange("description", e.target.value)}
+              className={inputClass} style={inputStyle}
+              placeholder="テンプレートの説明（任意）" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-2">使用モジュール</label>
             <div className="space-y-2">
-              {form.kpi_suggestions.map((kpi, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <input type="text" value={kpi.label}
-                    onChange={(e) => updateKpi(i, "label", e.target.value)}
-                    className="flex-1 rounded-lg border px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                    style={inputStyle} placeholder="KPIラベル" />
-                  <input type="text" value={kpi.unit}
-                    onChange={(e) => updateKpi(i, "unit", e.target.value)}
-                    className="w-20 rounded-lg border px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                    style={inputStyle} placeholder="単位" />
-                  <select value={kpi.indicator_type}
-                    onChange={(e) => updateKpi(i, "indicator_type", e.target.value)}
-                    className="w-32 rounded-lg border px-2 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                    style={inputStyle}>
-                    {INDICATOR_TYPE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value} style={{ background: "#161922" }}>{o.label}</option>
-                    ))}
-                  </select>
-                  <button type="button" onClick={() => removeKpi(i)}
-                    className="text-slate-600 hover:text-red-400 text-lg leading-none transition-colors duration-200">×</button>
-                </div>
+              {modules.map((m) => (
+                <label key={m.id} className="flex items-start gap-3 cursor-pointer group">
+                  <input type="checkbox"
+                    checked={form.module_config[m.id] ?? false}
+                    onChange={(e) => onToggleModule(m.id, e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded accent-indigo-500 shrink-0" />
+                  <div>
+                    <div className="text-xs font-medium text-slate-300 group-hover:text-slate-100 transition-colors duration-200">
+                      {MODULE_ICONS[m.id] ?? "•"} {m.display_name}
+                    </div>
+                    {m.description && (
+                      <div className="text-xs text-slate-600">{m.description}</div>
+                    )}
+                  </div>
+                </label>
               ))}
-              {form.kpi_suggestions.length === 0 && (
-                <p className="text-xs text-slate-600 py-2">推奨KPIなし（追加で設定できます）</p>
-              )}
             </div>
           </div>
         </div>
@@ -365,7 +332,7 @@ function TemplateFormModal({
           <button type="button" onClick={onSubmit} disabled={submitting || !form.name.trim()}
             className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
-            {submitting ? "保存中..." : editId ? "更新する" : "作成する"}
+            {submitting ? "作成中..." : "作成する"}
           </button>
           <button type="button" onClick={onClose}
             className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 transition-colors duration-200">
@@ -380,83 +347,49 @@ function TemplateFormModal({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function TemplatesClient({
+  modules,
   templates: initialTemplates,
   municipalityId,
 }: {
-  templates: Template[];
+  modules: PlanModule[];
+  templates: PlanTemplate[];
   municipalityId: string | null;
 }) {
   const [templates, setTemplates] = useState(initialTemplates);
   const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState<FormState>(() => EMPTY_FORM(modules));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const openCreate = () => {
-    setForm(EMPTY_FORM);
-    setEditId(null);
-    setError(null);
-    setShowForm(true);
-  };
-
-  const openEdit = (tmpl: Template) => {
-    setForm({
-      name: tmpl.name,
-      category: tmpl.category,
-      legal_basis: tmpl.legal_basis ?? "",
-      plan_period_years: tmpl.plan_period_years != null ? String(tmpl.plan_period_years) : "",
-      is_composite: tmpl.is_composite,
-      description: tmpl.description ?? "",
-      share: tmpl.shared_by_municipality_id != null,
-      kpi_suggestions: tmpl.kpi_suggestions.map((k) => ({
-        label: k.label, unit: k.unit ?? "", indicator_type: k.indicator_type, sort_order: k.sort_order,
-      })),
-    });
-    setEditId(tmpl.id);
-    setError(null);
-    setShowForm(true);
-  };
-
-  const handleFormChange = (k: string, v: unknown) =>
+  const handleFormChange = (k: keyof FormState, v: string) =>
     setForm((prev) => ({ ...prev, [k]: v }));
+
+  const handleToggleModule = (moduleId: string, enabled: boolean) =>
+    setForm((prev) => ({
+      ...prev,
+      module_config: { ...prev.module_config, [moduleId]: enabled },
+    }));
 
   const handleSubmit = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const body = {
-        name: form.name.trim(),
-        category: form.category,
-        legal_basis: form.legal_basis || null,
-        plan_period_years: form.plan_period_years ? parseInt(form.plan_period_years) : null,
-        is_composite: form.is_composite,
-        description: form.description || null,
-        share: form.share,
-        kpi_suggestions: form.kpi_suggestions
-          .filter((k) => k.label.trim())
-          .map((k, i) => ({ ...k, label: k.label.trim(), sort_order: i })),
-      };
-
-      let res: Response;
-      if (editId) {
-        res = await fetch(`/api/admin/templates/${editId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      } else {
-        res = await fetch("/api/admin/templates", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      }
-
+      const moduleConfig = Object.fromEntries(
+        Object.entries(form.module_config).map(([id, enabled]) => [id, { enabled }]),
+      );
+      const res = await fetch("/api/admin/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          plan_type: form.plan_type,
+          description: form.description || null,
+          plan_period_years: parseInt(form.plan_period_years) || 3,
+          module_config: moduleConfig,
+        }),
+      });
       const json = (await res.json()) as { data: unknown; error: string | null };
-      if (!res.ok) { setError(json.error ?? "保存に失敗しました"); return; }
-
-      // ページをリロードして最新データを反映
+      if (!res.ok) { setError(json.error ?? "作成に失敗しました"); return; }
       window.location.reload();
     } catch {
       setError("通信エラーが発生しました");
@@ -473,33 +406,17 @@ export default function TemplatesClient({
     }
   };
 
-  const handleToggleShare = async (id: string, share: boolean) => {
-    const res = await fetch(`/api/admin/templates/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ share }),
-    });
-    if (res.ok) {
-      setTemplates((prev) =>
-        prev.map((t) =>
-          t.id === id
-            ? { ...t, shared_by_municipality_id: share ? municipalityId : null }
-            : t,
-        ),
-      );
-    }
-  };
-
-  const systemTemplates = templates.filter((t) => t.is_system);
-  const ownTemplates = templates.filter((t) => !t.is_system);
+  const systemTemplates = templates.filter((t) => t.is_system_template);
+  const ownTemplates = templates.filter((t) => !t.is_system_template);
 
   return (
     <div className="max-w-4xl space-y-8">
       {showForm && (
         <TemplateFormModal
           form={form}
-          editId={editId}
+          modules={modules}
           onFormChange={handleFormChange}
+          onToggleModule={handleToggleModule}
           onSubmit={handleSubmit}
           onClose={() => setShowForm(false)}
           submitting={submitting}
@@ -520,12 +437,12 @@ export default function TemplatesClient({
             計画テンプレート管理
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            計画作成時に使用するテンプレートを管理します。
+            モジュール構成とPDCAサイクルを定義したテンプレートを管理します。
           </p>
         </div>
         {municipalityId && (
           <button
-            onClick={openCreate}
+            onClick={() => { setForm(EMPTY_FORM(modules)); setError(null); setShowForm(true); }}
             className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/20"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
@@ -534,7 +451,6 @@ export default function TemplatesClient({
         )}
       </div>
 
-      {/* 自治体独自テンプレート */}
       {ownTemplates.length > 0 && (
         <section>
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
@@ -542,28 +458,32 @@ export default function TemplatesClient({
           </h3>
           <div className="space-y-3">
             {ownTemplates.map((t) => (
-              <TemplateCard
-                key={t.id} tmpl={t} municipalityId={municipalityId}
-                onEdit={openEdit} onDelete={handleDelete} onToggleShare={handleToggleShare}
-              />
+              <TemplateCard key={t.id} tmpl={t} modules={modules}
+                municipalityId={municipalityId} onDelete={handleDelete} />
             ))}
           </div>
         </section>
       )}
 
-      {/* システム標準テンプレート */}
       <section>
         <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
           システム標準テンプレート
         </h3>
-        <div className="space-y-3">
-          {systemTemplates.map((t) => (
-            <TemplateCard
-              key={t.id} tmpl={t} municipalityId={municipalityId}
-              onEdit={openEdit} onDelete={handleDelete} onToggleShare={handleToggleShare}
-            />
-          ))}
-        </div>
+        {systemTemplates.length === 0 ? (
+          <div className="rounded-xl border border-dashed p-8 text-center" style={{ borderColor: "#2a2d3a" }}>
+            <p className="text-sm text-slate-500">
+              システムテンプレートが見つかりません。
+              <br />DBマイグレーション（011_system_templates.sql）が未適用の可能性があります。
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {systemTemplates.map((t) => (
+              <TemplateCard key={t.id} tmpl={t} modules={modules}
+                municipalityId={municipalityId} onDelete={handleDelete} />
+            ))}
+          </div>
+        )}
       </section>
 
       <div className="pt-4">

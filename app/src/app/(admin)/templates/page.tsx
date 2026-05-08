@@ -5,21 +5,30 @@ import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 import TemplatesClient from "./TemplatesClient";
 
-interface Template {
+export interface PlanModule {
+  id: string;
+  display_name: string;
+  description: string | null;
+  plan_types: string[];
+  depends_on: string[];
+  sort_order: number;
+}
+
+export interface PlanTemplate {
   id: string;
   name: string;
-  category: string;
-  legal_basis: string | null;
-  plan_period_years: number | null;
-  is_composite: boolean;
+  plan_type: string;
   description: string | null;
-  is_system: boolean;
-  shared_by_municipality_id: string | null;
-  kpi_suggestions: Array<{
+  plan_period_years: number;
+  module_config: Record<string, { enabled: boolean }>;
+  is_system_template: boolean;
+  is_public: boolean;
+  cycles: Array<{
     id: string;
-    label: string;
-    unit: string | null;
-    indicator_type: string;
+    name: string;
+    cycle_type: string;
+    phase: string;
+    recurrence: string;
     sort_order: number;
   }>;
 }
@@ -28,26 +37,35 @@ export default async function TemplatesPage() {
   const session = await getServerSession(authOptions);
   const municipalityId = session?.user?.municipalityId ?? null;
 
-  const templates = await query<Template>(
-    `SELECT pt.id, pt.name, pt.category, pt.legal_basis, pt.plan_period_years,
-            pt.is_composite, pt.description, pt.is_system, pt.shared_by_municipality_id,
-            COALESCE(
-              json_agg(
-                json_build_object(
-                  'id', tks.id, 'label', tks.label, 'unit', tks.unit,
-                  'indicator_type', tks.indicator_type, 'sort_order', tks.sort_order
-                ) ORDER BY tks.sort_order
-              ) FILTER (WHERE tks.id IS NOT NULL),
-              '[]'::json
-            ) AS kpi_suggestions
-     FROM plan_templates pt
-     LEFT JOIN template_kpi_suggestions tks ON tks.template_id = pt.id
-     WHERE pt.is_system = true
-        OR ($1::uuid IS NOT NULL AND pt.shared_by_municipality_id = $1::uuid)
-     GROUP BY pt.id
-     ORDER BY pt.is_system DESC, pt.category, pt.name`,
-    [municipalityId],
-  );
+  const [modules, templates] = await Promise.all([
+    query<PlanModule>(
+      `SELECT id, display_name, description, plan_types, depends_on, sort_order
+       FROM plan_modules ORDER BY sort_order`,
+      [],
+    ),
+    query<Omit<PlanTemplate, "cycles"> & { cycles: PlanTemplate["cycles"] }>(
+      `SELECT pt.id, pt.name, pt.plan_type, pt.description, pt.plan_period_years,
+              pt.module_config, pt.is_system_template, pt.is_public,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', pcd.id, 'name', pcd.name, 'cycle_type', pcd.cycle_type,
+                    'phase', pcd.phase, 'recurrence', pcd.recurrence,
+                    'sort_order', pcd.sort_order
+                  ) ORDER BY pcd.sort_order
+                ) FILTER (WHERE pcd.id IS NOT NULL),
+                '[]'::json
+              ) AS cycles
+       FROM plan_templates pt
+       LEFT JOIN pdca_cycle_defs pcd ON pcd.template_id = pt.id
+       WHERE pt.is_system_template = true
+          OR pt.is_public = true
+          OR ($1::uuid IS NOT NULL AND pt.created_by = $1::uuid)
+       GROUP BY pt.id
+       ORDER BY pt.is_system_template DESC, pt.name`,
+      [municipalityId],
+    ),
+  ]);
 
-  return <TemplatesClient templates={templates} municipalityId={municipalityId} />;
+  return <TemplatesClient modules={modules} templates={templates} municipalityId={municipalityId} />;
 }

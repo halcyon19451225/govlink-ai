@@ -18,6 +18,15 @@ interface KpiRow {
   unit: string;
 }
 
+export interface PdcaCheckpointRow {
+  id: string;
+  checkpoint_name: string;
+  scheduled_date: string;
+  status: string;
+  phase: string;
+  cycle_name: string;
+}
+
 export default async function SchedulePage({
   params,
 }: {
@@ -33,7 +42,7 @@ export default async function SchedulePage({
   const project = projects[0];
   if (!project) notFound();
 
-  const [kpis, phases, tasks] = await Promise.all([
+  const [kpis, phases, tasks, pdcaCheckpoints] = await Promise.all([
     query<KpiRow>(
       "SELECT label, target::float AS target, unit FROM kpis WHERE project_id = $1 ORDER BY created_at",
       [params.id],
@@ -60,6 +69,20 @@ export default async function SchedulePage({
        ORDER BY due_date NULLS LAST`,
       [params.id],
     ),
+    query<PdcaCheckpointRow>(
+      `SELECT ppc.id,
+              cpd.name AS checkpoint_name,
+              to_char(ppc.scheduled_date, 'YYYY-MM-DD') AS scheduled_date,
+              ppc.status,
+              cyc.phase,
+              cyc.name AS cycle_name
+       FROM project_pdca_checkpoints ppc
+       JOIN pdca_checkpoint_defs cpd ON cpd.id = ppc.checkpoint_def_id
+       JOIN pdca_cycle_defs cyc      ON cyc.id = cpd.cycle_id
+       WHERE ppc.project_id = $1
+       ORDER BY ppc.scheduled_date`,
+      [params.id],
+    ).catch(() => [] as PdcaCheckpointRow[]),
   ]);
 
   return (
@@ -71,6 +94,46 @@ export default async function SchedulePage({
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-slate-100">スケジュール管理</h2>
       </div>
+
+      {pdcaCheckpoints.length > 0 && (
+        <div className="mb-6 rounded-xl border p-4" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            PDCAチェックポイント
+          </h3>
+          <div className="space-y-2">
+            {pdcaCheckpoints.map((cp) => (
+              <div key={cp.id} className="flex items-center gap-3">
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded font-mono font-bold shrink-0 w-8 text-center"
+                  style={{
+                    background: cp.phase === "P" ? "#6366f118"
+                      : cp.phase === "D" ? "#06b6d418"
+                      : cp.phase === "C" || cp.phase === "C-A" ? "#f59e0b18"
+                      : "#10b98118",
+                    color: cp.phase === "P" ? "#818cf8"
+                      : cp.phase === "D" ? "#22d3ee"
+                      : cp.phase === "C" || cp.phase === "C-A" ? "#fbbf24"
+                      : "#34d399",
+                  }}
+                >
+                  {cp.phase}
+                </span>
+                <span className="text-xs text-slate-300 flex-1 truncate">{cp.checkpoint_name}</span>
+                <span className="text-xs text-slate-500 shrink-0">{cp.scheduled_date}</span>
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full shrink-0"
+                  style={{
+                    background: cp.status === "completed" ? "#10b98115" : "#64748b12",
+                    color: cp.status === "completed" ? "#34d399" : "#64748b",
+                  }}
+                >
+                  {cp.status === "completed" ? "完了" : cp.status === "in_progress" ? "進行中" : "予定"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <ScheduleClient
         projectId={project.id}

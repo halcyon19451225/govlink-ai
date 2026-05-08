@@ -69,6 +69,7 @@ function validateLogicModel(obj: unknown): obj is LogicModelJson {
 
 async function saveLogicModel(
   projectId: string,
+  title: string,
   model: LogicModelJson,
 ): Promise<void> {
   const outcomes = [
@@ -80,14 +81,18 @@ async function saveLogicModel(
     // 既存のロジックモデルを削除して再作成（最新版を1件保持）
     await client.query("DELETE FROM logic_models WHERE project_id = $1", [projectId]);
     await client.query(
-      `INSERT INTO logic_models (project_id, inputs, activities, outputs, outcomes)
-       VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb)`,
+      `INSERT INTO logic_models
+         (project_id, inputs, activities, outputs, outcomes,
+          name, status, ai_generated, version)
+       VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb,
+               $6, 'draft', true, 1)`,
       [
         projectId,
         JSON.stringify(model.inputs),
         JSON.stringify(model.activities),
         JSON.stringify(model.outputs),
         JSON.stringify(outcomes),
+        title,
       ],
     );
   });
@@ -183,7 +188,7 @@ export async function POST(req: NextRequest) {
           const jsonText = extractJson(fullText);
           const parsed = JSON.parse(jsonText) as unknown;
           if (validateLogicModel(parsed)) {
-            await saveLogicModel(projectId, parsed);
+            await saveLogicModel(projectId, title, parsed);
           } else {
             console.error("Logic model JSON の構造が不正です:", jsonText);
           }
