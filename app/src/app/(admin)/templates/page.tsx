@@ -37,35 +37,47 @@ export default async function TemplatesPage() {
   const session = await getServerSession(authOptions);
   const municipalityId = session?.user?.municipalityId ?? null;
 
-  const [modules, templates] = await Promise.all([
-    query<PlanModule>(
-      `SELECT id, display_name, description, plan_types, depends_on, sort_order
-       FROM plan_modules ORDER BY sort_order`,
-      [],
-    ),
-    query<Omit<PlanTemplate, "cycles"> & { cycles: PlanTemplate["cycles"] }>(
-      `SELECT pt.id, pt.name, pt.plan_type, pt.description, pt.plan_period_years,
-              pt.module_config, pt.is_system_template, pt.is_public,
-              COALESCE(
-                json_agg(
-                  json_build_object(
-                    'id', pcd.id, 'name', pcd.name, 'cycle_type', pcd.cycle_type,
-                    'phase', pcd.phase, 'recurrence', pcd.recurrence,
-                    'sort_order', pcd.sort_order
-                  ) ORDER BY pcd.sort_order
-                ) FILTER (WHERE pcd.id IS NOT NULL),
-                '[]'::json
-              ) AS cycles
-       FROM plan_templates pt
-       LEFT JOIN pdca_cycle_defs pcd ON pcd.template_id = pt.id
-       WHERE pt.is_system_template = true
-          OR pt.is_public = true
-          OR ($1::uuid IS NOT NULL AND pt.created_by = $1::uuid)
-       GROUP BY pt.id
-       ORDER BY pt.is_system_template DESC, pt.name`,
-      [municipalityId],
-    ),
-  ]);
+  let modules: PlanModule[] = [];
+  let templates: PlanTemplate[] = [];
+  let dbError: string | null = null;
 
-  return <TemplatesClient modules={modules} templates={templates} municipalityId={municipalityId} />;
+  try {
+    [modules, templates] = await Promise.all([
+      query<PlanModule>(
+        `SELECT id, display_name, description, plan_types, depends_on, sort_order
+         FROM plan_modules ORDER BY sort_order`,
+      ),
+      query<PlanTemplate>(
+        `SELECT pt.id, pt.name, pt.plan_type, pt.description, pt.plan_period_years,
+                pt.module_config, pt.is_system_template, pt.is_public,
+                COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', pcd.id, 'name', pcd.name, 'cycle_type', pcd.cycle_type,
+                      'phase', pcd.phase, 'recurrence', pcd.recurrence,
+                      'sort_order', pcd.sort_order
+                    ) ORDER BY pcd.sort_order
+                  ) FILTER (WHERE pcd.id IS NOT NULL),
+                  '[]'::json
+                ) AS cycles
+         FROM plan_templates pt
+         LEFT JOIN pdca_cycle_defs pcd ON pcd.template_id = pt.id
+         WHERE pt.is_system_template = true
+            OR pt.is_public = true
+            OR ($1::uuid IS NOT NULL AND pt.created_by = $1::uuid)
+         GROUP BY pt.id
+         ORDER BY pt.is_system_template DESC, pt.name`,
+        [municipalityId],
+      ),
+    ]);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("plan_modules") || msg.includes("does not exist")) {
+      dbError = "DBマイグレーションが未適用です。010_care_plan_suite.sql と 011_system_templates.sql を実行してください。";
+    } else {
+      dbError = `DB接続エラー: ${msg.slice(0, 120)}`;
+    }
+  }
+
+  return <TemplatesClient modules={modules} templates={templates} municipalityId={municipalityId} dbError={dbError} />;
 }

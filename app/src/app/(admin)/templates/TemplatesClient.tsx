@@ -350,10 +350,12 @@ export default function TemplatesClient({
   modules,
   templates: initialTemplates,
   municipalityId,
+  dbError,
 }: {
   modules: PlanModule[];
   templates: PlanTemplate[];
   municipalityId: string | null;
+  dbError?: string | null;
 }) {
   const [templates, setTemplates] = useState(initialTemplates);
   const [showForm, setShowForm] = useState(false);
@@ -411,6 +413,18 @@ export default function TemplatesClient({
 
   return (
     <div className="max-w-4xl space-y-8">
+      {dbError && (
+        <div
+          className="rounded-xl border px-5 py-4 text-sm"
+          style={{ background: "#ef444410", borderColor: "#ef444430", color: "#fca5a5" }}
+        >
+          <p className="font-semibold mb-1">データベースに接続できません</p>
+          <p className="text-xs opacity-80">{dbError}</p>
+          <p className="text-xs mt-2 opacity-60">
+            Supabaseのダッシュボードでプロジェクトが一時停止していないか確認してください。
+          </p>
+        </div>
+      )}
       {showForm && (
         <TemplateFormModal
           form={form}
