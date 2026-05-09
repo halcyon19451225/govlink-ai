@@ -35,6 +35,7 @@
     "postcss": "^8",
     "react": "^18",
     "react-dom": "^18",
+    "react-is": "^19.2.6",
     "reactflow": "^11.11.4",
     "recharts": "^3.8.1",
     "stripe": "^22.1.0",
