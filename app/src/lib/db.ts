@@ -4,25 +4,17 @@ let pool: Pool | null = null
 
 function getPool(): Pool {
   if (pool) return pool
-
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) {
     throw new Error('DATABASE_URL が設定されていません')
   }
-
-  // sslmodeパラメータをURLから除去してssl設定で上書き
-  const cleanUrl = connectionString.replace(/[?&]sslmode=[^&]*/g, '')
-
   pool = new Pool({
-    connectionString: cleanUrl,
-    ssl: process.env.NODE_ENV === 'production'
-      ? { rejectUnauthorized: false }
-      : false,
+    connectionString,
+    ssl: { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 5_000,
   })
-
   return pool
 }
 

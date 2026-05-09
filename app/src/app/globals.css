@@ -2,24 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── デフォルト（ダーク）変数 ── */
 :root {
   --background: #0f1117;
   --foreground: #f1f5f9;
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d27;
+  --bg-input: #161922;
+  --text-primary: #f1f5f9;
+  --text-secondary: #9ca3af;
+  --border: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d27;
+  --bg-input: #161922;
+  --text-primary: #f1f5f9;
+  --text-secondary: #9ca3af;
+  --border: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f4f6;
+  --bg-input: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --border: rgba(0, 0, 0, 0.1);
 }
 
 body {
-  color: #f1f5f9;
-  background: #0f1117;
+  color: var(--text-primary);
+  background: var(--bg-primary);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
-/* ダークスクロールバー */
+/* ── ライトモード: Tailwind slate クラスのカラーオーバーライド ── */
+[data-theme="light"] .text-slate-100,
+[data-theme="light"] .text-slate-200 {
+  color: #111827;
+}
+[data-theme="light"] .text-slate-300 {
+  color: #374151;
+}
+[data-theme="light"] .text-slate-400,
+[data-theme="light"] .text-slate-500 {
+  color: #6b7280;
+}
+[data-theme="light"] .text-slate-600 {
+  color: #9ca3af;
+}
+
+/* ── ダークスクロールバー ── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f1117;
+  background: var(--bg-primary);
 }
 ::-webkit-scrollbar-thumb {
   background: #2a2d3a;

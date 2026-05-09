@@ -54,8 +54,8 @@ export default async function DashboardPage() {
       <div
         className="rounded-2xl border p-6"
         style={{
-          background: "#1a1d27",
-          borderColor: "#2a2d3a",
+          background: "var(--bg-secondary)",
+          borderColor: "var(--border)",
           boxShadow: "0 4px 24px rgba(99,102,241,0.06)",
         }}
       >
@@ -80,14 +80,14 @@ export default async function DashboardPage() {
         {dbError ? (
           <div
             className="rounded-xl border px-4 py-3 text-sm text-red-400"
-            style={{ background: "#1a1d27", borderColor: "#ef444430" }}
+            style={{ background: "var(--bg-secondary)", borderColor: "#ef444430" }}
           >
             {dbError}
           </div>
         ) : projects.length === 0 ? (
           <div
             className="rounded-2xl border border-dashed p-12 flex flex-col items-center justify-center text-center"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
             <span className="text-4xl mb-4 opacity-40">🏛️</span>
             <p className="text-slate-400 font-medium">政策がまだ登録されていません</p>
@@ -118,8 +118,8 @@ export default async function DashboardPage() {
           href="/resources"
           className="rounded-xl border p-5 flex flex-col items-center gap-2 transition-all duration-200 hover:-translate-y-0.5"
           style={{
-            background: "#1a1d27",
-            borderColor: "#2a2d3a",
+            background: "var(--bg-secondary)",
+            borderColor: "var(--border)",
             boxShadow: "0 2px 12px rgba(0,0,0,0.2)",
           }}
         >
@@ -134,13 +134,13 @@ export default async function DashboardPage() {
           <div
             key={item.label}
             className="rounded-xl border p-5 flex flex-col items-center gap-2 opacity-40"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
             <span className="text-3xl">{item.icon}</span>
             <p className="font-medium text-slate-400 text-sm">{item.label}</p>
             <span
               className="text-xs text-slate-500 px-2 py-0.5 rounded-full border"
-              style={{ borderColor: "#2a2d3a" }}
+              style={{ borderColor: "var(--border)" }}
             >
               準備中
             </span>

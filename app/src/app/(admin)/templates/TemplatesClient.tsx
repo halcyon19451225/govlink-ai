@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import type { PlanModule, PlanTemplate } from "./page";
@@ -33,10 +34,10 @@ const MODULE_ICONS: Record<string, string> = {
   self_evaluation:    "✅",
 };
 
-const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const cardStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#161922", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,14 +115,22 @@ function TemplateCard({
   modules,
   municipalityId,
   onDelete,
+  onClone,
 }: {
   tmpl: PlanTemplate;
   modules: PlanModule[];
   municipalityId: string | null;
   onDelete: (id: string) => void;
+  onClone: (id: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const isOwned = !tmpl.is_system_template;
+
+  const handleClone = async () => {
+    setCloning(true);
+    try { await onClone(tmpl.id); } finally { setCloning(false); }
+  };
 
   return (
     <div className="rounded-xl border overflow-hidden" style={cardStyle}>
@@ -154,14 +163,33 @@ function TemplateCard({
             </div>
             <h3 className="text-sm font-semibold text-slate-200 leading-snug">{tmpl.name}</h3>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             {isOwned && municipalityId && (
+              <>
+                <Link
+                  href={`/templates/${tmpl.id}/edit`}
+                  className="text-xs px-3 py-1 rounded-lg border text-indigo-400 hover:text-indigo-300 hover:border-indigo-500/50 transition-colors duration-200"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  編集
+                </Link>
+                <button
+                  onClick={() => onDelete(tmpl.id)}
+                  className="text-xs px-2 py-1 rounded-lg border text-red-500 hover:text-red-400 hover:border-red-500/50 transition-colors duration-200"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  削除
+                </button>
+              </>
+            )}
+            {municipalityId && (
               <button
-                onClick={() => onDelete(tmpl.id)}
-                className="text-xs px-2 py-1 rounded-lg border text-red-500 hover:text-red-400 hover:border-red-500/50 transition-colors duration-200"
-                style={{ borderColor: "#2a2d3a" }}
+                onClick={handleClone}
+                disabled={cloning}
+                className="text-xs px-3 py-1 rounded-lg border text-cyan-400 hover:text-cyan-300 hover:border-cyan-500/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200"
+                style={{ borderColor: "var(--border)" }}
               >
-                削除
+                {cloning ? "複製中…" : "複製して編集"}
               </button>
             )}
             <button
@@ -189,7 +217,7 @@ function TemplateCard({
       </div>
 
       {expanded && (
-        <div className="border-t px-4 pb-4 pt-3" style={{ borderColor: "#2a2d3a" }}>
+        <div className="border-t px-4 pb-4 pt-3" style={{ borderColor: "var(--border)" }}>
           <p className="text-xs font-semibold text-slate-500 mb-2">PDCAサイクル</p>
           {tmpl.cycles.length === 0 ? (
             <p className="text-xs text-slate-600">サイクル定義なし</p>
@@ -253,9 +281,9 @@ function TemplateFormModal({
     >
       <div
         className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+        style={{ background: "#1a1d27", borderColor: "var(--border)" }}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#2a2d3a" }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
           <h3 className="text-base font-bold text-slate-100">新規テンプレートを作成</h3>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xl leading-none">×</button>
         </div>
@@ -328,7 +356,7 @@ function TemplateFormModal({
           </div>
         </div>
 
-        <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: "#2a2d3a" }}>
+        <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: "var(--border)" }}>
           <button type="button" onClick={onSubmit} disabled={submitting || !form.name.trim()}
             className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
@@ -357,6 +385,7 @@ export default function TemplatesClient({
   municipalityId: string | null;
   dbError?: string | null;
 }) {
+  const router = useRouter();
   const [templates, setTemplates] = useState(initialTemplates);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(() => EMPTY_FORM(modules));
@@ -406,6 +435,16 @@ export default function TemplatesClient({
     if (res.ok) {
       setTemplates((prev) => prev.filter((t) => t.id !== id));
     }
+  };
+
+  const handleClone = async (id: string) => {
+    const res = await fetch(`/api/admin/templates/${id}/clone`, { method: "POST" });
+    const json = (await res.json()) as { data: { id: string } | null; error: string | null };
+    if (!res.ok || !json.data) {
+      alert(json.error ?? "複製に失敗しました");
+      return;
+    }
+    router.push(`/templates/${json.data.id}/edit`);
   };
 
   const systemTemplates = templates.filter((t) => t.is_system_template);
@@ -473,7 +512,7 @@ export default function TemplatesClient({
           <div className="space-y-3">
             {ownTemplates.map((t) => (
               <TemplateCard key={t.id} tmpl={t} modules={modules}
-                municipalityId={municipalityId} onDelete={handleDelete} />
+                municipalityId={municipalityId} onDelete={handleDelete} onClone={handleClone} />
             ))}
           </div>
         </section>
@@ -484,7 +523,7 @@ export default function TemplatesClient({
           システム標準テンプレート
         </h3>
         {systemTemplates.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-8 text-center" style={{ borderColor: "#2a2d3a" }}>
+          <div className="rounded-xl border border-dashed p-8 text-center" style={{ borderColor: "var(--border)" }}>
             <p className="text-sm text-slate-500">
               システムテンプレートが見つかりません。
               <br />DBマイグレーション（011_system_templates.sql）が未適用の可能性があります。
@@ -494,7 +533,7 @@ export default function TemplatesClient({
           <div className="space-y-3">
             {systemTemplates.map((t) => (
               <TemplateCard key={t.id} tmpl={t} modules={modules}
-                municipalityId={municipalityId} onDelete={handleDelete} />
+                municipalityId={municipalityId} onDelete={handleDelete} onClone={handleClone} />
             ))}
           </div>
         )}

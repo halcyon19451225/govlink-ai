@@ -6,6 +6,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { transaction, isPgError, PgErrorCode } from "@/lib/db";
 import { checkLimit } from "@/lib/plan-limits";
+import { instantiateTemplate } from "@/lib/templates";
 
 const kpiSchema = z.object({
   label: z.string().min(1, "KPI ラベルは必須です"),
@@ -38,6 +39,7 @@ const bodySchema = z.object({
   plan_start_date: z.string().optional().nullable(),
   plan_end_date: z.string().optional().nullable(),
   is_composite: z.boolean().default(false),
+  module_overrides: z.record(z.string(), z.object({ enabled: z.boolean() })).optional(),
   goals: z.array(goalSchema).default([]),
   kpis: z.array(kpiSchema).max(20, "KPI は最大 20 件まで登録できます").default([]),
 });
@@ -159,6 +161,16 @@ export async function POST(req: NextRequest) {
 
       return newProjectId;
     });
+
+    // テンプレートからPDCAチェックポイント・モジュール設定を生成
+    if (template_id && plan_start_date) {
+      try {
+        await instantiateTemplate(template_id, projectId, new Date(plan_start_date));
+      } catch (instantiateError) {
+        // instantiateTemplate の失敗はプロジェクト作成自体は成功扱い（ログのみ）
+        console.error("instantiateTemplate 失敗:", instantiateError);
+      }
+    }
 
     return NextResponse.json({ data: { projectId }, error: null }, { status: 201 });
   } catch (error) {

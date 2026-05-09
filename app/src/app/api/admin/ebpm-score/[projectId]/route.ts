@@ -38,12 +38,12 @@ export async function GET(
       [projectId],
     ),
     query<DocumentRow>(
-      `SELECT COUNT(d.id)::int AS count,
-              GREATEST(COUNT(st.id), 1)::int AS required
-       FROM documents d
-       FULL OUTER JOIN schedule_tasks st
-         ON st.project_id = $1 AND st.document_required = true
-       WHERE d.project_id = $1 OR st.project_id = $1`,
+      `SELECT
+         (SELECT COUNT(id)::int FROM documents WHERE project_id = $1) AS count,
+         GREATEST(
+           (SELECT COUNT(id)::int FROM schedule_tasks WHERE project_id = $1 AND document_required = true),
+           1
+         ) AS required`,
       [projectId],
     ),
   ]);

@@ -13,7 +13,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
   if (!session) redirect("/login");
 
   return (
-    <div className="min-h-screen" style={{ background: "#0f1117" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
       <NavBar />
       <main className="max-w-7xl mx-auto px-6 py-8">{children}</main>
     </div>

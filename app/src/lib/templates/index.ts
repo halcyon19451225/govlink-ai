@@ -8,7 +8,10 @@ export interface PdcaCheckpointDef {
   plan_year: number;
   month_start: number;
   month_end: number | null;
+  evaluation_tiers: string[];
   modules_involved: string[];
+  qc_step: string | null;
+  instructions: string | null;
   sort_order: number;
 }
 
@@ -59,7 +62,9 @@ export async function getTemplateWithCycles(templateId: string): Promise<Templat
 
   const checkpoints = await query<PdcaCheckpointDef>(
     `SELECT id, cycle_id, name, description, plan_year, month_start, month_end,
-            modules_involved, sort_order
+            COALESCE(evaluation_tiers, '{}') AS evaluation_tiers,
+            COALESCE(modules_involved, '{}') AS modules_involved,
+            qc_step, instructions, sort_order
      FROM pdca_checkpoint_defs
      WHERE cycle_id = ANY($1::uuid[])
      ORDER BY plan_year, month_start, sort_order`,
@@ -85,6 +90,18 @@ export function calculateCheckpointDate(
   return new Date(baseYear, monthStart - 1, 1);
 }
 
+// 複数チェックポイントの日程を一括計算
+export function calculateCheckpointDates(
+  checkpointDefs: PdcaCheckpointDef[],
+  planStartDate: Date,
+): Map<string, Date> {
+  const map = new Map<string, Date>();
+  for (const cp of checkpointDefs) {
+    map.set(cp.id, calculateCheckpointDate(planStartDate, cp.plan_year, cp.month_start));
+  }
+  return map;
+}
+
 export async function instantiateTemplate(
   templateId: string,
   projectId: string,
@@ -100,7 +117,7 @@ export async function instantiateTemplate(
 
   for (const moduleId of enabledModules) {
     await query(
-      `INSERT INTO project_module_configs (project_id, module_id, enabled)
+      `INSERT INTO project_module_configs (project_id, module_id, is_enabled)
        VALUES ($1, $2, true)
        ON CONFLICT (project_id, module_id) DO NOTHING`,
       [projectId, moduleId],
@@ -113,10 +130,26 @@ export async function instantiateTemplate(
       const scheduledDate = calculateCheckpointDate(planStartDate, cp.plan_year, cp.month_start);
       await query(
         `INSERT INTO project_pdca_checkpoints
-           (project_id, checkpoint_def_id, scheduled_date, status)
-         VALUES ($1, $2, $3, 'pending')
+           (project_id, checkpoint_def_id,
+            name, cycle_type, phase, description,
+            evaluation_tiers, modules_involved, qc_step, instructions,
+            sort_order, scheduled_date, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'upcoming')
          ON CONFLICT DO NOTHING`,
-        [projectId, cp.id, scheduledDate.toISOString().slice(0, 10)],
+        [
+          projectId,
+          cp.id,
+          cp.name,
+          cycle.cycle_type,
+          cycle.phase,
+          cp.description,
+          cp.evaluation_tiers,
+          cp.modules_involved,
+          cp.qc_step,
+          cp.instructions,
+          cp.sort_order,
+          scheduledDate.toISOString().slice(0, 10),
+        ],
       );
     }
   }

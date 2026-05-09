@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import Footer from "@/components/Footer";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -15,8 +16,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Sinap-sys | AI政策管理SaaS",
-  description: "日本の自治体・行政向けAI政策管理SaaS。PDCAサイクルに基づく政策管理・KPI管理・EBPMスコアリングを提供します。",
+  title: "Coe（こえ）| AI政策管理SaaS",
+  description: "社会の声を聞き、政策という名の声で応える。日本の自治体・行政向けAI政策管理SaaS。",
 };
 
 export default function RootLayout({
@@ -28,10 +29,12 @@ export default function RootLayout({
     <html lang="ja">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}
-        style={{ background: "#0f1117" }}
+        data-theme="dark"
       >
-        <div className="flex-1">{children}</div>
-        <Footer />
+        <ThemeProvider>
+          <div className="flex-1">{children}</div>
+          <Footer />
+        </ThemeProvider>
       </body>
     </html>
   );

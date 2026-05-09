@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { getTemplateWithCycles } from "@/lib/templates";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -16,6 +17,20 @@ const patchSchema = z.object({
 });
 
 type Params = { params: { id: string } };
+
+export async function GET(_req: NextRequest, { params }: Params) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
+  }
+
+  const tmpl = await getTemplateWithCycles(params.id);
+  if (!tmpl) {
+    return NextResponse.json({ data: null, error: "テンプレートが見つかりません" }, { status: 404 });
+  }
+
+  return NextResponse.json({ data: tmpl, error: null });
+}
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);

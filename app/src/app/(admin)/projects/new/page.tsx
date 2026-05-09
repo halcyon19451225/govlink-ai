@@ -2,44 +2,48 @@ export const dynamic = 'force-dynamic'
 
 import { query } from "@/lib/db";
 import NewProjectWizard from "./NewProjectWizard";
+import type { TemplateWithCycles } from "@/lib/templates";
 
-interface Template {
+interface PlanModule {
   id: string;
   name: string;
-  category: string;
-  legal_basis: string | null;
-  plan_period_years: number | null;
-  is_composite: boolean;
   description: string | null;
-  is_system: boolean;
-  kpi_suggestions: Array<{
-    id: string;
-    label: string;
-    unit: string | null;
-    indicator_type: string;
-    sort_order: number;
-  }>;
+  sort_order: number;
 }
 
+type PlanTemplate = TemplateWithCycles & { is_public?: boolean };
+
 export default async function NewProjectPage() {
-  const templates = await query<Template>(
-    `SELECT pt.id, pt.name, pt.category, pt.legal_basis, pt.plan_period_years,
-            pt.is_composite, pt.description, pt.is_system,
+  const templates = await query<PlanTemplate>(
+    `SELECT pt.id, pt.name, pt.plan_type, pt.description, pt.plan_period_years,
+            pt.module_config, pt.is_system_template,
             COALESCE(
               json_agg(
                 json_build_object(
-                  'id', tks.id, 'label', tks.label, 'unit', tks.unit,
-                  'indicator_type', tks.indicator_type, 'sort_order', tks.sort_order
-                ) ORDER BY tks.sort_order
-              ) FILTER (WHERE tks.id IS NOT NULL),
+                  'id', pcd.id,
+                  'template_id', pcd.template_id,
+                  'name', pcd.name,
+                  'cycle_type', pcd.cycle_type,
+                  'phase', pcd.phase,
+                  'recurrence', pcd.recurrence,
+                  'sort_order', pcd.sort_order,
+                  'checkpoints', '[]'::json
+                ) ORDER BY pcd.sort_order
+              ) FILTER (WHERE pcd.id IS NOT NULL),
               '[]'::json
-            ) AS kpi_suggestions
+            ) AS cycles
      FROM plan_templates pt
-     LEFT JOIN template_kpi_suggestions tks ON tks.template_id = pt.id
-     WHERE pt.is_system = true
+     LEFT JOIN pdca_cycle_defs pcd ON pcd.template_id = pt.id
+     WHERE pt.is_system_template = true OR pt.is_public = true
      GROUP BY pt.id
-     ORDER BY pt.is_system DESC, pt.category, pt.name`,
+     ORDER BY pt.is_system_template DESC, pt.name`,
   );
 
-  return <NewProjectWizard templates={templates} />;
+  const modules = await query<PlanModule>(
+    `SELECT id, name, description, sort_order
+     FROM plan_modules
+     ORDER BY sort_order`,
+  ).catch(() => [] as PlanModule[]);
+
+  return <NewProjectWizard templates={templates} modules={modules} />;
 }
