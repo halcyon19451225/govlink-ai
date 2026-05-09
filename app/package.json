@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/create-amplify-hosting.mjs",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' next build && node scripts/create-amplify-hosting.mjs",
     "start": "next start",
     "lint": "next lint"
   },
