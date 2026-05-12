@@ -4,58 +4,60 @@
 
 /* ── デフォルト（ダーク）変数 ── */
 :root {
-  --background: #0f1117;
+  --background: #111827;
   --foreground: #f1f5f9;
-  --bg-primary: #0f1117;
-  --bg-secondary: #1a1d27;
-  --bg-input: #161922;
+  --bg-primary: #111827;
+  --bg-secondary: #1a2035;
+  --bg-input: #1e2538;
   --text-primary: #f1f5f9;
   --text-secondary: #9ca3af;
-  --border: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.12);
 }
 
 [data-theme="dark"] {
-  --bg-primary: #0f1117;
-  --bg-secondary: #1a1d27;
-  --bg-input: #161922;
+  --bg-primary: #111827;
+  --bg-secondary: #1a2035;
+  --bg-input: #1e2538;
   --text-primary: #f1f5f9;
   --text-secondary: #9ca3af;
-  --border: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.12);
 }
 
+/* ── ライトテーマ（グレーホワイト） ── */
 [data-theme="light"] {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f3f4f6;
-  --bg-input: #e5e7eb;
-  --text-primary: #111827;
-  --text-secondary: #6b7280;
-  --border: rgba(0, 0, 0, 0.1);
+  --bg-primary: #f5f5f7;
+  --bg-secondary: transparent;
+  --bg-input: rgba(0, 0, 0, 0.06);
+  --text-primary: #1a1a2e;
+  --text-secondary: #6b6b7b;
+  --border: rgba(200, 200, 220, 0.35);
 }
 
 body {
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background-color: var(--bg-primary);
   font-family: Arial, Helvetica, sans-serif;
-  transition: background 0.25s ease, color 0.25s ease;
+  transition: background-color 0.25s ease, color 0.25s ease;
+  min-height: 100vh;
 }
 
 /* ── ライトモード: Tailwind slate クラスのカラーオーバーライド ── */
 [data-theme="light"] .text-slate-100,
 [data-theme="light"] .text-slate-200 {
-  color: #111827;
+  color: #1a1a2e;
 }
 [data-theme="light"] .text-slate-300 {
-  color: #374151;
+  color: #3a3a50;
 }
 [data-theme="light"] .text-slate-400,
 [data-theme="light"] .text-slate-500 {
-  color: #6b7280;
+  color: #6b6b7b;
 }
 [data-theme="light"] .text-slate-600 {
   color: #9ca3af;
 }
 
-/* ── ダークスクロールバー ── */
+/* ── スクロールバー ── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -64,15 +66,313 @@ body {
   background: var(--bg-primary);
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2d3a;
+  background: rgba(128, 128, 128, 0.2);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #6366f1;
+  background: rgba(120, 140, 200, 0.4);
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/* ═══════════════════════════════════════
+   Liquid Glass — ダークテーマ（変更なし）
+   ═══════════════════════════════════════ */
+
+.glass-card {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.07) 100%
+  );
+  backdrop-filter: blur(24px) saturate(160%) brightness(1.08);
+  -webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.08);
+  border-radius: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.25),
+    0 2px 8px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    inset 1px 0 0 rgba(255, 255, 255, 0.2),
+    inset -1px 0 0 rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    transparent 50%,
+    rgba(0, 0, 0, 0.04) 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.glass-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 8%; right: 8%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.5),
+    transparent
+  );
+  pointer-events: none;
+}
+
+.glass {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-radius: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.glass-dark {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  backdrop-filter: blur(28px) saturate(160%) brightness(1.05);
+  -webkit-backdrop-filter: blur(28px) saturate(160%) brightness(1.05);
+  border-radius: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* ═══════════════════════════════════════
+   Liquid Glass — ライトテーマ
+   ═══════════════════════════════════════ */
+
+[data-theme="light"] .glass-card {
+  background: transparent;
+  backdrop-filter: blur(28px) saturate(110%) brightness(1.06);
+  -webkit-backdrop-filter: blur(28px) saturate(110%) brightness(1.06);
+  border-radius: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.9);
+  border-left: 1px solid rgba(255, 255, 255, 0.75);
+  border-right: 1px solid rgba(200, 200, 215, 0.3);
+  border-bottom: 1px solid rgba(200, 200, 215, 0.35);
+  box-shadow:
+    0 2px 4px rgba(120, 120, 150, 0.08),
+    0 6px 16px rgba(100, 100, 140, 0.1),
+    0 16px 40px rgba(80, 80, 120, 0.09),
+    0 1px 2px rgba(150, 150, 180, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(200, 200, 220, 0.15),
+    inset 1px 0 0 rgba(255, 255, 255, 0.85),
+    inset -1px 0 0 rgba(200, 200, 220, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="light"] .glass-card::before {
+  background: transparent;
+}
+
+[data-theme="light"] .glass-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 8%; right: 8%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 1),
+    transparent
+  );
+  pointer-events: none;
+}
+
+[data-theme="light"] .glass-dark {
+  background: transparent;
+  backdrop-filter: blur(32px) saturate(110%);
+  -webkit-backdrop-filter: blur(32px) saturate(110%);
+  border-radius: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.88);
+  border-left: 1px solid rgba(255, 255, 255, 0.72);
+  border-right: 1px solid rgba(200, 200, 215, 0.25);
+  border-bottom: 1px solid rgba(200, 200, 215, 0.3);
+  box-shadow:
+    0 4px 16px rgba(100, 100, 140, 0.1),
+    0 12px 32px rgba(80, 80, 120, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -1px 0 rgba(200, 200, 220, 0.12);
+}
+
+[data-theme="light"] .glass {
+  background: transparent;
+  backdrop-filter: blur(24px) saturate(110%);
+  -webkit-backdrop-filter: blur(24px) saturate(110%);
+  border-radius: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.88);
+  border-left: 1px solid rgba(255, 255, 255, 0.72);
+  border-right: 1px solid rgba(200, 200, 215, 0.25);
+  border-bottom: 1px solid rgba(200, 200, 215, 0.3);
+  box-shadow:
+    0 4px 16px rgba(100, 100, 140, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* アカウントメニュー（ポップアップ）— 白塗りなし・blur強めで視認性確保 */
+[data-theme="light"] .glass-dark.is-popup {
+  background: transparent;
+  backdrop-filter: blur(48px) saturate(140%);
+  -webkit-backdrop-filter: blur(48px) saturate(140%);
+}
+
+/* ═══════════════════════════════════════
+   Gradient Background
+   ═══════════════════════════════════════ */
+
+.gradient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.gradient-bg > div {
+  position: absolute;
+}
+
+/* ライトテーマのベース背景グラデーション */
+.light-bg-base {
+  display: none;
+}
+[data-theme="light"] .light-bg-base {
+  display: block;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    145deg,
+    #f5f5f7 0%,
+    #f0f0f4 40%,
+    #e8e8ef 70%,
+    #dddde8 100%
+  );
+}
+
+/* ── ダークテーマ orb ── */
+.orb-1 {
+  width: 800px; height: 800px;
+  top: -300px; left: -300px;
+  background: radial-gradient(circle, rgba(96,130,200,0.5) 0%, transparent 70%);
+  filter: blur(80px);
+  animation: orb1 14s ease-in-out infinite alternate;
+}
+.orb-2 {
+  width: 900px; height: 900px;
+  bottom: -400px; right: -400px;
+  background: radial-gradient(circle, rgba(130,90,200,0.45) 0%, transparent 70%);
+  filter: blur(90px);
+  animation: orb2 17s ease-in-out infinite alternate;
+}
+.orb-3 {
+  width: 700px; height: 700px;
+  top: 30%; left: 30%;
+  background: radial-gradient(circle, rgba(70,120,180,0.4) 0%, transparent 70%);
+  filter: blur(100px);
+  animation: orb3 11s ease-in-out infinite alternate;
+}
+.orb-4 {
+  width: 600px; height: 600px;
+  top: -100px; right: 10%;
+  background: radial-gradient(circle, rgba(160,120,220,0.35) 0%, transparent 70%);
+  filter: blur(70px);
+  animation: orb4 19s ease-in-out infinite alternate;
+}
+.orb-5 {
+  width: 650px; height: 650px;
+  bottom: 5%; left: 5%;
+  background: radial-gradient(circle, rgba(50,100,180,0.4) 0%, transparent 70%);
+  filter: blur(75px);
+  animation: orb5 13s ease-in-out infinite alternate;
+}
+
+/* ── ライトテーマ orb — 右下への影グラデーション ── */
+[data-theme="light"] .orb-1 {
+  width: 1000px; height: 1000px;
+  bottom: -400px; right: -400px;
+  top: auto; left: auto;
+  background: radial-gradient(circle, rgba(180,180,200,0.5) 0%, transparent 70%);
+  filter: blur(120px);
+  animation: orb1 20s ease-in-out infinite alternate;
+}
+[data-theme="light"] .orb-2 {
+  width: 700px; height: 700px;
+  bottom: 10%; right: 5%;
+  top: auto; left: auto;
+  background: radial-gradient(circle, rgba(160,160,190,0.35) 0%, transparent 70%);
+  filter: blur(100px);
+  animation: orb2 16s ease-in-out infinite alternate;
+}
+[data-theme="light"] .orb-3 {
+  width: 600px; height: 600px;
+  top: -100px; left: -100px;
+  bottom: auto; right: auto;
+  background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, transparent 70%);
+  filter: blur(80px);
+  animation: orb3 18s ease-in-out infinite alternate;
+}
+[data-theme="light"] .orb-4 {
+  opacity: 0;
+}
+[data-theme="light"] .orb-5 {
+  opacity: 0;
+}
+
+/* ── Orb animations ── */
+@keyframes orb1 {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  100% { transform: translate(80px, 60px) scale(1.15); }
+}
+@keyframes orb2 {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  100% { transform: translate(-70px, -80px) scale(1.2); }
+}
+@keyframes orb3 {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  100% { transform: translate(-60px, 70px) scale(0.9); }
+}
+@keyframes orb4 {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  100% { transform: translate(50px, -60px) scale(1.1); }
+}
+@keyframes orb5 {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  100% { transform: translate(-40px, 50px) scale(1.05); }
 }

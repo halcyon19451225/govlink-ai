@@ -26,7 +26,7 @@ const ALL_TYPES: ResourceType[] = ["advisory_board", "meeting", "tool", "other"]
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#12151f", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
 interface ModalProps {
   onClose: () => void;
@@ -86,7 +86,7 @@ function AddResourceModal({ onClose, onSaved }: ModalProps) {
     >
       <div
         className="w-full max-w-lg rounded-2xl border p-6 space-y-4"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a", boxShadow: "0 8px 40px rgba(0,0,0,0.5)" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)", boxShadow: "0 8px 40px rgba(0,0,0,0.5)" }}
       >
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-slate-100">組織リソースを追加</h3>
@@ -288,7 +288,7 @@ export default function ResourcesClient({ initialResources }: Props) {
       {filtered.length === 0 ? (
         <div
           className="rounded-2xl border border-dashed p-10 text-center"
-          style={{ borderColor: "#2a2d3a" }}
+          style={{ borderColor: "var(--border)" }}
         >
           <p className="text-sm text-slate-500">リソースがまだ登録されていません</p>
           <button
@@ -307,8 +307,8 @@ export default function ResourcesClient({ initialResources }: Props) {
                 key={r.id}
                 className="rounded-xl border p-5 space-y-3 hover:-translate-y-0.5 transition-transform duration-200"
                 style={{
-                  background: "#1a1d27",
-                  borderColor: "#2a2d3a",
+                  background: "var(--bg-secondary)",
+                  borderColor: "var(--border)",
                   boxShadow: "0 2px 12px rgba(0,0,0,0.2)",
                 }}
               >

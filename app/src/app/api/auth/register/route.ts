@@ -15,6 +15,7 @@ const bodySchema = z.object({
   email: z.string().email("メールアドレスの形式が正しくありません"),
   password: z.string().min(8, "パスワードは8文字以上にしてください"),
   displayName: z.string().min(1, "担当者名は必須です"),
+  avatarUrl: z.string().url().optional().nullable(),
 });
 
 const cognitoClient = new CognitoIdentityProviderClient({
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { municipalityName, email, password, displayName } = parsed.data;
+  const { municipalityName, email, password, displayName, avatarUrl } = parsed.data;
 
   const userPoolId = process.env.COGNITO_USER_POOL_ID;
   const clientId = process.env.COGNITO_CLIENT_ID;
@@ -115,10 +116,10 @@ export async function POST(req: NextRequest) {
 
   // user_rolesにINSERT
   await query(
-    `INSERT INTO user_roles (municipality_id, cognito_user_id, email, display_name, role)
-     VALUES ($1, $2, $3, $4, 'admin')
+    `INSERT INTO user_roles (municipality_id, cognito_user_id, email, display_name, role, avatar_url)
+     VALUES ($1, $2, $3, $4, 'admin', $5)
      ON CONFLICT (municipality_id, cognito_user_id) DO NOTHING`,
-    [municipalityId, cognitoUserId, email, displayName],
+    [municipalityId, cognitoUserId, email, displayName, avatarUrl ?? null],
   );
 
   // subscriptionsにINSERT（30日トライアル）

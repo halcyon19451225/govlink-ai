@@ -281,7 +281,7 @@ function TemplateFormModal({
     >
       <div
         className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl"
-        style={{ background: "#1a1d27", borderColor: "var(--border)" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
           <h3 className="text-base font-bold text-slate-100">新規テンプレートを作成</h3>
@@ -313,7 +313,7 @@ function TemplateFormModal({
                 onChange={(e) => onFormChange("plan_type", e.target.value)}
                 className={inputClass} style={inputStyle}>
                 {PLAN_TYPE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value} style={{ background: "#161922" }}>{o.label}</option>
+                  <option key={o.value} value={o.value} style={{ background: "var(--bg-input)" }}>{o.label}</option>
                 ))}
               </select>
             </div>

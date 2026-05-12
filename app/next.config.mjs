@@ -12,6 +12,29 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
+      // Google アカウント画像
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+      },
+      // Apple / Microsoft アカウント画像
+      {
+        protocol: 'https',
+        hostname: '*.googleusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.windows.net',
+      },
+      // S3 アバター
+      {
+        protocol: 'https',
+        hostname: '*.amazonaws.com',
+      },
     ],
   },
   webpack: (config) => {

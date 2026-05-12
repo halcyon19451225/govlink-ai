@@ -10,18 +10,21 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: "dark",
+  theme: "light",
   toggleTheme: () => {},
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
     const saved = localStorage.getItem("coe-theme");
     if (saved === "dark" || saved === "light") {
       setTheme(saved);
       document.body.dataset.theme = saved;
+    } else {
+      // 保存値なし → デフォルトのライトテーマを body に反映
+      document.body.dataset.theme = "light";
     }
   }, []);
 

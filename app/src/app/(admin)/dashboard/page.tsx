@@ -27,7 +27,7 @@ function determinePdcaStage(row: ProjectRow): PdcaStage {
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
-  const displayName = session?.user?.name ?? session?.user?.email ?? "ユーザー";
+  void session;
 
   let projects: ProjectRow[] = [];
   let dbError: string | null = null;
@@ -50,20 +50,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* ウェルカムバナー */}
-      <div
-        className="rounded-2xl border p-6"
-        style={{
-          background: "var(--bg-secondary)",
-          borderColor: "var(--border)",
-          boxShadow: "0 4px 24px rgba(99,102,241,0.06)",
-        }}
-      >
-        <p className="text-sm text-slate-500">ようこそ、</p>
-        <h2 className="text-2xl font-bold text-slate-100 mt-1">{displayName} さん</h2>
-        <p className="text-sm text-slate-500 mt-1">Sinap-sys 管理ダッシュボード</p>
-      </div>
-
       {/* 政策一覧 */}
       <section>
         <div className="flex items-center justify-between mb-4">
