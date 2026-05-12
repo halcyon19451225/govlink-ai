@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { PERMISSION_ORDER, type PermissionLevel, type ModuleId } from "@/lib/permissions";
+import { PERMISSION_ORDER, type PermissionLevel, type ModuleId } from "@/lib/permission-types";
 
 // ----------------------------------------------------------------
 // Types
@@ -78,10 +78,6 @@ const LEVEL_COLORS: Record<PermissionLevel, React.CSSProperties> = {
 // ----------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------
-
-function blankRow(project_id: string | null, project_title: string): MatrixRow {
-  return { project_id, project_title, project_access: "none", module_permissions: {} };
-}
 
 function buildMatrix(projects: ProjectRow[], perms: PermRow[]): MatrixRow[] {
   const permByProject = new Map<string | null, PermRow>();
@@ -162,7 +158,6 @@ export default function PermissionMatrix() {
 
   const [matrix, setMatrix] = useState<MatrixRow[]>([]);
   const [original, setOriginal] = useState<MatrixRow[]>([]);
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -211,7 +206,6 @@ export default function PermissionMatrix() {
       };
       if (json.error || !json.data) { setError(json.error ?? "取得失敗"); return; }
       const { defaultPermission, projectPermissions, projects: projs } = json.data;
-      setProjects(projs);
       const allPerms = [
         ...(defaultPermission ? [defaultPermission] : []),
         ...projectPermissions,

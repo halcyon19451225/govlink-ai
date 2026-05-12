@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { PERMISSION_ORDER, type PermissionLevel, type ModuleId } from "@/lib/permissions";
+import { PERMISSION_ORDER, type PermissionLevel, type ModuleId } from "@/lib/permission-types";
 
 const LEVEL_LABELS: Record<PermissionLevel, string> = {
   none: "アクセス",

@@ -1,24 +1,8 @@
+import "server-only";
 import { query, queryOne } from "@/lib/db";
-
-export type PermissionLevel = "none" | "view" | "edit" | "approve" | "admin";
-
-export type ModuleId =
-  | "dataset_manager"
-  | "gap_analysis"
-  | "issue_hypothesis"
-  | "logic_model"
-  | "program_evaluation"
-  | "cost_efficiency"
-  | "service_volume"
-  | "self_evaluation";
-
-export const PERMISSION_ORDER: Record<PermissionLevel, number> = {
-  none: 0,
-  view: 1,
-  edit: 2,
-  approve: 3,
-  admin: 4,
-};
+export type { PermissionLevel, ModuleId } from "@/lib/permission-types";
+export { PERMISSION_ORDER } from "@/lib/permission-types";
+import { PERMISSION_ORDER, type PermissionLevel, type ModuleId } from "@/lib/permission-types";
 
 const PERMISSION_LEVELS = ["none", "view", "edit", "approve", "admin"] as const;
 
@@ -53,7 +37,6 @@ export async function getUserEffectivePermission(
   let maxLevel = 0;
 
   for (const membership of memberships) {
-    // プロジェクト固有の権限 → デフォルト権限の順で確認
     const perms = await query<{
       project_access: PermissionLevel;
       module_permissions: Record<string, PermissionLevel>;
