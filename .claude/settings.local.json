@@ -111,7 +111,10 @@
       "Bash(sed -n '70,80p' /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/route.ts)",
       "Bash(sed -n '738,748p' /Users/halcy/Documents/govlink-ai/app/src/components/pdca/CycleDesigner.tsx)",
       "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/org-units/\\\\[id\\\\])",
-      "Bash(mkdir -p \"/Users/halcy/Documents/govlink-ai/app/src/app/api/admin/members/[id]/role\")"
+      "Bash(mkdir -p \"/Users/halcy/Documents/govlink-ai/app/src/app/api/admin/members/[id]/role\")",
+      "Bash(git -C /Users/halcy/Documents/govlink-ai/app status)",
+      "Bash(git -C /Users/halcy/Documents/govlink-ai/app log --oneline -5)",
+      "Bash(git *)"
     ]
   }
 }
