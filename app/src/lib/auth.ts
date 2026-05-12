@@ -7,6 +7,7 @@ import LineProvider from "next-auth/providers/line";
 import GithubProvider from "next-auth/providers/github";
 import { CognitoIdentityProviderClient, InitiateAuthCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { queryOne } from "@/lib/db";
+import { isOrgAdmin } from "@/lib/permissions";
 
 const region = process.env.AWS_REGION ?? "ap-northeast-1";
 const userPoolId = process.env.COGNITO_USER_POOL_ID ?? "";
@@ -109,7 +110,8 @@ export const authOptions: NextAuthOptions = {
         if (user?.image) token.picture = user.image;
       }
 
-      if ((!token.municipalityId || !token.role) && token.sub) {
+      // emailで検索（Google等ソーシャルログインはcognito_user_idが一致しないため）
+      if (token.email) {
         try {
           const row = await queryOne<{
             id: string;
@@ -117,16 +119,17 @@ export const authOptions: NextAuthOptions = {
             avatar_url: string | null;
             role: string;
           }>(
-            "SELECT id, municipality_id, avatar_url, role FROM user_roles WHERE cognito_user_id = $1 LIMIT 1",
-            [token.sub],
+            "SELECT id, municipality_id, avatar_url, role FROM user_roles WHERE email = $1 LIMIT 1",
+            [token.email],
           );
           if (row) {
             token.municipalityId = row.municipality_id;
             token.role = row.role;
             token.userRoleId = row.id;
             if (row.avatar_url) token.avatarUrl = row.avatar_url;
+            token.isOrgAdmin = row.role === "admin" || await isOrgAdmin(row.id);
           }
-        } catch { /* DB不通時スキップ */ }
+        } catch { /* DB不通時は既存tokenを維持 */ }
       }
 
       return token;
@@ -142,6 +145,7 @@ export const authOptions: NextAuthOptions = {
         if (token.avatarUrl && typeof token.avatarUrl === "string") session.user.avatarUrl = token.avatarUrl;
         if (token.role) session.user.role = token.role;
         if (token.userRoleId) session.user.userRoleId = token.userRoleId;
+        session.user.isOrgAdmin = token.isOrgAdmin ?? false;
       }
       return session;
     },

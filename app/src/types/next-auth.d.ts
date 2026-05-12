@@ -12,6 +12,7 @@ declare module "next-auth" {
       avatarUrl?: string;
       role?: string;
       userRoleId?: string;
+      isOrgAdmin?: boolean;
     };
   }
 }
@@ -24,5 +25,6 @@ declare module "next-auth/jwt" {
     avatarUrl?: string;
     role?: string;
     userRoleId?: string;
+    isOrgAdmin?: boolean;
   }
 }

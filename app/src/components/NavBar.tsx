@@ -174,14 +174,14 @@ export default function NavBar() {
                     style={{ color: "var(--text-primary)" }}>
                     <span className="text-base">👤</span>アカウントを管理
                   </Link>
-                  <Link href="/settings/municipality" onClick={() => setShowAccount(false)}
+                  <Link href="/settings/organization" onClick={() => setShowAccount(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>
                     <span className="text-base">🏛</span>自治体設定
                   </Link>
 
                   {/* 管理者メニュー */}
-                  {session?.user?.role === "admin" && (
+                  {(session?.user?.role === "admin" || session?.user?.isOrgAdmin) && (
                     <>
                       <div className="px-4 pt-3 pb-1">
                         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>管理者メニュー</p>
