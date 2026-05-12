@@ -1,5 +1,7 @@
 "use client";
 
+import PermissionGate from "@/components/PermissionGate";
+
 import { useState } from "react";
 import { calcPrePost } from "@/lib/stats/pre-post-comparison";
 import { calcDiffInDiff } from "@/lib/stats/diff-in-diff";
@@ -610,15 +612,17 @@ export default function ProgramEvaluationClient({
                   次へ
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => void handleFig6Save()}
-                  disabled={fig6Submitting}
-                  className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
-                >
-                  {fig6Submitting ? "保存中..." : "保存"}
-                </button>
+                <PermissionGate module="program_evaluation" level="edit" projectId={project.id}>
+                  <button
+                    type="button"
+                    onClick={() => void handleFig6Save()}
+                    disabled={fig6Submitting}
+                    className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
+                    style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+                  >
+                    {fig6Submitting ? "保存中..." : "保存"}
+                  </button>
+                </PermissionGate>
               )}
             </div>
           </div>
@@ -794,15 +798,17 @@ export default function ProgramEvaluationClient({
                   次へ
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => void handleFig7Save()}
-                  disabled={fig7Submitting}
-                  className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
-                >
-                  {fig7Submitting ? "保存中..." : "保存"}
-                </button>
+                <PermissionGate module="program_evaluation" level="edit" projectId={project.id}>
+                  <button
+                    type="button"
+                    onClick={() => void handleFig7Save()}
+                    disabled={fig7Submitting}
+                    className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
+                    style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+                  >
+                    {fig7Submitting ? "保存中..." : "保存"}
+                  </button>
+                </PermissionGate>
               )}
             </div>
           </div>

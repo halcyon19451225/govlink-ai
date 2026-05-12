@@ -196,7 +196,7 @@ export default function NavBar() {
                         style={{ color: "var(--text-primary)" }}>
                         <span className="text-base">👥</span>メンバー管理
                       </Link>
-                      <Link href="/settings/users" onClick={() => setShowAccount(false)}
+                      <Link href="/settings/permissions" onClick={() => setShowAccount(false)}
                         className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
                         style={{ color: "var(--text-primary)" }}>
                         <span className="text-base">🔐</span>権限設定

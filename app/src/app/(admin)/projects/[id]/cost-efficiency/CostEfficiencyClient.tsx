@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import PermissionGate from "@/components/PermissionGate";
 import { calcSensitivity } from "@/lib/stats/sensitivity-analysis";
 import { runMonteCarloInWorker, type MonteCarloParams, type MonteCarloResult } from "@/lib/stats/monte-carlo";
 import TornadoChart from "@/components/stats/TornadoChart";
@@ -492,15 +493,17 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
 
               {formError && <p className="text-xs text-red-400">{formError}</p>}
 
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={submitting}
-                className="w-full text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
-              >
-                {submitting ? "保存中..." : "保存"}
-              </button>
+              <PermissionGate module="cost_efficiency" level="edit" projectId={project.id}>
+                <button
+                  type="button"
+                  onClick={() => void handleSave()}
+                  disabled={submitting}
+                  className="w-full text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+                >
+                  {submitting ? "保存中..." : "保存"}
+                </button>
+              </PermissionGate>
             </div>
 
             {/* 右: リアルタイム計算結果 */}

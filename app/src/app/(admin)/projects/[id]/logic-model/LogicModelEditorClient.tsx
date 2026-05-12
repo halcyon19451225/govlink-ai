@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import PermissionGate from "@/components/PermissionGate";
 import ReactFlow, {
   Background,
   Controls,
@@ -207,6 +208,8 @@ export default function LogicModelEditorClient({
   const [aiStatus, setAiStatus] = useState("");
   const [showOutcomesModal, setShowOutcomesModal] = useState(false);
   const [currentModelId, setCurrentModelId] = useState<string | null>(latest?.id ?? null);
+  const [modelStatus, setModelStatus] = useState<"draft" | "confirmed">(latest?.status ?? "draft");
+  const [approving, setApproving] = useState(false);
 
   // 課題仮説選択時に自動引き継ぎ
   useEffect(() => {
@@ -276,6 +279,21 @@ export default function LogicModelEditorClient({
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!currentModelId) return;
+    setApproving(true);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/logic-model`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: currentModelId, status: "confirmed" }),
+      });
+      if (res.ok) setModelStatus("confirmed");
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -385,14 +403,16 @@ export default function LogicModelEditorClient({
               ))}
             </select>
 
-            <button
-              onClick={handleAiGenerate}
-              disabled={aiGenerating}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
-              style={{ background: "#6366f1" }}
-            >
-              {aiGenerating ? "生成中..." : "AIで生成"}
-            </button>
+            <PermissionGate module="logic_model" level="edit" projectId={projectId}>
+              <button
+                onClick={handleAiGenerate}
+                disabled={aiGenerating}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                style={{ background: "#6366f1" }}
+              >
+                {aiGenerating ? "生成中..." : "AIで生成"}
+              </button>
+            </PermissionGate>
 
             <button
               onClick={handleSave}
@@ -402,6 +422,19 @@ export default function LogicModelEditorClient({
             >
               {saving ? "保存中..." : "保存"}
             </button>
+
+            {currentModelId && modelStatus !== "confirmed" && (
+              <PermissionGate module="logic_model" level="approve" projectId={projectId}>
+                <button
+                  onClick={() => void handleApprove()}
+                  disabled={approving}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  style={{ background: "#f59e0b" }}
+                >
+                  {approving ? "処理中..." : "承認済みにする"}
+                </button>
+              </PermissionGate>
+            )}
           </div>
         </div>
 

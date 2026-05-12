@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import StatCalcStepsPanel from "@/components/stats/StatCalcStepsPanel";
+import PermissionGate from "@/components/PermissionGate";
 
 interface GapAnalysis {
   id: string;
@@ -279,15 +280,17 @@ export default function GapAnalysisClient({
           </div>
           <div className="flex items-center gap-2">
             {datasets.length > 0 && (
-              <button
-                type="button"
-                onClick={() => void handleImportFromDatasets()}
-                disabled={importingFromDatasets}
-                className="text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg, #0ea5e9, #10b981)" }}
-              >
-                {importingFromDatasets ? "取込中..." : "CSVから自動取込"}
-              </button>
+              <PermissionGate module="gap_analysis" level="edit" projectId={projectId}>
+                <button
+                  type="button"
+                  onClick={() => void handleImportFromDatasets()}
+                  disabled={importingFromDatasets}
+                  className="text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #0ea5e9, #10b981)" }}
+                >
+                  {importingFromDatasets ? "取込中..." : "CSVから自動取込"}
+                </button>
+              </PermissionGate>
             )}
             <button
               type="button"
@@ -610,15 +613,17 @@ export default function GapAnalysisClient({
                             >
                               {analyzingTrend === gap.id ? "分析中..." : "統計分析"}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleAiAnalysis(gap)}
-                              disabled={analyzingAi === gap.id}
-                              className="text-xs px-2 py-1 rounded border transition-colors duration-200 hover:border-cyan-500/40 hover:text-cyan-400 text-slate-400 disabled:opacity-50"
-                              style={{ borderColor: "#2a2d3a" }}
-                            >
-                              {analyzingAi === gap.id ? "分析中..." : "AI分析"}
-                            </button>
+                            <PermissionGate module="gap_analysis" level="edit" projectId={projectId}>
+                              <button
+                                type="button"
+                                onClick={() => void handleAiAnalysis(gap)}
+                                disabled={analyzingAi === gap.id}
+                                className="text-xs px-2 py-1 rounded border transition-colors duration-200 hover:border-cyan-500/40 hover:text-cyan-400 text-slate-400 disabled:opacity-50"
+                                style={{ borderColor: "#2a2d3a" }}
+                              >
+                                {analyzingAi === gap.id ? "分析中..." : "AI分析"}
+                              </button>
+                            </PermissionGate>
                             <button
                               type="button"
                               onClick={() => void handleDelete(gap.id)}

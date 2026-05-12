@@ -3,14 +3,14 @@ import { query, queryOne } from "@/lib/db";
 export type PermissionLevel = "none" | "view" | "edit" | "approve" | "admin";
 
 export type ModuleId =
+  | "dataset_manager"
   | "gap_analysis"
+  | "issue_hypothesis"
+  | "logic_model"
+  | "program_evaluation"
   | "cost_efficiency"
   | "service_volume"
-  | "kpi_report"
-  | "logic_model"
-  | "issue_hypothesis"
-  | "program_evaluation"
-  | "documents";
+  | "self_evaluation";
 
 export const PERMISSION_ORDER: Record<PermissionLevel, number> = {
   none: 0,

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import PermissionGate from "@/components/PermissionGate";
 import ReactFlow, {
   Background,
   Controls,
@@ -278,6 +279,17 @@ export default function IssueHypothesisClient({
     }
   };
 
+  const handleAdopt = async (hypId: string) => {
+    const res = await fetch(`/api/admin/projects/${projectId}/issue-hypothesis/${hypId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "confirmed" }),
+    });
+    if (res.ok) {
+      setHypotheses((prev) => prev.map((h) => h.id === hypId ? { ...h, status: "confirmed" } : h));
+    }
+  };
+
   const handleInheritToLogicModel = async (hyp: IssueHypothesis) => {
     const res = await fetch(`/api/admin/projects/${projectId}/logic-model`, {
       method: "POST",
@@ -489,6 +501,21 @@ export default function IssueHypothesisClient({
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        {hyp.status !== "confirmed" && (
+                          <PermissionGate module="issue_hypothesis" level="approve" projectId={projectId}>
+                            <button
+                              onClick={() => void handleAdopt(hyp.id)}
+                              className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+                              style={{
+                                background: "#f59e0b18",
+                                color: "#f59e0b",
+                                border: "1px solid #f59e0b40",
+                              }}
+                            >
+                              採用
+                            </button>
+                          </PermissionGate>
+                        )}
                         <button
                           onClick={() => handleInheritToLogicModel(hyp)}
                           className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
@@ -747,14 +774,16 @@ export default function IssueHypothesisClient({
               >
                 キャンセル
               </button>
-              <button
-                onClick={handleAddHyp}
-                disabled={!formTitle.trim() || submitting}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
-                style={{ background: "#6366f1" }}
-              >
-                {submitting ? "追加中..." : "追加"}
-              </button>
+              <PermissionGate module="issue_hypothesis" level="edit" projectId={projectId}>
+                <button
+                  onClick={handleAddHyp}
+                  disabled={!formTitle.trim() || submitting}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  style={{ background: "#6366f1" }}
+                >
+                  {submitting ? "追加中..." : "追加"}
+                </button>
+              </PermissionGate>
             </div>
           </div>
         </div>

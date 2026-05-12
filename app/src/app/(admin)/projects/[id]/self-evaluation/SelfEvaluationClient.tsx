@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import jsPDF from "jspdf";
+import PermissionGate from "@/components/PermissionGate";
 
 // ---- 型定義 ----
 
@@ -291,15 +292,17 @@ function EntryForm({ projectId, sheetId, fiscalYear, periodType, existing, onSav
       {error && <p className="text-xs text-red-400">{error}</p>}
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={saving}
-          className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
-          style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
-        >
-          {saving ? "保存中..." : "保存"}
-        </button>
+        <PermissionGate module="self_evaluation" level="edit" projectId={projectId}>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+          >
+            {saving ? "保存中..." : "保存"}
+          </button>
+        </PermissionGate>
       </div>
     </div>
   );
@@ -521,28 +524,32 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                   {selectedSheet.title}
                 </h2>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      exportToPDF(selectedSheet, selectedSheet.entries, project.title)
-                    }
-                    className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors duration-200"
-                    style={{
-                      borderColor: "#2a2d3a",
-                      color: "#94a3b8",
-                    }}
-                  >
-                    PDFエクスポート
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleSheetSave(selectedSheet)}
-                    disabled={sheetSaving[selectedSheet.id]}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
-                    style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
-                  >
-                    {sheetSaving[selectedSheet.id] ? "保存中..." : "保存"}
-                  </button>
+                  <PermissionGate module="self_evaluation" level="view" projectId={project.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportToPDF(selectedSheet, selectedSheet.entries, project.title)
+                      }
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors duration-200"
+                      style={{
+                        borderColor: "#2a2d3a",
+                        color: "#94a3b8",
+                      }}
+                    >
+                      PDFエクスポート
+                    </button>
+                  </PermissionGate>
+                  <PermissionGate module="self_evaluation" level="edit" projectId={project.id}>
+                    <button
+                      type="button"
+                      onClick={() => void handleSheetSave(selectedSheet)}
+                      disabled={sheetSaving[selectedSheet.id]}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
+                      style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+                    >
+                      {sheetSaving[selectedSheet.id] ? "保存中..." : "保存"}
+                    </button>
+                  </PermissionGate>
                 </div>
               </div>
 
