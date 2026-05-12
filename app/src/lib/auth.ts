@@ -109,24 +109,24 @@ export const authOptions: NextAuthOptions = {
         if (user?.image) token.picture = user.image;
       }
 
-      if (!token.municipalityId && token.sub) {
+      if ((!token.municipalityId || !token.role) && token.sub) {
         try {
-          const row = await queryOne<{ municipality_id: string }>(
-            "SELECT municipality_id FROM user_roles WHERE cognito_user_id = $1 LIMIT 1",
+          const row = await queryOne<{
+            id: string;
+            municipality_id: string;
+            avatar_url: string | null;
+            role: string;
+          }>(
+            "SELECT id, municipality_id, avatar_url, role FROM user_roles WHERE cognito_user_id = $1 LIMIT 1",
             [token.sub],
           );
-          if (row) token.municipalityId = row.municipality_id;
+          if (row) {
+            token.municipalityId = row.municipality_id;
+            token.role = row.role;
+            token.userRoleId = row.id;
+            if (row.avatar_url) token.avatarUrl = row.avatar_url;
+          }
         } catch { /* DB不通時スキップ */ }
-      }
-
-      if (!token.avatarUrl && token.sub) {
-        try {
-          const row = await queryOne<{ avatar_url: string | null }>(
-            "SELECT avatar_url FROM user_roles WHERE cognito_user_id = $1 LIMIT 1",
-            [token.sub],
-          );
-          if (row?.avatar_url) token.avatarUrl = row.avatar_url;
-        } catch { /* skip */ }
       }
 
       return token;
@@ -140,6 +140,8 @@ export const authOptions: NextAuthOptions = {
         if (token.municipalityId) session.user.municipalityId = token.municipalityId;
         if (token.picture && typeof token.picture === "string") session.user.image = token.picture;
         if (token.avatarUrl && typeof token.avatarUrl === "string") session.user.avatarUrl = token.avatarUrl;
+        if (token.role) session.user.role = token.role;
+        if (token.userRoleId) session.user.userRoleId = token.userRoleId;
       }
       return session;
     },

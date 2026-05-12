@@ -10,6 +10,8 @@ declare module "next-auth" {
       image?: string | null;
       municipalityId?: string;
       avatarUrl?: string;
+      role?: string;
+      userRoleId?: string;
     };
   }
 }
@@ -20,5 +22,7 @@ declare module "next-auth/jwt" {
     idToken?: string;
     municipalityId?: string;
     avatarUrl?: string;
+    role?: string;
+    userRoleId?: string;
   }
 }
