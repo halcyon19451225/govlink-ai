@@ -7,6 +7,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
 import { transaction } from "@/lib/db";
+import { getKnowledgeContext } from "@/lib/knowledge-context";
 
 const kpiSchema = z.object({
   label: z.string(),
@@ -147,7 +148,10 @@ export async function POST(req: NextRequest) {
       ? "\nKPI:\n" + kpis.map((k) => `- ${k.label}: 目標 ${k.target}${k.unit}`).join("\n")
       : "";
 
-  const userPrompt = `政策名: ${title}
+  const knowledgeContext = await getKnowledgeContext(projectId);
+  const knowledgePart = knowledgeContext ? `${knowledgeContext}\n\n` : "";
+
+  const userPrompt = `${knowledgePart}政策名: ${title}
 概要: ${description || "（未記入）"}${kpiText}
 
 上記の政策についてロジックモデルをJSON形式で生成してください。`;

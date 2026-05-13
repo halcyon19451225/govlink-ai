@@ -7,6 +7,7 @@ import LogicModelSection, { type LogicModel } from "./LogicModelSection";
 import BackButton from "@/components/BackButton";
 import PdcaNav from "@/components/PdcaNav";
 import ProjectModuleNav from "@/components/ProjectModuleNav";
+import KnowledgePanelButton from "@/components/KnowledgePanelButton";
 
 interface ProjectRow {
   id: string;
@@ -237,6 +238,7 @@ export default async function AdminProjectDetailPage({
           >
             EBPMダッシュボード
           </Link>
+          <KnowledgePanelButton projectId={project.id} />
           <Link
             href={`/projects/${project.id}/pdca`}
             className="text-sm font-semibold px-5 py-2 rounded-xl border transition-all duration-200"

@@ -7,6 +7,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { getKnowledgeContext } from "@/lib/knowledge-context";
 
 type Params = { params: { id: string } };
 
@@ -222,7 +223,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       messages: [
         {
           role: "user",
-          content: `以下は日本の市町村の介護保険事業計画策定のためにアップロードされたデータセットです。
+          content: `${await getKnowledgeContext(params.id, ["law", "guideline", "plan"])}
+
+以下は日本の市町村の介護保険事業計画策定のためにアップロードされたデータセットです。
 各データセットを分析し、主要な指標の現状値を抽出してギャップ分析データを生成してください。
 
 【抽出対象の指標と対応データソース】
