@@ -88,7 +88,7 @@ export default function NavBar() {
         {/* ロゴ */}
         <Link href="/dashboard" className="no-underline shrink-0 flex items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-coe.png" alt="Coe" style={{ height: 52, width: "auto" }} />
+          <img src="/logo-coe.svg" alt="Coe" style={{ height: 52, width: "auto" }} />
         </Link>
 
         {/* スペーサー */}

@@ -151,7 +151,7 @@ export default function RegisterPage() {
         {/* ロゴ */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
-            <Image src="/logo-coe.png" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} />
+            <Image src="/logo-coe.svg" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} />
           </Link>
           <p className="text-sm mt-2" style={{ color: "var(--text-secondary)" }}>
             30日間無料でご利用いただけます

@@ -167,7 +167,7 @@ export default function PricingPage() {
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <Link href="/" className="flex items-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-coe.png" alt="Coe" style={{ height: 52, width: "auto" }} />
+            <img src="/logo-coe.svg" alt="Coe" style={{ height: 52, width: "auto" }} />
           </Link>
           <div className="flex gap-3 items-center">
             {/* テーマ切り替えトグル */}
@@ -235,7 +235,7 @@ export default function PricingPage() {
               {/* ロゴ */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/logo-coe.png"
+                src="/logo-coe.svg"
                 alt="Coe"
                 style={{ width: 360, height: "auto" }}
               />

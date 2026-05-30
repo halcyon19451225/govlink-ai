@@ -228,7 +228,7 @@ export default function LoginForm({ providers }: Props) {
           <>
             {/* ロゴ */}
             <div className="flex flex-col items-center gap-1 pt-1">
-              <Image src="/logo-coe.png" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} priority />
+              <Image src="/logo-coe.svg" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} priority />
               <h1 className="text-lg font-bold mt-2" style={{ color: "var(--text-primary)" }}>
                 Coeにログイン
               </h1>
@@ -344,7 +344,7 @@ export default function LoginForm({ providers }: Props) {
         {step === "forgot_email" && (
           <>
             <div className="flex flex-col items-center gap-1 pt-1">
-              <Image src="/logo-coe.png" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} priority />
+              <Image src="/logo-coe.svg" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} priority />
               <h1 className="text-lg font-bold mt-2" style={{ color: "var(--text-primary)" }}>
                 パスワードを再設定
               </h1>
@@ -400,7 +400,7 @@ export default function LoginForm({ providers }: Props) {
         {step === "forgot_verify" && (
           <>
             <div className="flex flex-col items-center gap-1 pt-1">
-              <Image src="/logo-coe.png" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} priority />
+              <Image src="/logo-coe.svg" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} priority />
               <h1 className="text-lg font-bold mt-2" style={{ color: "var(--text-primary)" }}>
                 新しいパスワードを設定
               </h1>
@@ -511,7 +511,7 @@ export default function LoginForm({ providers }: Props) {
         {/* ────── STEP: 完了 ────── */}
         {step === "forgot_success" && (
           <div className="flex flex-col items-center gap-5 py-4">
-            <Image src="/logo-coe.png" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} priority />
+            <Image src="/logo-coe.svg" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} priority />
             <CheckCircleIcon />
             <div className="text-center">
               <h1 className="text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>
