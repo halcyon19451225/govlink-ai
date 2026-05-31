@@ -1266,6 +1266,14 @@ export const INCOMPATIBLE_PAIRS: IncompatibilityRule[] = [
 ### 2-A. DBスキーマ追加
 `infra/migrations/008_artifact_lineage.sql` として作成すること。
 
+> **⚠ 実装上の注記（2026-05-31）:** 当初の設計では独立したファイル `008_artifact_lineage.sql` を
+> 想定していたが、実際には `infra/migrations/010_care_plan_suite.sql` の Step 10 に
+> `module_artifacts`・`module_incompatibility_rules`・`statistical_analyses` テーブルの
+> DDL として統合されている（`008_billing.sql` が既に存在するため連番も変わっている）。
+> また `infra/migrations/014_artifact_unique_constraint.sql` で
+> `module_artifacts (project_id, module_id, artifact_record_id)` の UNIQUE 制約を追加済み。
+> 新規環境へのセットアップ時は `010` および `014` を適用すること。
+
 ```sql
 -- ================================================================
 -- モジュール成果物レジストリ
@@ -1914,6 +1922,7 @@ v2 の STEP 1〜12 に加えて、以下を追加すること。
 
 ### STEP 13: リネージ基盤
 1. `infra/migrations/008_artifact_lineage.sql` を作成・適用する
+   > **⚠ 注記:** 実装では `010_care_plan_suite.sql` に統合済み。`§2-A` の注記を参照。
 2. `lib/modules/causal-graph.ts` を作成する（CAUSAL_EDGES, INCOMPATIBLE_PAIRS の定義）
 3. `lib/modules/compatibility-checker.ts` を作成する
 4. `components/lineage/ArtifactLineagePanel.tsx` を作成する

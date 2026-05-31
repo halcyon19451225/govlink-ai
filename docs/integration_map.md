@@ -1,6 +1,112 @@
-# GovLink 既存機能 × 新機能 統合マップ
+# GovLink AI — データ連携 統合マップ（設計 vs 実装）
 
-## 前提：既存GovLinkの確認済み実装状況
+> 最終更新: 2026-05-31
+> R1〜R4 フェーズの実装結果を反映。各フェーズの詳細は `docs/REBUILD_PLAN.md` を参照。
+
+---
+
+## モジュール間データ連携の実装状況
+
+| 連携（from → to） | 設計上の想定 | 実装状態 | 実装手段 | 備考 |
+|---|---|---|---|---|
+| **dataset_manager → gap_analysis** | データセットを読んでギャップ分析を生成 | ✅ 実装済み | `gap-analysis/ai-analyze` が `project_datasets` を読んで `gap_analyses` を生成。`source_datasets_snapshot` に更新日時を記録 | ⚙️ `module_artifacts` 登録済み（R2） |
+| **gap_analysis → issue_hypothesis** | ギャップの指標値を課題仮説のAI提案に渡す | ✅ 実装済み | `issue-hypothesis/ai-suggest` が `gap_analyses` を読んで `root_cause`/`proposed_measures` を提案。手動登録時も `gap_analysis_id` を保持 | ⚙️ `source_artifact_ids` に gap 成果物IDを記録（R2） |
+| **issue_hypothesis → logic_model** | 課題仮説の内容をロジックモデル生成プロンプトに注入 | ✅ 実装済み | `generate-logic-model` に `issueHypothesisId` を追加。`title`/`description`/`root_cause`/`proposed_measures` をプロンプトに注入。生成行に `issue_hypothesis_id` を保存 | ⚙️ R2 / 🔒 R4 / FK 制約は 015 マイグレーションで追加 |
+| **logic_model → program_evaluation** | ロジックモデルの成果指標（outputs/outcomes）を評価対象として引き継ぐ | ✅ 実装済み | `evaluations` GET で `logic_models` を LEFT JOIN。`upstream_logic_model` として outputs/initial_outcomes/intermediate_outcomes を返す | ⚙️ R2 / 🔒 R4 |
+| **logic_model（投入額）→ cost_efficiency** | ロジックモデルの inputs をコスト計算のプリフィルに渡す | ✅ 実装済み | `cost-efficiency` GET で `program_evaluations → logic_models` を二段階 JOIN。`upstream_logic_model_prefill.inputs` を返す | ⚙️ R2 / 🔒 R4 |
+| **program_evaluation（実績）→ cost_efficiency（事後）** | 評価実績から `actual_total_reduction`/`actual_cost_ratio` を算定 | ✅ 実装済み | `evaluation_type='ex_post'` 作成時に `program_evaluations.achievement_rate` から自動算定。GET で `upstream_program_evaluation` を返す | ⚙️ R2 / 🔒 R4 |
+| **program_evaluation → self_evaluation** | 評価結果（result/improvement_actions/next_steps）を自己評価のコンテキストに渡す | ✅ 実装済み | `self-evaluation` GET で `program_evaluations` を LEFT JOIN。`upstream_program_evaluation` を返す | ⚙️ R2 / 🔒 R4 |
+| **dataset_manager → service_volume** | CAUSAL_EDGES で定義された連携 | ⚙️ 成果物連鎖記録のみ | `service_volume` POST 時に `module_artifacts` へ登録。ただし `service_volume_plans` はデータセットを読まない | データフロー（R1）は未実装 |
+| **knowledge → 各 AI モジュール** | ナレッジ辞書（Tier1/2）を AI プロンプトに注入 | ✅ 実装済み | `lib/knowledge-context.ts` の `getKnowledgeContext()` が `project_knowledge_links` + `knowledge_dicts` を読み、`gap-analysis/ai-analyze` と `generate-logic-model` のプロンプトに注入 | R1 以前から稼働 |
+
+---
+
+## RBAC 適用状況（R4）
+
+| モジュール | GET（view） | POST/PATCH（edit） | DELETE（edit） | AI 生成（edit） |
+|---|---|---|---|---|
+| gap_analysis | 🔒 | 🔒 | 🔒 | 🔒（ai-analyze） |
+| issue_hypothesis | 🔒 | 🔒 | 🔒 | 🔒（ai-suggest） |
+| logic_model | 🔒 | 🔒 | — | 🔒（ai-generate） |
+| program_evaluation | 🔒 | 🔒 | 🔒 | — |
+| cost_efficiency | 🔒 | 🔒 | — | — |
+| service_volume | 🔒 | 🔒 | — | — |
+| self_evaluation | 🔒 | 🔒 | — | — |
+
+> **権限バイパス:** `isOrgAdmin`（rank ≤ 10）または `role='admin'` のユーザーは
+> DB 照会なしで全操作が許可される（後方互換）。
+
+---
+
+## 成果物連鎖（module_artifacts）の登録状況（R2）
+
+| モジュール | artifact_type | source_artifact_ids | source_datasets_snapshot |
+|---|---|---|---|
+| gap_analysis | `gap_table` | （なし） | ✅ 全データセットの updated_at を記録 |
+| issue_hypothesis | `hypothesis_sheet` | gap_analysis の成果物ID | — |
+| logic_model（手動） | `logic_model_v1` | issue_hypothesis の成果物ID | — |
+| logic_model（AI生成） | `logic_model_v1` | issue_hypothesis の成果物ID | — |
+| program_evaluation | `process_eval` / `initial_outcome_eval` / `intermediate_outcome_eval` | logic_model の成果物ID | — |
+| cost_efficiency | `cost_ratio_calc_ex_ante` / `cost_ratio_calc_ex_post` | program_evaluation + logic_model の成果物ID | — |
+| service_volume | `deviation_analysis` | （なし） | — |
+| self_evaluation | `self_eval_sheet` | program_evaluation の成果物ID | — |
+
+> **陳腐化検出:** `source_datasets_snapshot` と現在の `project_datasets.uploaded_at` を比較。
+> `GET /api/admin/projects/{id}/lineage` で `is_stale` フラグとして返す。
+
+---
+
+## 依存グラフの正本（R3）
+
+`causal-graph.ts` が唯一の正本。DBの `plan_modules.depends_on` と
+`module_incompatibility_rules` は `scripts/sync-causal-graph.ts` で同期する。
+
+```
+dataset_manager ──→ gap_analysis ──→ issue_hypothesis ──→ logic_model ──→ program_evaluation
+                                                                          ├──→ cost_efficiency
+                                                                          └──→ self_evaluation
+dataset_manager ──→ service_volume
+```
+
+モジュール選択画面（`projects/[id]/settings/modules`）と
+テンプレート編集画面（`templates/[id]/edit`）で `checkModuleCompatibility` が呼ばれ、
+依存欠落・非互換の警告を表示する。
+
+---
+
+## ⚠ 注記: テンプレートモジュールと EBPM 評価チェーンの二重体系
+
+現在、システム内に **2種類の「モジュール」体系** が混在している:
+
+| 体系 | モジュールID 例 | 管理場所 | 用途 |
+|---|---|---|---|
+| **テンプレートモジュール** | `kpi`, `logic_model`, `schedule`, `evidence`, `ebpm`, `documents`, `post`, `resources` | `plan_templates.module_config` (JSONB) | テンプレートが提供するプロダクト機能のON/OFF |
+| **EBPM 評価チェーンモジュール** | `dataset_manager`, `gap_analysis`, `issue_hypothesis`, `logic_model`, `program_evaluation`, `cost_efficiency`, `service_volume`, `self_evaluation` | `plan_modules` テーブル / `project_module_configs` | 評価フローの各ステップのON/OFF |
+
+`logic_model` のみが両体系に存在するが、その意味合いが異なる。
+両体系の統合（ID 体系の統一・依存関係の一本化）は将来課題とする。
+
+---
+
+## 参照整合性の状態（R5）
+
+| テーブル.列 | FK 制約 | 状態 |
+|---|---|---|
+| `logic_models.issue_hypothesis_id` | `REFERENCES issue_hypotheses(id) ON DELETE SET NULL` | 🔧 `015_fk_integrity.sql` で追加（要適用） |
+| `issue_hypotheses.gap_analysis_id` | `REFERENCES gap_analyses(id)` | ✅ 010 で追加済み |
+| `program_evaluations.logic_model_id` | `REFERENCES logic_models(id)` | ✅ 010 で追加済み |
+| `cost_efficiency_records.program_evaluation_id` | `REFERENCES program_evaluations(id)` | ✅ 010 で追加済み |
+| `self_evaluation_sheets.program_evaluation_id` | `REFERENCES program_evaluations(id)` | ✅ 010 で追加済み |
+| `module_artifacts.(project_id, module_id, artifact_record_id)` | `UNIQUE` 制約 | ✅ 014 で追加済み |
+
+---
+
+## 旧マップ（原文保存）
+
+以下は初期設計段階のマッピング情報。現在の実装とは乖離があるが、
+設計意図の参照用として残す。
+
+### 前提：既存GovLinkの確認済み実装状況
 
 | 機能 | 実装状況 | 既存テーブル/ファイル |
 |---|---|---|
@@ -9,196 +115,11 @@
 | KPI管理 | ✅ 完成 | `kpis` |
 | 進捗報告 | ✅ 完成 | `posts` |
 | **ロジックモデル（AI生成）** | ✅ 完成 | `logic_models`（既存スキーマ） |
-| **5階層プログラム評価** | ✅ 完成 | （UIのみ、専用テーブルは要確認） |
-| スケジュール管理（ガントチャート） | ✅ 完成 | （要確認） |
-| 組織リソース管理 | ✅ 完成 | （要確認） |
-| ドキュメント管理（S3） | ✅ 完成 | （要確認） |
-| エビデンス管理 | ✅ 完成 | `evidences`（要確認） |
+| **5階層プログラム評価** | ✅ 完成 | `program_evaluations` |
+| スケジュール管理（ガントチャート） | ✅ 完成 | `project_schedules`, `schedule_tasks` |
+| 組織リソース管理 | ✅ 完成 | `org_resources` |
+| ドキュメント管理（S3） | ✅ 完成 | `documents` |
+| エビデンス管理 | ✅ 完成 | `evidences` |
 | EBPMダッシュボード | ✅ 完成 | `benchmark_values`, `policy_suggestions` |
 | e-Stat / RESAS連携 | ✅ 完成 | `benchmark_values` |
 | 住民向け公開フィード | ✅ 完成 | `posts` |
-
----
-
-## 統合判断マトリクス
-
-| 新プロンプトの要素 | 既存との関係 | 推奨アクション |
-|---|---|---|
-| `plan_modules` テーブル | 完全に新規 | **新規作成** |
-| `plan_templates` テーブル | 完全に新規 | **新規作成** |
-| `pdca_cycle_defs` テーブル | 完全に新規 | **新規作成** |
-| `project_pdca_checkpoints` | スケジュール管理と**一部重複** | **既存ガントと連携設計が必要** |
-| `project_module_configs` | 完全に新規 | **新規作成** |
-| `gap_analyses` | 完全に新規 | **新規作成** |
-| `issue_hypotheses` | 完全に新規 | **新規作成** |
-| `logic_models`（新スキーマ） | 既存 `logic_models` と**構造衝突** | **既存テーブルをマイグレーション** |
-| `program_evaluations` | 既存5階層評価と**機能重複** | **既存機能をこのテーブルに移行** |
-| `cost_efficiency_records` | 完全に新規 | **新規作成** |
-| `service_volume_plans` | 完全に新規 | **新規作成** |
-| `self_evaluation_sheets` | 完全に新規 | **新規作成** |
-| `module_artifacts` | `evidences` テーブルと**関連** | **evidencesから参照する形で新規作成** |
-| `statistical_analyses` | `benchmark_values` と**一部関連** | **新規作成（benchmark_valuesを入力として参照）** |
-| `dataset_definitions` | 完全に新規 | **新規作成** |
-| `project_datasets` | ドキュメント管理と**一部重複** | **既存ドキュメント管理と役割分担を整理** |
-
----
-
-## 競合が特に深刻な3箇所と解決策
-
-### 競合1：`logic_models` テーブルの構造衝突
-
-**既存スキーマ（001_init.sql）:**
-```sql
-logic_models: id, project_id, inputs, activities, outputs, outcomes, generated_at
-```
-
-**新スキーマ（006_care_plan_suite.sql）:**
-```sql
-logic_models: id, project_id, issue_hypothesis_id, name, version, status,
-  purpose, basic_goal, basic_ideology, current_status, problem, challenge,
-  root_cause, major_policy, activities, inputs, outputs, initial_outcomes,
-  intermediate_outcomes, evidence, ...
-```
-
-**解決策：** 既存テーブルをALTER TABLEで拡張するマイグレーションを作成する。
-既存の `inputs`, `activities`, `outputs`, `outcomes` カラムを新フィールドに対応付ける。
-
-```sql
--- infra/migrations/006a_migrate_logic_models.sql
-ALTER TABLE logic_models
-  ADD COLUMN IF NOT EXISTS issue_hypothesis_id UUID,
-  ADD COLUMN IF NOT EXISTS name TEXT,
-  ADD COLUMN IF NOT EXISTS version INT DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'draft',
-  ADD COLUMN IF NOT EXISTS purpose TEXT,
-  ADD COLUMN IF NOT EXISTS basic_goal TEXT,
-  ADD COLUMN IF NOT EXISTS basic_ideology TEXT,
-  ADD COLUMN IF NOT EXISTS current_status JSONB,
-  ADD COLUMN IF NOT EXISTS problem TEXT,
-  ADD COLUMN IF NOT EXISTS challenge TEXT,
-  ADD COLUMN IF NOT EXISTS root_cause TEXT,
-  ADD COLUMN IF NOT EXISTS major_policy TEXT,
-  ADD COLUMN IF NOT EXISTS initial_outcomes JSONB,
-  ADD COLUMN IF NOT EXISTS intermediate_outcomes JSONB,
-  ADD COLUMN IF NOT EXISTS evidence JSONB,
-  ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN DEFAULT false,
-  ADD COLUMN IF NOT EXISTS ai_theory_check TEXT,
-  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
--- 既存の outputs → outputs（JSONB化）
--- 既存の outcomes → intermediate_outcomes に移行（データ移行スクリプト別途）
-```
-
----
-
-### 競合2：5階層プログラム評価の重複
-
-既存GovLinkにはプログラム評価のUI・KPI分類が実装済み。
-新プロンプトは `program_evaluations` テーブルを新規作成しようとしている。
-
-**解決策：** 既存の評価データを `program_evaluations` テーブルに移行する。
-既存の評価UIを `program_evaluations` テーブルのCRUDに接続し直す。
-
-```sql
--- 既存KPIとの橋渡し
-ALTER TABLE program_evaluations
-  ADD COLUMN IF NOT EXISTS kpi_ids UUID[] DEFAULT ARRAY[]::uuid[];
--- 既存kpisテーブルのID配列を持つことで、KPIの達成状況と評価を連結
-```
-
----
-
-### 競合3：ドキュメント管理と `project_datasets` の役割重複
-
-既存ドキュメント管理（S3アップロード・AI要約）と新規 `project_datasets`（AIデータセット管理）は
-いずれも「ファイルをS3にアップロードして管理する」機能を持つ。
-
-**解決策：** `project_datasets` はドキュメント管理の「サブカテゴリ」として実装する。
-既存ドキュメント管理UIに「このドキュメントをデータセットとして登録」ボタンを追加する形が最も自然。
-
----
-
-## 推奨する実装方針の変更点
-
-### Phase 1（DBスキーマ）の修正
-
-現在の Phase 1 プロンプトを以下に修正する:
-
-```
-1. まず既存テーブルの現状を確認する:
-   SELECT table_name, column_name FROM information_schema.columns
-   WHERE table_schema = 'public'
-   ORDER BY table_name, ordinal_position;
-
-2. 競合する既存テーブルを新スキーマに向けてマイグレーションする（DROP→CREATEではなくALTER TABLE）:
-   - logic_models: ADD COLUMN で新フィールドを追加
-   - 既存データは保持する
-
-3. 完全に新規のテーブルのみ新規作成する:
-   - plan_modules, plan_templates, pdca_cycle_defs, pdca_checkpoint_defs
-   - project_pdca_checkpoints, project_module_configs
-   - gap_analyses, issue_hypotheses, cost_efficiency_records
-   - service_volume_plans, self_evaluation_sheets
-   - module_artifacts, statistical_analyses, dataset_definitions, project_datasets
-   - module_incompatibility_rules
-
-4. 既存テーブルとの連携カラムを追加する:
-   - projects: plan_type, template_id, plan_start_date, plan_end_date を追加
-   - program_evaluations: kpi_ids（既存kpisとの連携）を追加
-   - module_artifacts: evidence_id（既存evidencesとの連携）を追加
-```
-
-### Phase 5（データセット管理）の修正
-
-既存ドキュメント管理ページに「AIデータセットとして登録」機能を追加する形で実装する。
-ゼロから新UIを作るのではなく、既存UIを拡張する。
-
-### Phase 6（ロジックモデル）の修正
-
-既存のロジックモデル生成ページ（AIが自動生成するUI）を
-新しいビジュアルエディタに「グレードアップ」する形で実装する。
-新規ページを作るのではなく、既存ページを置き換える。
-
-### Phase 7（プログラム評価）の修正
-
-既存の5階層評価UIを `program_evaluations` テーブルに接続し直す。
-「接続し直し」であり、新規作成ではない。
-
----
-
-## Phase 1 プロンプトの修正版（冒頭確認ステップを追加）
-
-```
-# Phase 1: DBスキーマ実装（既存テーブルとの統合）
-
-## 事前確認（必須・最初に実施）
-
-以下のクエリを実行し、既存テーブルの構造を確認してください:
-
-SELECT table_name FROM information_schema.tables
-WHERE table_schema = 'public' ORDER BY table_name;
-
-\d logic_models
-\d kpis
-\d projects
-
-確認結果をもとに、以下の判断で進めてください。
-
-## 実施事項
-
-### Step A: 競合テーブルのマイグレーション（ALTER TABLE）
-- `logic_models` に docs/SPEC.md 記載の新フィールドを ADD COLUMN で追加
-- `projects` に plan_type, template_id, plan_start_date, plan_end_date を追加
-- DROP TABLE は絶対に行わない
-
-### Step B: 完全新規テーブルの作成
-docs/SPEC.md の 006_care_plan_suite.sql から、
-既存テーブルと名前が重複しないものだけを CREATE TABLE する
-
-### Step C: 連携カラムの追加
-- program_evaluations に kpi_ids UUID[] を追加
-- module_artifacts に evidence_id UUID REFERENCES evidences(id) を追加
-
-### 完了確認
-\d logic_models で新フィールドが追加されていることを確認
-既存データが失われていないことを確認
-```
