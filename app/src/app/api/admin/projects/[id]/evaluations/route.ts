@@ -5,6 +5,9 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { recordArtifact, resolveArtifactIds } from "@/lib/modules/recordArtifact";
+import { ARTIFACT_TYPES } from "@/lib/modules/artifact-types";
+import { requireModulePermission } from "@/lib/permissions";
 
 type Params = { params: { id: string } };
 
@@ -26,18 +29,25 @@ const bodySchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "program_evaluation", "view");
+  if (deny) return deny;
 
   const rows = await query(
-    `SELECT id, evaluation_tier, fiscal_year, status, result,
-            achievement_rate::float, findings, success_factors, barrier_factors,
-            improvement_actions, next_steps, flow_decision_path, kpi_ids,
-            evaluated_by, ai_commentary, created_at::text
-     FROM program_evaluations
-     WHERE project_id = $1
-     ORDER BY fiscal_year, created_at`,
+    `SELECT pe.id, pe.evaluation_tier, pe.fiscal_year, pe.status, pe.result,
+            pe.achievement_rate::float, pe.findings, pe.success_factors, pe.barrier_factors,
+            pe.improvement_actions, pe.next_steps, pe.flow_decision_path, pe.kpi_ids,
+            pe.evaluated_by, pe.ai_commentary, pe.logic_model_id, pe.created_at::text,
+            json_build_object(
+              'id', lm.id,
+              'name', lm.name,
+              'outputs', lm.outputs,
+              'initial_outcomes', lm.initial_outcomes,
+              'intermediate_outcomes', lm.intermediate_outcomes
+            ) FILTER (WHERE lm.id IS NOT NULL) AS upstream_logic_model
+     FROM program_evaluations pe
+     LEFT JOIN logic_models lm ON lm.id = pe.logic_model_id
+     WHERE pe.project_id = $1
+     ORDER BY pe.fiscal_year, pe.created_at`,
     [params.id],
   );
 
@@ -46,9 +56,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "program_evaluation", "edit");
+  if (deny) return deny;
 
   let raw: unknown;
   try {
@@ -104,6 +113,28 @@ export async function POST(req: NextRequest, { params }: Params) {
      FROM program_evaluations WHERE id = $1`,
     [row.id],
   );
+
+  // 成果物レジストリに登録（R2-3）
+  if (inserted) {
+    const tierToType: Record<string, string> = {
+      process: ARTIFACT_TYPES.program_evaluation.process_eval,
+      outcome_initial: ARTIFACT_TYPES.program_evaluation.initial_outcome_eval,
+      outcome_intermediate: ARTIFACT_TYPES.program_evaluation.intermediate_outcome_eval,
+    };
+    const artifactType =
+      tierToType[d.evaluation_tier] ?? ARTIFACT_TYPES.program_evaluation.process_eval;
+    const sourceIds = await resolveArtifactIds(params.id, "logic_model", [d.logic_model_id]);
+    await recordArtifact({
+      projectId: params.id,
+      moduleId: "program_evaluation",
+      artifactType,
+      artifactRecordId: (inserted as { id: string }).id,
+      sourceArtifactIds: sourceIds,
+      derivationNote: d.logic_model_id
+        ? `ロジックモデル(${d.logic_model_id})に基づくプログラム評価`
+        : undefined,
+    }).catch((e) => console.error("recordArtifact(program_evaluation) 失敗:", e));
+  }
 
   return NextResponse.json({ data: inserted, error: null }, { status: 201 });
 }

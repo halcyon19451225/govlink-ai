@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "path": "/_next/static/*",
+      "target": {
+        "kind": "Static"
+      }
+    },
+    {
+      "path": "/favicon.ico",
+      "target": {
+        "kind": "Static"
+      }
+    },
+    {
+      "path": "/*",
+      "target": {
+        "kind": "Compute",
+        "src": "default"
+      }
+    }
+  ],
+  "computeResources": [
+    {
+      "name": "default",
+      "runtime": "nodejs20.x",
+      "entrypoint": "run.js"
+    }
+  ],
+  "framework": {
+    "name": "next",
+    "version": "14.2.35"
+  }
+}

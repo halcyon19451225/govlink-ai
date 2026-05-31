@@ -1,4 +1,6 @@
 import "server-only";
+import { type Session } from "next-auth";
+import { NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
 export type { PermissionLevel, ModuleId } from "@/lib/permission-types";
 export { PERMISSION_ORDER } from "@/lib/permission-types";
@@ -77,6 +79,41 @@ export async function canGrantPermission(
     moduleId,
   );
   return PERMISSION_ORDER[grantorPermission] >= PERMISSION_ORDER[targetPermission];
+}
+
+/**
+ * モジュール権限ガード。
+ * 権限不足時は NextResponse（403）を返す。
+ * 十分な場合は null を返す（呼び出し側は null チェックして early return する）。
+ *
+ * isOrgAdmin（rank≤10）または role='admin' のユーザーは
+ * 常に admin 権限扱いで通過する（後方互換）。
+ *
+ * 使い方:
+ *   const deny = await requireModulePermission(session, projectId, "gap_analysis", "edit");
+ *   if (deny) return deny;
+ */
+export async function requireModulePermission(
+  session: Session | null,
+  projectId: string,
+  moduleId: ModuleId,
+  required: PermissionLevel,
+): Promise<NextResponse | null> {
+  if (!session?.user?.id) {
+    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
+  }
+
+  // isOrgAdmin または role='admin' は常に全権限を持つ（後方互換）
+  if (session.user.isOrgAdmin || session.user.role === "admin") {
+    return null;
+  }
+
+  const effective = await getUserEffectivePermission(session.user.id, projectId, moduleId);
+  const ok = PERMISSION_ORDER[effective] >= PERMISSION_ORDER[required];
+  if (!ok) {
+    return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
+  }
+  return null;
 }
 
 // ユーザーがシステム管理者相当（rank <= 10）かチェック

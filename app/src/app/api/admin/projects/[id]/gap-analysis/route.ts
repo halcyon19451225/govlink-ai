@@ -5,6 +5,9 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { recordArtifact, buildDatasetsSnapshot } from "@/lib/modules/recordArtifact";
+import { ARTIFACT_TYPES } from "@/lib/modules/artifact-types";
+import { requireModulePermission } from "@/lib/permissions";
 
 type Params = { params: { id: string } };
 
@@ -23,9 +26,8 @@ const bodySchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "gap_analysis", "view");
+  if (deny) return deny;
 
   const rows = await query(
     `SELECT *,
@@ -44,9 +46,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "gap_analysis", "edit");
+  if (deny) return deny;
 
   let raw: unknown;
   try {
@@ -90,6 +91,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!row) {
     return NextResponse.json({ data: null, error: "DB登録に失敗しました" }, { status: 500 });
   }
+
+  // 成果物レジストリに登録（R2-3/R2-4）
+  const snapshot = await buildDatasetsSnapshot(params.id);
+  await recordArtifact({
+    projectId: params.id,
+    moduleId: "gap_analysis",
+    artifactType: ARTIFACT_TYPES.gap_analysis.gap_table,
+    artifactRecordId: row.id,
+    sourceDatasetsSnapshot: snapshot,
+    derivationNote: `${d.indicator_name} のギャップ分析`,
+  }).catch((e) => console.error("recordArtifact(gap_analysis) 失敗:", e));
 
   // 挿入したレコードを返す
   const inserted = await queryOne(

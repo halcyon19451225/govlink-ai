@@ -5,6 +5,8 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { recordArtifact, resolveArtifactIds } from "@/lib/modules/recordArtifact";
+import { requireModulePermission } from "@/lib/permissions";
 
 type Params = { params: { id: string } };
 
@@ -49,12 +51,22 @@ const patchSchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "logic_model", "view");
+  if (deny) return deny;
 
   const rows = await query(
-    `SELECT * FROM logic_models WHERE project_id = $1 ORDER BY version DESC LIMIT 1`,
+    `SELECT lm.*,
+            json_build_object(
+              'id', ih.id,
+              'title', ih.title,
+              'description', ih.description,
+              'root_cause', ih.root_cause,
+              'proposed_measures', ih.proposed_measures
+            ) FILTER (WHERE ih.id IS NOT NULL) AS upstream_hypothesis
+     FROM logic_models lm
+     LEFT JOIN issue_hypotheses ih ON ih.id = lm.issue_hypothesis_id
+     WHERE lm.project_id = $1
+     ORDER BY lm.version DESC LIMIT 1`,
     [params.id],
   );
 
@@ -63,9 +75,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "logic_model", "edit");
+  if (deny) return deny;
 
   let raw: unknown;
   try {
@@ -121,14 +132,31 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: null, error: "DB登録に失敗しました" }, { status: 500 });
   }
 
+  // 成果物レジストリに登録（R2-3）
+  const version = 1;
+  const sourceIds = await resolveArtifactIds(
+    params.id,
+    "issue_hypothesis",
+    [d.issue_hypothesis_id],
+  );
+  await recordArtifact({
+    projectId: params.id,
+    moduleId: "logic_model",
+    artifactType: `logic_model_v${version}`,
+    artifactRecordId: row.id,
+    sourceArtifactIds: sourceIds,
+    derivationNote: d.issue_hypothesis_id
+      ? `課題仮説(${d.issue_hypothesis_id})からロジックモデルを作成`
+      : undefined,
+  }).catch((e) => console.error("recordArtifact(logic_model) 失敗:", e));
+
   return NextResponse.json({ data: { id: row.id }, error: null }, { status: 201 });
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "logic_model", "edit");
+  if (deny) return deny;
 
   let raw: unknown;
   try {

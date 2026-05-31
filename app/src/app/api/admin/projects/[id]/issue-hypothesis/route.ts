@@ -5,6 +5,9 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { recordArtifact, resolveArtifactIds } from "@/lib/modules/recordArtifact";
+import { ARTIFACT_TYPES } from "@/lib/modules/artifact-types";
+import { requireModulePermission } from "@/lib/permissions";
 
 type Params = { params: { id: string } };
 
@@ -24,9 +27,8 @@ const bodySchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "issue_hypothesis", "view");
+  if (deny) return deny;
 
   const rows = await query(
     `SELECT * FROM issue_hypotheses WHERE project_id = $1 ORDER BY priority_rank NULLS LAST, created_at`,
@@ -38,9 +40,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "issue_hypothesis", "edit");
+  if (deny) return deny;
 
   let raw: unknown;
   try {
@@ -85,6 +86,19 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!row) {
     return NextResponse.json({ data: null, error: "DB登録に失敗しました" }, { status: 500 });
   }
+
+  // 成果物レジストリに登録（R2-3）
+  const sourceIds = await resolveArtifactIds(params.id, "gap_analysis", [d.gap_analysis_id]);
+  await recordArtifact({
+    projectId: params.id,
+    moduleId: "issue_hypothesis",
+    artifactType: ARTIFACT_TYPES.issue_hypothesis.hypothesis_sheet,
+    artifactRecordId: row.id,
+    sourceArtifactIds: sourceIds,
+    derivationNote: d.gap_analysis_id
+      ? `ギャップ分析(${d.gap_analysis_id})から課題仮説を設定`
+      : undefined,
+  }).catch((e) => console.error("recordArtifact(issue_hypothesis) 失敗:", e));
 
   return NextResponse.json({ data: { id: row.id }, error: null }, { status: 201 });
 }

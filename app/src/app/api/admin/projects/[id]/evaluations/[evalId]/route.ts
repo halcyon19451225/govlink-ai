@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { queryOne } from "@/lib/db";
+import { requireModulePermission } from "@/lib/permissions";
 
 type Params = { params: { id: string; evalId: string } };
 
@@ -26,9 +27,8 @@ const patchSchema = z.object({
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "program_evaluation", "edit");
+  if (deny) return deny;
 
   let raw: unknown;
   try {
@@ -98,9 +98,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "program_evaluation", "edit");
+  if (deny) return deny;
 
   await queryOne(
     "DELETE FROM program_evaluations WHERE id = $1 AND project_id = $2 RETURNING id",

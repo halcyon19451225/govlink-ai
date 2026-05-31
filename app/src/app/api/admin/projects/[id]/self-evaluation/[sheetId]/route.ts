@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { requireModulePermission } from "@/lib/permissions";
 
 type Params = { params: { id: string; sheetId: string } };
 
@@ -20,9 +21,8 @@ const patchSchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "self_evaluation", "view");
+  if (deny) return deny;
 
   const rows = await query(
     `SELECT s.id, s.project_id, s.checkpoint_id, s.program_evaluation_id,
@@ -66,9 +66,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "self_evaluation", "edit");
+  if (deny) return deny;
 
   let raw: unknown;
   try {

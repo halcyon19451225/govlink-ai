@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import { queryOne } from "@/lib/db";
+import { queryOne, query } from "@/lib/db";
 import { calcZScore } from "@/lib/stats/z-score";
 
 type Params = { params: { id: string } };
@@ -54,6 +54,17 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { mean, stddev, calculationSteps } = result;
 
+  // gap_analysis の成果物 ID を解決して artifact_id に設定（R2-5）
+  const artifactRow = await query<{ id: string }>(
+    `SELECT ma.id FROM module_artifacts ma
+     JOIN gap_analyses ga ON ga.id = ma.artifact_record_id::uuid
+     WHERE ma.project_id = $1 AND ma.module_id = 'gap_analysis'
+       AND ga.indicator_name = $2
+     ORDER BY ma.updated_at DESC LIMIT 1`,
+    [params.id, indicator_name],
+  );
+  const resolvedArtifactId = artifactRow[0]?.id ?? null;
+
   const row = await queryOne<{ id: string }>(
     `INSERT INTO statistical_analyses
        (project_id, artifact_id, module_id, analysis_type, indicator_name,
@@ -63,7 +74,7 @@ export async function POST(req: NextRequest, { params }: Params) {
      RETURNING id`,
     [
       params.id,
-      null,
+      resolvedArtifactId,
       "gap_analysis",
       "zscore",
       indicator_name,

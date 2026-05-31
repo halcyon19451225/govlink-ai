@@ -114,7 +114,15 @@
       "Bash(mkdir -p \"/Users/halcy/Documents/govlink-ai/app/src/app/api/admin/members/[id]/role\")",
       "Bash(git -C /Users/halcy/Documents/govlink-ai/app status)",
       "Bash(git -C /Users/halcy/Documents/govlink-ai/app log --oneline -5)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(grep -niE \"FROM |INSERT INTO|UPDATE |JOIN |project_datasets|gap_analyses|SELECT\" gap-analysis/ai-analyze/route.ts)",
+      "Bash(grep -niE \"FROM |INSERT INTO|UPDATE |JOIN |issue_hypotheses|gap_anal|SELECT\" logic-model/ai-generate/route.ts)",
+      "Bash(grep -niE \"FROM |INSERT INTO|UPDATE |JOIN |logic_model|SELECT\" evaluations/route.ts)",
+      "Bash(grep -niE \"FROM |INSERT INTO|UPDATE |JOIN |logic_model\" evaluations/\\\\[evalId\\\\]/route.ts)",
+      "Bash(sed -n '247,268p' infra/migrations/010_care_plan_suite.sql)",
+      "Bash(sed -n '299,333p' infra/migrations/010_care_plan_suite.sql)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(mkdir -p \"app/src/app/api/admin/projects/[id]/settings/modules\")"
     ]
   }
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import BackButton from "@/components/BackButton";
 import CycleDesigner from "@/components/pdca/CycleDesigner";
 import type { TemplateWithCycles } from "@/lib/templates";
+import { checkModuleCompatibility } from "@/lib/modules/compatibility-checker";
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
 
@@ -26,10 +27,10 @@ const ALL_MODULES = [
   { id: "resources",     label: "リソース管理",       description: "事業費・人員管理" },
 ];
 
-// モジュール依存関係
-const MODULE_DEPS: Record<string, string[]> = {
+// テンプレート固有の依存関係（CAUSAL_EDGES に存在しないテンプレート専用モジュール用）
+// CAUSAL_EDGES に含まれるモジュール（logic_model など）は checkModuleCompatibility でチェック
+const TEMPLATE_ONLY_DEPS: Record<string, string[]> = {
   ebpm: ["kpi"],
-  logic_model: ["kpi"],
 };
 
 // ─── スタイル ─────────────────────────────────────────────────────────────────
@@ -226,16 +227,38 @@ function ModulesTab({
     }));
   };
 
-  // 依存エラーチェック
+  // 有効モジュールIDを取得
+  const enabledIds = ALL_MODULES.filter((m) => isEnabled(m.id)).map((m) => m.id);
+
+  // causal-graph.ts の CAUSAL_EDGES ベースの互換チェック
+  const compatResult = useMemo(
+    () => checkModuleCompatibility(enabledIds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config],
+  );
+
+  // テンプレート専用依存チェック（TEMPLATE_ONLY_DEPS）
   const getDepsWarning = (id: string): string | null => {
-    const deps = MODULE_DEPS[id];
-    if (!deps) return null;
-    const missing = deps.filter((d) => !isEnabled(d));
-    if (missing.length === 0) return null;
-    return `依存モジュールが無効: ${missing.join(", ")}`;
+    // causal-graph の依存欠落
+    const causalMissing = compatResult.missingDeps
+      .filter((d) => d.module === id)
+      .map((d) => d.requires);
+    // テンプレート専用依存
+    const tmplDeps = TEMPLATE_ONLY_DEPS[id] ?? [];
+    const tmplMissing = tmplDeps.filter((d) => !isEnabled(d));
+    const allMissing = [...causalMissing, ...tmplMissing];
+    if (allMissing.length === 0) return null;
+    return `依存モジュールが無効: ${allMissing.join(", ")}`;
   };
 
+  // ブロッキングエラーがある場合は保存を禁止
+  const hasBlockingError = compatResult.incompatWarnings.some((w) => w.isBlocking);
+
   const handleSave = async () => {
+    if (hasBlockingError) {
+      setError("非互換のモジュール設定があります。保存できません。");
+      return;
+    }
     setSaving(true);
     setError(null);
     setSuccess(false);
@@ -277,6 +300,20 @@ function ModulesTab({
           保存しました
         </div>
       )}
+
+      {/* causal-graph.ts による互換チェック警告 */}
+      {compatResult.incompatWarnings.map((w) => (
+        <div
+          key={`${w.moduleA}-${w.moduleB}`}
+          style={
+            w.isBlocking
+              ? { background: "#ef444410", border: "1px solid #ef444430", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#f87171" }
+              : { background: "#f59e0b10", border: "1px solid #f59e0b30", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#fbbf24" }
+          }
+        >
+          {w.isBlocking ? "⛔" : "⚠"} {w.warningMessage}
+        </div>
+      ))}
 
       <div className="grid gap-3 sm:grid-cols-2">
         {ALL_MODULES.map((mod) => {

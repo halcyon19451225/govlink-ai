@@ -53,6 +53,7 @@ export default async function ModulesSettingsPage({
       <ModuleGraphClient
         projectModules={projectModules}
         allModules={allModules}
+        projectId={params.id}
         rules={rules}
       />
     </div>

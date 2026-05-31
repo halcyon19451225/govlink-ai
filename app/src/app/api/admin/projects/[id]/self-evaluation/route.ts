@@ -5,6 +5,9 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { recordArtifact, resolveArtifactIds } from "@/lib/modules/recordArtifact";
+import { ARTIFACT_TYPES } from "@/lib/modules/artifact-types";
+import { requireModulePermission } from "@/lib/permissions";
 
 type Params = { params: { id: string } };
 
@@ -21,15 +24,25 @@ const bodySchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "self_evaluation", "view");
+  if (deny) return deny;
 
+  // program_evaluations を JOIN して自己評価記入時のコンテキストを返す（R1-6）
   const rows = await query(
     `SELECT s.id, s.project_id, s.checkpoint_id, s.program_evaluation_id,
             s.title, s.has_interim_review, s.background, s.activities,
             s.target_and_metrics, s.evaluation_method, s.evaluation_timing,
             s.created_at::text,
+            json_build_object(
+              'id', pe.id,
+              'evaluation_tier', pe.evaluation_tier,
+              'fiscal_year', pe.fiscal_year,
+              'result', pe.result,
+              'achievement_rate', pe.achievement_rate,
+              'findings', pe.findings,
+              'improvement_actions', pe.improvement_actions,
+              'next_steps', pe.next_steps
+            ) FILTER (WHERE pe.id IS NOT NULL) AS upstream_program_evaluation,
             COALESCE(json_agg(
               json_build_object(
                 'id', e.id,
@@ -51,9 +64,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
               ) ORDER BY e.fiscal_year, e.period_type
             ) FILTER (WHERE e.id IS NOT NULL), '[]') AS entries
      FROM self_evaluation_sheets s
+     LEFT JOIN program_evaluations pe ON pe.id = s.program_evaluation_id
      LEFT JOIN self_evaluation_entries e ON e.sheet_id = s.id
      WHERE s.project_id = $1
-     GROUP BY s.id
+     GROUP BY s.id, pe.id
      ORDER BY s.created_at`,
     [params.id],
   );
@@ -63,9 +77,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
+  const deny = await requireModulePermission(session, params.id, "self_evaluation", "edit");
+  if (deny) return deny;
 
   let raw: unknown;
   try {
@@ -106,6 +119,23 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!row) {
     return NextResponse.json({ data: null, error: "DB登録に失敗しました" }, { status: 500 });
   }
+
+  // 成果物レジストリに登録（R2-3）
+  const sourceIds = await resolveArtifactIds(
+    params.id,
+    "program_evaluation",
+    [d.program_evaluation_id],
+  );
+  await recordArtifact({
+    projectId: params.id,
+    moduleId: "self_evaluation",
+    artifactType: ARTIFACT_TYPES.self_evaluation.self_eval_sheet,
+    artifactRecordId: (row as { id: string }).id,
+    sourceArtifactIds: sourceIds,
+    derivationNote: d.program_evaluation_id
+      ? `プログラム評価(${d.program_evaluation_id})に基づく自己評価シート`
+      : undefined,
+  }).catch((e) => console.error("recordArtifact(self_evaluation) 失敗:", e));
 
   return NextResponse.json({ data: row, error: null }, { status: 201 });
 }

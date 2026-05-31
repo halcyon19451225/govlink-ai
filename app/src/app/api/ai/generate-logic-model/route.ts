@@ -6,8 +6,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
-import { transaction } from "@/lib/db";
+import { transaction, queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
+import { recordArtifact, resolveArtifactIds } from "@/lib/modules/recordArtifact";
 
 const kpiSchema = z.object({
   label: z.string(),
@@ -20,6 +21,7 @@ const bodySchema = z.object({
   title: z.string().min(1, "政策名は必須です"),
   description: z.string().default(""),
   kpis: z.array(kpiSchema).default([]),
+  issueHypothesisId: z.string().uuid().optional().nullable(),
 });
 
 // ロジックモデル生成の指示（プロンプトキャッシュ対象）
@@ -72,6 +74,7 @@ async function saveLogicModel(
   projectId: string,
   title: string,
   model: LogicModelJson,
+  issueHypothesisId?: string | null,
 ): Promise<void> {
   const outcomes = [
     ...model.short_outcomes.map((text) => ({ term: "short", text })),
@@ -81,12 +84,13 @@ async function saveLogicModel(
   await transaction(async (client) => {
     // 既存のロジックモデルを削除して再作成（最新版を1件保持）
     await client.query("DELETE FROM logic_models WHERE project_id = $1", [projectId]);
-    await client.query(
+    const result = await client.query<{ id: string }>(
       `INSERT INTO logic_models
          (project_id, inputs, activities, outputs, outcomes,
-          name, status, ai_generated, version)
+          name, status, ai_generated, version, issue_hypothesis_id)
        VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb,
-               $6, 'draft', true, 1)`,
+               $6, 'draft', true, 1, $7)
+       RETURNING id`,
       [
         projectId,
         JSON.stringify(model.inputs),
@@ -94,8 +98,27 @@ async function saveLogicModel(
         JSON.stringify(model.outputs),
         JSON.stringify(outcomes),
         title,
+        issueHypothesisId ?? null,
       ],
     );
+    const modelId = result.rows[0]?.id;
+    if (modelId) {
+      // 成果物レジストリに登録（R2-3）
+      const sourceIds = await resolveArtifactIds(projectId, "issue_hypothesis", [issueHypothesisId]);
+      await recordArtifact(
+        {
+          projectId,
+          moduleId: "logic_model",
+          artifactType: "logic_model_v1",
+          artifactRecordId: modelId,
+          sourceArtifactIds: sourceIds,
+          derivationNote: issueHypothesisId
+            ? `課題仮説(${issueHypothesisId})からAIでロジックモデルを生成`
+            : "AIによるロジックモデル自動生成",
+        },
+        client,
+      );
+    }
   });
 }
 
@@ -141,7 +164,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: null, error: message }, { status: 400 });
   }
 
-  const { projectId, title, description, kpis } = parsed.data;
+  const { projectId, title, description, kpis, issueHypothesisId } = parsed.data;
+
+  // 課題仮説コンテキストを取得（R1-1）
+  let hypothesisContext = "";
+  if (issueHypothesisId) {
+    const hyp = await queryOne<{
+      title: string;
+      description: string | null;
+      root_cause: string | null;
+      proposed_measures: string[] | null;
+    }>(
+      `SELECT title, description, root_cause, proposed_measures
+       FROM issue_hypotheses WHERE id = $1`,
+      [issueHypothesisId],
+    );
+    if (hyp) {
+      const parts = [`【課題仮説】${hyp.title}`];
+      if (hyp.description) parts.push(`課題概要: ${hyp.description}`);
+      if (hyp.root_cause) parts.push(`根本原因: ${hyp.root_cause}`);
+      if (hyp.proposed_measures && hyp.proposed_measures.length > 0)
+        parts.push(`提案施策: ${hyp.proposed_measures.join("、")}`);
+      hypothesisContext = "\n\n" + parts.join("\n");
+    }
+  }
 
   const kpiText =
     kpis.length > 0
@@ -152,7 +198,7 @@ export async function POST(req: NextRequest) {
   const knowledgePart = knowledgeContext ? `${knowledgeContext}\n\n` : "";
 
   const userPrompt = `${knowledgePart}政策名: ${title}
-概要: ${description || "（未記入）"}${kpiText}
+概要: ${description || "（未記入）"}${hypothesisContext}${kpiText}
 
 上記の政策についてロジックモデルをJSON形式で生成してください。`;
 
@@ -192,7 +238,7 @@ export async function POST(req: NextRequest) {
           const jsonText = extractJson(fullText);
           const parsed = JSON.parse(jsonText) as unknown;
           if (validateLogicModel(parsed)) {
-            await saveLogicModel(projectId, title, parsed);
+            await saveLogicModel(projectId, title, parsed, issueHypothesisId);
           } else {
             console.error("Logic model JSON の構造が不正です:", jsonText);
           }
