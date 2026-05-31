@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { LineageNode, LineageEdge } from "@/app/api/admin/projects/[id]/lineage/route";
 
 const MODULE_LABELS: Record<string, string> = {
   dataset_manager: "DS",
@@ -13,19 +14,6 @@ const MODULE_LABELS: Record<string, string> = {
   self_evaluation: "SE",
 };
 
-interface ArtifactNode {
-  id: string;
-  module_id: string;
-  artifact_type: string;
-  derivation_note: string | null;
-  created_at: string;
-  updated_at: string;
-  is_stale: boolean;
-  stale_datasets: string[];
-  upstream: ArtifactNode[];
-  downstream: ArtifactNode[];
-}
-
 interface ArtifactLineagePanelProps {
   projectId: string;
   artifactId: string;
@@ -33,8 +21,15 @@ interface ArtifactLineagePanelProps {
   onClose: () => void;
 }
 
-function ArtifactCard({ node, direction }: { node: ArtifactNode; direction: "upstream" | "downstream" }) {
-  const tag = MODULE_LABELS[node.module_id] ?? node.module_id.toUpperCase().slice(0, 2);
+function ArtifactCard({
+  node,
+  direction,
+}: {
+  node: LineageNode;
+  direction: "upstream" | "downstream";
+}) {
+  const tag =
+    MODULE_LABELS[node.module_id] ?? node.module_id.toUpperCase().slice(0, 2);
   const color = direction === "upstream" ? "#6366f1" : "#f59e0b";
 
   return (
@@ -70,22 +65,52 @@ export default function ArtifactLineagePanel({
   onClose,
 }: ArtifactLineagePanelProps) {
   const [loading, setLoading] = useState(true);
-  const [node, setNode] = useState<ArtifactNode | null>(null);
+  const [currentNode, setCurrentNode] = useState<LineageNode | null>(null);
+  const [upstreamNodes, setUpstreamNodes] = useState<LineageNode[]>([]);
+  const [downstreamNodes, setDownstreamNodes] = useState<LineageNode[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/admin/projects/${projectId}/lineage?artifactId=${artifactId}`)
-      .then((r) => r.json() as Promise<{ data: ArtifactNode[] | null; error: string | null }>)
+    fetch(
+      `/api/admin/projects/${projectId}/lineage?artifactId=${artifactId}`,
+    )
+      .then(
+        (r) =>
+          r.json() as Promise<{
+            data: { nodes: LineageNode[]; edges: LineageEdge[] } | null;
+            error: string | null;
+          }>,
+      )
       .then(({ data, error: err }) => {
-        if (err) { setError(err); return; }
-        setNode(data?.[0] ?? null);
+        if (err) {
+          setError(err);
+          return;
+        }
+        if (!data) return;
+
+        const { nodes, edges } = data;
+        const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+        const target = nodeMap.get(artifactId) ?? null;
+        setCurrentNode(target);
+
+        // エッジから上流・下流を解決
+        const up = edges
+          .filter((e) => e.target === artifactId)
+          .map((e) => nodeMap.get(e.source))
+          .filter((n): n is LineageNode => !!n);
+
+        const down = edges
+          .filter((e) => e.source === artifactId)
+          .map((e) => nodeMap.get(e.target))
+          .filter((n): n is LineageNode => !!n);
+
+        setUpstreamNodes(up);
+        setDownstreamNodes(down);
       })
       .catch(() => setError("データの取得に失敗しました"))
       .finally(() => setLoading(false));
   }, [projectId, artifactId]);
-
-  const hasDownstream = (node?.downstream?.length ?? 0) > 0;
 
   return (
     <div
@@ -117,26 +142,26 @@ export default function ArtifactLineagePanel({
         {error && (
           <p className="text-xs text-red-400 text-center py-4">{error}</p>
         )}
-        {!loading && !error && !node && (
+        {!loading && !error && !currentNode && (
           <p className="text-xs text-slate-500 text-center py-8">
             成果物が見つかりません
           </p>
         )}
 
-        {node && (
+        {currentNode && (
           <>
-            {/* 下流成果物がある場合の赤色警告 */}
-            {hasDownstream && (
+            {/* 下流影響警告 */}
+            {downstreamNodes.length > 0 && (
               <div
                 className="rounded-lg border p-3 text-xs"
                 style={{ borderColor: "#ef444460", background: "#ef444410", color: "#f87171" }}
               >
-                ⚠ このデータを更新すると後続の分析（{node.downstream.length}件）に影響します
+                ⚠ このデータを更新すると後続の分析（{downstreamNodes.length}件）に影響します
               </div>
             )}
 
             {/* 陳腐化警告 */}
-            {node.is_stale && (
+            {currentNode.is_stale && (
               <div
                 className="rounded-lg border p-3 text-xs"
                 style={{ borderColor: "#f59e0b60", background: "#f59e0b10", color: "#fbbf24" }}
@@ -150,11 +175,11 @@ export default function ArtifactLineagePanel({
               <p className="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wide">
                 ▲ 入力に使われた上流成果物
               </p>
-              {node.upstream.length === 0 ? (
+              {upstreamNodes.length === 0 ? (
                 <p className="text-xs text-slate-600">（上流成果物なし）</p>
               ) : (
                 <div className="space-y-2">
-                  {node.upstream.map((u) => (
+                  {upstreamNodes.map((u) => (
                     <ArtifactCard key={u.id} node={u} direction="upstream" />
                   ))}
                 </div>
@@ -170,12 +195,16 @@ export default function ArtifactLineagePanel({
                 className="rounded-lg border p-3"
                 style={{ borderColor: "#6366f180", background: "#6366f110" }}
               >
-                <p className="text-xs font-medium text-slate-200">{node.artifact_type}</p>
-                {node.derivation_note && (
-                  <p className="text-xs text-slate-400 mt-1">{node.derivation_note}</p>
+                <p className="text-xs font-medium text-slate-200">
+                  {currentNode.artifact_type}
+                </p>
+                {currentNode.derivation_note && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    {currentNode.derivation_note}
+                  </p>
                 )}
                 <p className="text-xs text-slate-500 mt-1">
-                  更新: {new Date(node.updated_at).toLocaleDateString("ja-JP")}
+                  更新: {new Date(currentNode.updated_at).toLocaleDateString("ja-JP")}
                 </p>
               </div>
             </section>
@@ -185,11 +214,11 @@ export default function ArtifactLineagePanel({
               <p className="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wide">
                 ▼ この成果物を参照している後工程
               </p>
-              {node.downstream.length === 0 ? (
+              {downstreamNodes.length === 0 ? (
                 <p className="text-xs text-slate-600">（後続成果物なし）</p>
               ) : (
                 <div className="space-y-2">
-                  {node.downstream.map((d) => (
+                  {downstreamNodes.map((d) => (
                     <ArtifactCard key={d.id} node={d} direction="downstream" />
                   ))}
                 </div>
