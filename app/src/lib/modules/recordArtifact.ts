@@ -83,6 +83,9 @@ export async function recordArtifact(
 /**
  * 上流モジュールのレコード ID から module_artifacts.id を解決する。
  * 見つからなければ空配列を返す（上流がまだ未登録でも下流の登録を妨げない）。
+ *
+ * 注意: 上流レコード作成前に R2 が未デプロイだった場合、バックフィルが必要。
+ * → scripts/backfill-artifacts.sql を実行してから再登録すること。
  */
 export async function resolveArtifactIds(
   projectId: string,
@@ -94,9 +97,17 @@ export async function resolveArtifactIds(
 
   const rows = await query<{ id: string }>(
     `SELECT id FROM module_artifacts
-     WHERE project_id = $1 AND module_id = $2 AND artifact_record_id = ANY($3::uuid[])`,
+     WHERE project_id = $1 AND module_id = $2 AND artifact_record_id::text = ANY($3::text[])`,
     [projectId, moduleId, valid],
   );
+
+  if (rows.length === 0 && process.env.NODE_ENV !== "production") {
+    console.warn(
+      `[resolveArtifactIds] ${moduleId} の上流アーティファクトが見つかりません。` +
+      ` project=${projectId} recordIds=${valid.join(",")}` +
+      ` → バックフィル SQL を実行してください`,
+    );
+  }
   return rows.map((r) => r.id);
 }
 
