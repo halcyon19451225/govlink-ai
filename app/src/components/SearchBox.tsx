@@ -76,11 +76,13 @@ export default function SearchBox() {
     <div ref={containerRef} className="relative flex-1 max-w-xs" onKeyDown={handleKey}>
       {/* 入力エリア */}
       <div
-        className="flex items-center rounded-xl border overflow-hidden transition-all duration-200"
+        className="neu-input flex items-center overflow-hidden transition-all duration-200"
         style={{
-          background: "rgba(255,255,255,0.05)",
-          borderColor: open ? "rgba(6,182,212,0.5)" : "var(--border)",
-          backdropFilter: "blur(8px)",
+          padding: "0",
+          borderRadius: "12px",
+          boxShadow: open
+            ? "inset 4px 4px 8px var(--neu-shadow-dark, rgba(163,163,163,0.5)), inset -4px -4px 8px var(--neu-shadow-light, rgba(255,255,255,0.8)), 0 0 0 2px rgba(6,182,212,0.35)"
+            : undefined,
         }}
       >
         <span className="pl-3 shrink-0" style={{ color: "var(--text-secondary)" }}>
@@ -122,7 +124,7 @@ export default function SearchBox() {
       {/* ドロップダウン */}
       {open && hasResults && (
         <div
-          className="glass-dark absolute top-full left-0 right-0 mt-1.5 z-50 overflow-hidden shadow-2xl"
+          className="neu-card absolute top-full left-0 right-0 mt-1.5 z-50 overflow-hidden shadow-2xl"
           style={{ maxHeight: "360px", overflowY: "auto" }}
         >
           {results.features.length > 0 && (
@@ -177,7 +179,7 @@ export default function SearchBox() {
       {/* 検索したが結果なし */}
       {open && results && !hasResults && query.trim() && (
         <div
-          className="glass-dark absolute top-full left-0 right-0 mt-1.5 z-50 px-4 py-5 text-sm text-center"
+          className="neu-card absolute top-full left-0 right-0 mt-1.5 z-50 px-4 py-5 text-sm text-center"
           style={{ color: "var(--text-secondary)" }}
         >
           「{query}」に一致する結果がありません

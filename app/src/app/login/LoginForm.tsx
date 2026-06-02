@@ -57,10 +57,8 @@ const CheckCircleIcon = () => (
 // 共通スタイル
 // ────────────────────────────────────────────────
 const inputBase =
-  "w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:border-cyan-500 transition-colors duration-200";
+  "neu-input w-full text-sm focus:outline-none transition-all duration-200";
 const inputStyle = {
-  background: "var(--bg-input, #161922)",
-  borderColor: "var(--border, rgba(255,255,255,0.1))",
   color: "var(--text-primary)",
 };
 
@@ -220,8 +218,8 @@ export default function LoginForm({ providers }: Props) {
       </div>
 
       <div
-        className="glass-card relative w-full max-w-[400px] p-8 flex flex-col gap-6"
-        style={{ boxShadow: "0 25px 60px rgba(99,102,241,0.15)" }}
+        className="neu-card relative w-full max-w-[400px] p-8 flex flex-col gap-6"
+        style={{}}
       >
         {/* ────── STEP: ログイン ────── */}
         {step === "login" && (

@@ -1,5 +1,17 @@
 # GovLink — 地域包括ケア計画策定支援スイート 実装指示 v2
 
+> **設計変更注記（2026-06-02）: プログラム評価5階層再設計 案B-2 実装済み**
+>
+> `docs/PROGRAM_EVALUATION_REDESIGN.md` に定義された案B-2（フェーズP1〜P5）を実装した。
+> 主な変更点:
+> - 効率性評価（旧 `cost_efficiency` モジュール）を `program_evaluations.evaluation_tier='efficiency'` として統合。
+> - `cost_efficiency_records` は維持し `program_evaluation_id` で1対1紐付け（UNIQUE 部分インデックス）。
+> - ロジックモデルを評価全体の「軸」として各 tier が参照（`LogicModelContext` コンポーネント）。
+> - プログラム評価UIを第3〜5階層の3タブ構成に変更（`ProgramEvaluationClient.tsx`）。
+> - 旧 `cost-efficiency` ページ・API は後方互換として維持。移動案内バナーを表示。
+> - `module_artifacts` に `efficiency_eval` アーティファクトタイプを追加（P5）。
+> - DBマイグレーション `016_program_eval_integration.sql` を Supabase で実行すること。
+
 ## 背景・前提（既存コードベース）
 
 - GitHub: `halcyon19451225/govlink-ai`

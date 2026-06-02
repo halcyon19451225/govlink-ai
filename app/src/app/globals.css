@@ -2,49 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── デフォルト（ダーク）変数 ── */
+/* ═══════════════════════════════════════════════════════
+   CSS 変数
+   ═══════════════════════════════════════════════════════ */
+
 :root {
-  --background: #111827;
-  --foreground: #f1f5f9;
-  --bg-primary: #111827;
-  --bg-secondary: #1a2035;
-  --bg-input: #1e2538;
-  --text-primary: #f1f5f9;
-  --text-secondary: #9ca3af;
-  --border: rgba(255, 255, 255, 0.12);
+  /* ニューモーフィズム（ライトテーマ） */
+  --neu-bg:             #e8e8e8;
+  --neu-shadow-light:   rgba(255, 255, 255, 0.8);
+  --neu-shadow-dark:    rgba(163, 163, 163, 0.6);
+
+  /* 旧変数（後方互換） */
+  --background: #e8e8e8;
+  --foreground: #2a2a3a;
+  --bg-primary:   #e8e8e8;
+  --bg-secondary: #ebebeb;
+  --bg-input:     #e8e8e8;
+  --text-primary:   #2a2a3a;
+  --text-secondary: #6b6b7b;
+  --border: rgba(163, 163, 163, 0.3);
 }
 
 [data-theme="dark"] {
-  --bg-primary: #111827;
-  --bg-secondary: #1a2035;
-  --bg-input: #1e2538;
-  --text-primary: #f1f5f9;
+  --neu-bg:           #1e1e2e;
+  --neu-shadow-light: rgba(40, 40, 60, 0.6);
+  --neu-shadow-dark:  rgba(0, 0, 0, 0.4);
+
+  --background: #1e1e2e;
+  --foreground: #e2e8f0;
+  --bg-primary:   #1e1e2e;
+  --bg-secondary: #252535;
+  --bg-input:     #1e1e2e;
+  --text-primary:   #e2e8f0;
   --text-secondary: #9ca3af;
-  --border: rgba(255, 255, 255, 0.12);
+  --border: rgba(255, 255, 255, 0.1);
 }
 
-/* ── ライトテーマ（グレーホワイト） ── */
 [data-theme="light"] {
-  --bg-primary: #f5f5f7;
-  --bg-secondary: transparent;
-  --bg-input: rgba(0, 0, 0, 0.06);
-  --text-primary: #1a1a2e;
+  --neu-bg:           #e8e8e8;
+  --neu-shadow-light: rgba(255, 255, 255, 0.8);
+  --neu-shadow-dark:  rgba(163, 163, 163, 0.6);
+
+  --bg-primary:   #e8e8e8;
+  --bg-secondary: #ebebeb;
+  --bg-input:     #e8e8e8;
+  --text-primary:   #2a2a3a;
   --text-secondary: #6b6b7b;
-  --border: rgba(200, 200, 220, 0.35);
+  --border: rgba(163, 163, 163, 0.3);
 }
 
 body {
   color: var(--text-primary);
-  background-color: var(--bg-primary);
+  background-color: var(--neu-bg);
   font-family: Arial, Helvetica, sans-serif;
   transition: background-color 0.25s ease, color 0.25s ease;
   min-height: 100vh;
 }
 
-/* ── ライトモード: Tailwind slate クラスのカラーオーバーライド ── */
+/* ═══════════════════════════════════════════════════════
+   ライトモード: Tailwind slate クラスのカラーオーバーライド
+   ═══════════════════════════════════════════════════════ */
+
 [data-theme="light"] .text-slate-100,
 [data-theme="light"] .text-slate-200 {
-  color: #1a1a2e;
+  color: #2a2a3a;
 }
 [data-theme="light"] .text-slate-300 {
   color: #3a3a50;
@@ -57,16 +78,19 @@ body {
   color: #9ca3af;
 }
 
-/* ── スクロールバー ── */
+/* ═══════════════════════════════════════════════════════
+   スクロールバー
+   ═══════════════════════════════════════════════════════ */
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: var(--neu-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.2);
+  background: var(--neu-shadow-dark);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -79,9 +103,73 @@ body {
   }
 }
 
-/* ═══════════════════════════════════════
-   Liquid Glass — ダークテーマ（変更なし）
-   ═══════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   ニューモーフィズム — 共通クラス
+   ライト: #e8e8e8 背景で凸/凹シャドウ
+   ダーク:  #1e1e2e 背景で凸/凹シャドウ
+   ═══════════════════════════════════════════════════════ */
+
+/* 凸型（浮き出る）カード */
+.neu-card {
+  background: var(--neu-bg);
+  border-radius: 20px;
+  border: none;
+  box-shadow:
+    8px  8px 16px var(--neu-shadow-dark),
+    -8px -8px 16px var(--neu-shadow-light);
+}
+
+/* 凹型（押し込まれる）カード */
+.neu-card-inset {
+  background: var(--neu-bg);
+  border-radius: 20px;
+  border: none;
+  box-shadow:
+    inset  6px  6px 12px var(--neu-shadow-dark),
+    inset -6px -6px 12px var(--neu-shadow-light);
+}
+
+/* ボタン（凸型・クリックで凹む） */
+.neu-button {
+  background: var(--neu-bg);
+  border-radius: 12px;
+  border: none;
+  box-shadow:
+    4px  4px 8px var(--neu-shadow-dark),
+    -4px -4px 8px var(--neu-shadow-light);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+.neu-button:active {
+  box-shadow:
+    inset  3px  3px 6px var(--neu-shadow-dark),
+    inset -3px -3px 6px var(--neu-shadow-light);
+}
+
+/* 入力フィールド（凹型） */
+.neu-input {
+  background: var(--neu-bg);
+  border-radius: 12px;
+  border: none;
+  box-shadow:
+    inset  4px  4px 8px var(--neu-shadow-dark),
+    inset -4px -4px 8px var(--neu-shadow-light);
+  padding: 12px 16px;
+  color: var(--text-primary);
+  outline: none;
+  transition: box-shadow 0.15s ease;
+}
+.neu-input:focus {
+  box-shadow:
+    inset  4px  4px 8px var(--neu-shadow-dark),
+    inset -4px -4px 8px var(--neu-shadow-light),
+    0 0 0 2px rgba(99, 102, 241, 0.35);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Liquid Glass（旧クラス）— ダークテーマはそのまま維持
+   ライトテーマではニューモーフィズムにオーバーライド
+   ═══════════════════════════════════════════════════════ */
 
 .glass-card {
   background: linear-gradient(
@@ -172,90 +260,66 @@ body {
     inset 0 -1px 0 rgba(0, 0, 0, 0.1);
 }
 
-/* ═══════════════════════════════════════
-   Liquid Glass — ライトテーマ
-   ═══════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   ライトテーマ: glass-* → ニューモーフィズムにオーバーライド
+   ═══════════════════════════════════════════════════════ */
 
 [data-theme="light"] .glass-card {
-  background: transparent;
-  backdrop-filter: blur(28px) saturate(110%) brightness(1.06);
-  -webkit-backdrop-filter: blur(28px) saturate(110%) brightness(1.06);
-  border-radius: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.9);
-  border-left: 1px solid rgba(255, 255, 255, 0.75);
-  border-right: 1px solid rgba(200, 200, 215, 0.3);
-  border-bottom: 1px solid rgba(200, 200, 215, 0.35);
+  background: var(--neu-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: 20px;
+  border: none;
   box-shadow:
-    0 2px 4px rgba(120, 120, 150, 0.08),
-    0 6px 16px rgba(100, 100, 140, 0.1),
-    0 16px 40px rgba(80, 80, 120, 0.09),
-    0 1px 2px rgba(150, 150, 180, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(200, 200, 220, 0.15),
-    inset 1px 0 0 rgba(255, 255, 255, 0.85),
-    inset -1px 0 0 rgba(200, 200, 220, 0.1);
+    8px  8px 16px var(--neu-shadow-dark),
+    -8px -8px 16px var(--neu-shadow-light);
   position: relative;
   overflow: hidden;
 }
 
-[data-theme="light"] .glass-card::before {
-  background: transparent;
-}
-
+[data-theme="light"] .glass-card::before,
 [data-theme="light"] .glass-card::after {
-  content: '';
-  position: absolute;
-  top: 0; left: 8%; right: 8%;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 1),
-    transparent
-  );
-  pointer-events: none;
+  display: none;
 }
 
 [data-theme="light"] .glass-dark {
-  background: transparent;
-  backdrop-filter: blur(32px) saturate(110%);
-  -webkit-backdrop-filter: blur(32px) saturate(110%);
-  border-radius: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.88);
-  border-left: 1px solid rgba(255, 255, 255, 0.72);
-  border-right: 1px solid rgba(200, 200, 215, 0.25);
-  border-bottom: 1px solid rgba(200, 200, 215, 0.3);
+  background: var(--neu-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: 0;        /* ナビバーは角丸なし */
+  border: none;
   box-shadow:
-    0 4px 16px rgba(100, 100, 140, 0.1),
-    0 12px 32px rgba(80, 80, 120, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    inset 0 -1px 0 rgba(200, 200, 220, 0.12);
+    0 4px 12px var(--neu-shadow-dark),
+    0 -2px 4px var(--neu-shadow-light);
 }
 
 [data-theme="light"] .glass {
-  background: transparent;
-  backdrop-filter: blur(24px) saturate(110%);
-  -webkit-backdrop-filter: blur(24px) saturate(110%);
+  background: var(--neu-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border-radius: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.88);
-  border-left: 1px solid rgba(255, 255, 255, 0.72);
-  border-right: 1px solid rgba(200, 200, 215, 0.25);
-  border-bottom: 1px solid rgba(200, 200, 215, 0.3);
+  border: none;
   box-shadow:
-    0 4px 16px rgba(100, 100, 140, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    8px  8px 16px var(--neu-shadow-dark),
+    -8px -8px 16px var(--neu-shadow-light);
 }
 
-/* アカウントメニュー（ポップアップ）— 白塗りなし・blur強めで視認性確保 */
+/* ポップアップ（アカウントドロップダウン） */
 [data-theme="light"] .glass-dark.is-popup {
-  background: transparent;
-  backdrop-filter: blur(48px) saturate(140%);
-  -webkit-backdrop-filter: blur(48px) saturate(140%);
+  background: var(--neu-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: 20px;
+  box-shadow:
+    8px  8px 24px var(--neu-shadow-dark),
+    -4px -4px 12px var(--neu-shadow-light);
 }
 
-/* ═══════════════════════════════════════
-   Gradient Background
-   ═══════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   Gradient Background（orb 制御）
+   ライトテーマ: orb は非表示（ニューモーフィズムは単色背景）
+   ダークテーマ: orb を維持
+   ═══════════════════════════════════════════════════════ */
 
 .gradient-bg {
   position: fixed;
@@ -269,7 +333,7 @@ body {
   position: absolute;
 }
 
-/* ライトテーマのベース背景グラデーション */
+/* ライトテーマのベース（オーブなし・単色のみ） */
 .light-bg-base {
   display: none;
 }
@@ -277,13 +341,7 @@ body {
   display: block;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(
-    145deg,
-    #f5f5f7 0%,
-    #f0f0f4 40%,
-    #e8e8ef 70%,
-    #dddde8 100%
-  );
+  background: #e8e8e8;
 }
 
 /* ── ダークテーマ orb ── */
@@ -323,36 +381,14 @@ body {
   animation: orb5 13s ease-in-out infinite alternate;
 }
 
-/* ── ライトテーマ orb — 右下への影グラデーション ── */
-[data-theme="light"] .orb-1 {
-  width: 1000px; height: 1000px;
-  bottom: -400px; right: -400px;
-  top: auto; left: auto;
-  background: radial-gradient(circle, rgba(180,180,200,0.5) 0%, transparent 70%);
-  filter: blur(120px);
-  animation: orb1 20s ease-in-out infinite alternate;
-}
-[data-theme="light"] .orb-2 {
-  width: 700px; height: 700px;
-  bottom: 10%; right: 5%;
-  top: auto; left: auto;
-  background: radial-gradient(circle, rgba(160,160,190,0.35) 0%, transparent 70%);
-  filter: blur(100px);
-  animation: orb2 16s ease-in-out infinite alternate;
-}
-[data-theme="light"] .orb-3 {
-  width: 600px; height: 600px;
-  top: -100px; left: -100px;
-  bottom: auto; right: auto;
-  background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, transparent 70%);
-  filter: blur(80px);
-  animation: orb3 18s ease-in-out infinite alternate;
-}
-[data-theme="light"] .orb-4 {
-  opacity: 0;
-}
+/* ライトテーマ: すべての orb を非表示（単色背景を維持） */
+[data-theme="light"] .orb-1,
+[data-theme="light"] .orb-2,
+[data-theme="light"] .orb-3,
+[data-theme="light"] .orb-4,
 [data-theme="light"] .orb-5 {
   opacity: 0;
+  animation: none;
 }
 
 /* ── Orb animations ── */

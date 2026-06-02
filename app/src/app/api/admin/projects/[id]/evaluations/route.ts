@@ -215,7 +215,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       process: ARTIFACT_TYPES.program_evaluation.process_eval,
       outcome_initial: ARTIFACT_TYPES.program_evaluation.initial_outcome_eval,
       outcome_intermediate: ARTIFACT_TYPES.program_evaluation.intermediate_outcome_eval,
-      efficiency: ARTIFACT_TYPES.cost_efficiency.ex_ante,
+      outcome: ARTIFACT_TYPES.program_evaluation.initial_outcome_eval,
+      efficiency: ARTIFACT_TYPES.program_evaluation.efficiency_eval,  // 第5階層（P5: 案B-2）
     };
     const artifactType =
       tierToType[d.evaluation_tier] ?? ARTIFACT_TYPES.program_evaluation.process_eval;

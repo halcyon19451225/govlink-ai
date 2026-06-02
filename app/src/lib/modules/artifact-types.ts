@@ -16,6 +16,7 @@ export const ARTIFACT_TYPES = {
     process_eval: "process_eval",
     initial_outcome_eval: "initial_outcome_eval",
     intermediate_outcome_eval: "intermediate_outcome_eval",
+    efficiency_eval: "efficiency_eval",  // 第5階層: 効率性評価（案B-2統合）
   },
   cost_efficiency: {
     ex_ante: "cost_ratio_calc_ex_ante",
@@ -39,6 +40,7 @@ export type ArtifactType =
   | "process_eval"
   | "initial_outcome_eval"
   | "intermediate_outcome_eval"
+  | "efficiency_eval"
   | "cost_ratio_calc_ex_ante"
   | "cost_ratio_calc_ex_post"
   | "deviation_analysis"

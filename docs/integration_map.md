@@ -1,7 +1,8 @@
 # GovLink AI — データ連携 統合マップ（設計 vs 実装）
 
-> 最終更新: 2026-05-31
-> R1〜R4 フェーズの実装結果を反映。各フェーズの詳細は `docs/REBUILD_PLAN.md` を参照。
+> 最終更新: 2026-06-02
+> R1〜R4 フェーズ + プログラム評価5階層再設計（案B-2 / P1〜P5）の実装結果を反映。
+> 各フェーズの詳細は `docs/REBUILD_PLAN.md`、設計方針は `docs/PROGRAM_EVALUATION_REDESIGN.md` を参照。
 
 ---
 
@@ -13,8 +14,9 @@
 | **gap_analysis → issue_hypothesis** | ギャップの指標値を課題仮説のAI提案に渡す | ✅ 実装済み | `issue-hypothesis/ai-suggest` が `gap_analyses` を読んで `root_cause`/`proposed_measures` を提案。手動登録時も `gap_analysis_id` を保持 | ⚙️ `source_artifact_ids` に gap 成果物IDを記録（R2） |
 | **issue_hypothesis → logic_model** | 課題仮説の内容をロジックモデル生成プロンプトに注入 | ✅ 実装済み | `generate-logic-model` に `issueHypothesisId` を追加。`title`/`description`/`root_cause`/`proposed_measures` をプロンプトに注入。生成行に `issue_hypothesis_id` を保存 | ⚙️ R2 / 🔒 R4 / FK 制約は 015 マイグレーションで追加 |
 | **logic_model → program_evaluation** | ロジックモデルの成果指標（outputs/outcomes）を評価対象として引き継ぐ | ✅ 実装済み | `evaluations` GET で `logic_models` を LEFT JOIN。`upstream_logic_model` として outputs/initial_outcomes/intermediate_outcomes を返す | ⚙️ R2 / 🔒 R4 |
-| **logic_model（投入額）→ cost_efficiency** | ロジックモデルの inputs をコスト計算のプリフィルに渡す | ✅ 実装済み | `cost-efficiency` GET で `program_evaluations → logic_models` を二段階 JOIN。`upstream_logic_model_prefill.inputs` を返す | ⚙️ R2 / 🔒 R4 |
-| **program_evaluation（実績）→ cost_efficiency（事後）** | 評価実績から `actual_total_reduction`/`actual_cost_ratio` を算定 | ✅ 実装済み | `evaluation_type='ex_post'` 作成時に `program_evaluations.achievement_rate` から自動算定。GET で `upstream_program_evaluation` を返す | ⚙️ R2 / 🔒 R4 |
+| **logic_model → program_evaluation（efficiency tier）** | ロジックモデルの inputs を効率性評価の軸（投入コスト参照）に使う | ✅ 実装済み（P3/P4） | `evaluations` GET で `logic_models.inputs` を同梱。`LogicModelContext` が efficiency tier 向けに投入・成果を参照表示 | ⚙️ P5 efficiency_eval 成果物登録済み |
+| **logic_model（投入額）→ cost_efficiency** | ロジックモデルの inputs をコスト計算のプリフィルに渡す | ✅ 実装済み（後方互換維持） | `cost-efficiency` GET で `program_evaluations → logic_models` を二段階 JOIN。`upstream_logic_model_prefill.inputs` を返す（旧API維持） | ⚙️ R2 / 🔒 R4 |
+| **program_evaluation（実績）→ cost_efficiency（事後）** | 評価実績から `actual_total_reduction`/`actual_cost_ratio` を算定 | ✅ 実装済み（後方互換維持） | `evaluation_type='ex_post'` 作成時に `program_evaluations.achievement_rate` から自動算定。GET で `upstream_program_evaluation` を返す | ⚙️ R2 / 🔒 R4 |
 | **program_evaluation → self_evaluation** | 評価結果（result/improvement_actions/next_steps）を自己評価のコンテキストに渡す | ✅ 実装済み | `self-evaluation` GET で `program_evaluations` を LEFT JOIN。`upstream_program_evaluation` を返す | ⚙️ R2 / 🔒 R4 |
 | **dataset_manager → service_volume** | CAUSAL_EDGES で定義された連携 | ⚙️ 成果物連鎖記録のみ | `service_volume` POST 時に `module_artifacts` へ登録。ただし `service_volume_plans` はデータセットを読まない | データフロー（R1）は未実装 |
 | **knowledge → 各 AI モジュール** | ナレッジ辞書（Tier1/2）を AI プロンプトに注入 | ✅ 実装済み | `lib/knowledge-context.ts` の `getKnowledgeContext()` が `project_knowledge_links` + `knowledge_dicts` を読み、`gap-analysis/ai-analyze` と `generate-logic-model` のプロンプトに注入 | R1 以前から稼働 |
@@ -46,8 +48,8 @@
 | issue_hypothesis | `hypothesis_sheet` | gap_analysis の成果物ID | — |
 | logic_model（手動） | `logic_model_v1` | issue_hypothesis の成果物ID | — |
 | logic_model（AI生成） | `logic_model_v1` | issue_hypothesis の成果物ID | — |
-| program_evaluation | `process_eval` / `initial_outcome_eval` / `intermediate_outcome_eval` | logic_model の成果物ID | — |
-| cost_efficiency | `cost_ratio_calc_ex_ante` / `cost_ratio_calc_ex_post` | program_evaluation + logic_model の成果物ID | — |
+| program_evaluation | `process_eval` / `initial_outcome_eval` / `intermediate_outcome_eval` / **`efficiency_eval`** | logic_model の成果物ID | — |
+| cost_efficiency（旧・後方互換） | `cost_ratio_calc_ex_ante` / `cost_ratio_calc_ex_post` | program_evaluation + logic_model の成果物ID | — |
 | service_volume | `deviation_analysis` | （なし） | — |
 | self_evaluation | `self_eval_sheet` | program_evaluation の成果物ID | — |
 
@@ -62,11 +64,22 @@
 `module_incompatibility_rules` は `scripts/sync-causal-graph.ts` で同期する。
 
 ```
-dataset_manager ──→ gap_analysis ──→ issue_hypothesis ──→ logic_model ──→ program_evaluation
-                                                                          ├──→ cost_efficiency
-                                                                          └──→ self_evaluation
+dataset_manager ──→ gap_analysis ──→ issue_hypothesis ──→ logic_model（軸）──→ program_evaluation
+                                                               │               ├── process（第3層）
+                                                               │               ├── outcome（第4層）
+                                                               │               ├── efficiency（第5層）─→ cost_efficiency_records（詳細・1対1）
+                                                               │               └── self_evaluation
+                                                               └──────────────→ cost_efficiency（旧・後方互換 API 維持）
 dataset_manager ──→ service_volume
 ```
+
+> **P1〜P5 変更点（2026-06-02）:**  
+> - 効率性評価（旧 `cost_efficiency` モジュール）を `program_evaluations` の **`evaluation_tier='efficiency'`** として統合（案B-2）。  
+> - `cost_efficiency_records` は別テーブルで維持し `program_evaluation_id` で1対1紐付け（UNIQUE 部分インデックス）。  
+> - 旧 `cost-efficiency` API・ページは後方互換のため残置。  
+> - `program_evaluation` の成果物登録に **`efficiency_eval`** タイプを追加（P5）。  
+> - `LogicModelContext` コンポーネントが各評価 tier でロジックモデルの該当要素を参照表示（P3）。  
+> - プログラム評価UIを3タブ（プロセス・アウトカム・効率性）に再設計（P4）。
 
 モジュール選択画面（`projects/[id]/settings/modules`）と
 テンプレート編集画面（`templates/[id]/edit`）で `checkModuleCompatibility` が呼ばれ、

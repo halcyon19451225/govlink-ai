@@ -124,7 +124,9 @@
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(mkdir -p \"app/src/app/api/admin/projects/[id]/settings/modules\")",
       "Bash(echo \"BUILD_EXIT: $?\")",
-      "Bash(echo \"TSC_EXIT: $?\")"
+      "Bash(echo \"TSC_EXIT: $?\")",
+      "Bash(echo \"TSC: $?\")",
+      "Bash(echo \"BUILD: $?\")"
     ]
   }
 }

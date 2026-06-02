@@ -45,16 +45,7 @@ interface Props {
 export function ProjectCard({ id, title, description, status, department, pdcaStage }: Props) {
   return (
     <div
-      className="glass-card p-5 flex flex-col gap-3 transition-all duration-200 hover:-translate-y-0.5 cursor-default"
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(99,102,241,0.3)";
-        (e.currentTarget as HTMLDivElement).style.boxShadow =
-          "0 8px 32px rgba(99,102,241,0.15)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "";
-        (e.currentTarget as HTMLDivElement).style.boxShadow = "";
-      }}
+      className="neu-card p-5 flex flex-col gap-3 transition-all duration-300 hover:-translate-y-1 cursor-default"
     >
       <div className="flex items-start justify-between gap-2">
         <h4 className="font-semibold text-slate-100 text-sm leading-snug line-clamp-2">

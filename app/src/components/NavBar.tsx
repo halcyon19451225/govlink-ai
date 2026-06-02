@@ -178,24 +178,24 @@ export default function NavBar() {
                         </p>
                       </div>
                       <Link href="/ordo-admin" onClick={() => setShowAccount(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                         style={{ color: "var(--text-primary)" }}>
                         <span className="text-base">⚙️</span>運営側管理
                       </Link>
                     </>
                   )}
                   <Link href="/settings/account" onClick={() => setShowAccount(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>
                     <span className="text-base">👤</span>アカウントを管理
                   </Link>
                   <Link href="/knowledge" onClick={() => setShowAccount(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>
                     <span className="text-base">📚</span>ナレッジ管理
                   </Link>
                   <Link href="/settings/organization" onClick={() => setShowAccount(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>
                     <span className="text-base">🏛</span>自治体設定
                   </Link>
@@ -207,17 +207,17 @@ export default function NavBar() {
                         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>管理者メニュー</p>
                       </div>
                       <Link href="/settings/organization" onClick={() => setShowAccount(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                         style={{ color: "var(--text-primary)" }}>
                         <span className="text-base">🏢</span>組織管理
                       </Link>
                       <Link href="/settings/members" onClick={() => setShowAccount(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                         style={{ color: "var(--text-primary)" }}>
                         <span className="text-base">👥</span>メンバー管理
                       </Link>
                       <Link href="/settings/permissions" onClick={() => setShowAccount(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                         style={{ color: "var(--text-primary)" }}>
                         <span className="text-base">🔐</span>権限設定
                       </Link>
@@ -255,14 +255,14 @@ export default function NavBar() {
 
                   {/* 設定 */}
                   <Link href="/settings/account" onClick={() => setShowAccount(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>
                     <span className="text-base">⚙️</span>設定
                   </Link>
 
                   {/* ヘルプ */}
                   <Link href="/help" onClick={() => setShowAccount(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors duration-200"
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>
                     <span className="text-base">❓</span>ヘルプ
                   </Link>
