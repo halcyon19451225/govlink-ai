@@ -57,6 +57,11 @@ export async function checkLimit(
   municipalityId: string,
   limitType: "projects" | "users" | "ai_calls",
 ): Promise<{ allowed: boolean; current: number; limit: number; plan: Plan }> {
+  // 開発環境では上限チェックをスキップ（本番では従来通り適用）
+  if (process.env.NODE_ENV !== "production") {
+    return { allowed: true, current: 0, limit: Infinity, plan: "premium" };
+  }
+
   const plan = await getActivePlan(municipalityId);
   const limits = PLAN_LIMITS[plan];
 

@@ -2,11 +2,10 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { uploadToStorage, getPublicUrl } from "@/lib/supabase-storage";
 
-const s3 = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" });
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const MAX_SIZE = 5 * 1024 * 1024;
 
@@ -14,11 +13,6 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
-
-  const bucket = process.env.S3_BUCKET_NAME;
-  if (!bucket) {
-    return NextResponse.json({ data: null, error: "ストレージ設定が不足しています" }, { status: 500 });
   }
 
   let formData: FormData;
@@ -42,18 +36,17 @@ export async function POST(req: NextRequest) {
   }
 
   const ext = (file.type.split("/")[1] ?? "jpg").replace("jpeg", "jpg");
-  const key = `avatars/${session.user.id}/profile.${ext}`;
+  const path = `${session.user.id}/profile.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  await s3.send(new PutObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    Body: buffer,
-    ContentType: file.type,
-    CacheControl: "public, max-age=31536000",
-  }));
+  try {
+    await uploadToStorage("avatars", path, buffer, file.type);
+  } catch (err) {
+    console.error("Avatar upload error:", err);
+    return NextResponse.json({ data: null, error: "アバターのアップロードに失敗しました" }, { status: 500 });
+  }
 
-  const url = `https://${bucket}.s3.${process.env.AWS_REGION ?? "ap-northeast-1"}.amazonaws.com/${key}`;
+  const url = getPublicUrl("avatars", path);
 
   await query(
     "UPDATE user_roles SET avatar_url = $1 WHERE cognito_user_id = $2",

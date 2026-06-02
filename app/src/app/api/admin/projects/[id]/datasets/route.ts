@@ -2,13 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { uploadToStorage } from "@/lib/supabase-storage";
 
 type Params = { params: { id: string } };
-
-const s3 = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" });
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
@@ -59,34 +57,31 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const timestamp = Date.now();
   const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const s3Key = `datasets/${params.id}/${datasetDefId}/${timestamp}_${safeFileName}`;
-  const bucket = process.env.S3_BUCKET_NAME;
-
-  if (!bucket) {
-    return NextResponse.json({ data: null, error: "S3_BUCKET_NAME が未設定です" }, { status: 500 });
-  }
+  const storagePath = `${params.id}/${datasetDefId}/${timestamp}_${safeFileName}`;
 
   try {
     const bytes = await file.arrayBuffer();
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: s3Key,
-        Body: Buffer.from(bytes),
-        ContentType: file.type || "application/octet-stream",
-      }),
+    await uploadToStorage(
+      "datasets",
+      storagePath,
+      Buffer.from(bytes),
+      file.type || "application/octet-stream",
     );
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    console.error("S3 upload error:", err);
+    console.error("Storage upload error:", err);
     const msg =
       process.env.NODE_ENV === "production"
-        ? "S3へのアップロードに失敗しました"
-        : `S3エラー: ${detail}`;
+        ? "ストレージへのアップロードに失敗しました"
+        : `Storageエラー: ${detail}`;
     return NextResponse.json({ data: null, error: msg }, { status: 500 });
   }
 
-  const userId = session.user?.id ?? null;
+  // DB の s3_key 列にはストレージパスを格納（列名はそのまま維持）
+  const s3Key = storagePath;
+
+  // uploaded_by は UUID 型のため userRoleId を使う（session.user.id は Google ID 等で非UUID）
+  const userId = session.user?.userRoleId ?? null;
 
   const row = await queryOne<{ id: string; s3_key: string }>(
     `INSERT INTO project_datasets

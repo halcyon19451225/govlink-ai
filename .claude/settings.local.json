@@ -122,7 +122,9 @@
       "Bash(sed -n '247,268p' infra/migrations/010_care_plan_suite.sql)",
       "Bash(sed -n '299,333p' infra/migrations/010_care_plan_suite.sql)",
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(mkdir -p \"app/src/app/api/admin/projects/[id]/settings/modules\")"
+      "Bash(mkdir -p \"app/src/app/api/admin/projects/[id]/settings/modules\")",
+      "Bash(echo \"BUILD_EXIT: $?\")",
+      "Bash(echo \"TSC_EXIT: $?\")"
     ]
   }
 }

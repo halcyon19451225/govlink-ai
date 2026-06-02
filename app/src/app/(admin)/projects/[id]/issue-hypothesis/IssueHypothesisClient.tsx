@@ -190,6 +190,12 @@ export default function IssueHypothesisClient({
   const [formMeasures, setFormMeasures] = useState("");
   const [formGapId, setFormGapId] = useState("");
 
+  // AI生成 state
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [showAiGapSelect, setShowAiGapSelect] = useState(false);
+  const [aiSelectGapId, setAiSelectGapId] = useState(gaps[0]?.id ?? "");
+
   // ロジックツリー用 state
   const selectedHyp = hypotheses.find((h) => h.id === selectedHypId);
   const [treeData, setTreeData] = useState<TreeNode[]>(
@@ -327,6 +333,66 @@ export default function IssueHypothesisClient({
     }
   }, [selectedHypId, treeData, projectId]);
 
+  // AI提案を呼び出してフォームをプリフィル
+  const handleAiSuggest = async (gapId: string) => {
+    setShowAiGapSelect(false);
+    setAiGenerating(true);
+    setAiError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/projects/${projectId}/issue-hypothesis/ai-suggest`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gap_analysis_id: gapId }),
+        },
+      );
+      const json = (await res.json()) as {
+        data: {
+          gap_analysis_id: string;
+          suggestion: {
+            title: string;
+            description: string;
+            root_cause: string;
+            proposed_measures: string[];
+          };
+        } | null;
+        error: string | null;
+      };
+      if (!res.ok || json.error || !json.data) {
+        setAiError(json.error ?? "AI提案の取得に失敗しました");
+        return;
+      }
+      const s = json.data.suggestion;
+      // フォームをプリフィルしてモーダルを開く
+      setFormTitle(s.title);
+      setFormDesc(s.description ?? "");
+      setFormRootCause(s.root_cause ?? "");
+      setFormMeasures((s.proposed_measures ?? []).join(", "));
+      setFormGapId(gapId);
+      setFormEvidence("");
+      setFormPriorityRank("");
+      setFormStatus("draft");
+      setShowModal(true);
+    } catch {
+      setAiError("通信エラーが発生しました");
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  // AIで生成ボタンクリック
+  const handleAiButtonClick = () => {
+    setAiError(null);
+    if (gaps.length === 0) return;
+    if (gaps.length === 1) {
+      void handleAiSuggest(gaps[0]!.id);
+    } else {
+      setAiSelectGapId(gaps[0]!.id);
+      setShowAiGapSelect(true);
+    }
+  };
+
   const handleAddNode = () => {
     const newId = `node-${Date.now()}`;
     setTreeData((prev) => [...prev, { id: newId, label: "新しいノード", children: [] }]);
@@ -449,8 +515,47 @@ export default function IssueHypothesisClient({
               </div>
             )}
 
+            {/* AIエラー */}
+            {aiError && (
+              <div
+                className="rounded-lg border px-4 py-2 text-sm mb-4"
+                style={{ borderColor: "#ef444460", background: "#ef444410", color: "#f87171" }}
+              >
+                {aiError}
+                <button
+                  onClick={() => setAiError(null)}
+                  className="ml-3 text-xs opacity-60 hover:opacity-100"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             {/* アクションボタン */}
-            <div className="flex justify-end mb-4">
+            <div className="flex items-center justify-end gap-3 mb-4">
+              {gaps.length > 0 && (
+                <PermissionGate module="issue_hypothesis" level="edit" projectId={projectId}>
+                  <button
+                    onClick={handleAiButtonClick}
+                    disabled={aiGenerating}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                    style={{
+                      background: "#8b5cf618",
+                      color: "#a78bfa",
+                      border: "1px solid #8b5cf640",
+                    }}
+                  >
+                    {aiGenerating ? (
+                      <>
+                        <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                        生成中...
+                      </>
+                    ) : (
+                      "✨ AIで生成"
+                    )}
+                  </button>
+                </PermissionGate>
+              )}
               <button
                 onClick={() => setShowModal(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
@@ -648,6 +753,54 @@ export default function IssueHypothesisClient({
         )}
       </div>
 
+      {/* ギャップ選択モーダル（複数ギャップがある場合） */}
+      {showAiGapSelect && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "#00000080" }}
+        >
+          <div
+            className="rounded-xl border w-full max-w-sm mx-4 p-6"
+            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+          >
+            <h2 className="text-base font-semibold text-slate-100 mb-1">
+              ✨ AIで課題仮説を生成
+            </h2>
+            <p className="text-xs text-slate-500 mb-4">
+              分析に使用するギャップを選択してください
+            </p>
+            <select
+              value={aiSelectGapId}
+              onChange={(e) => setAiSelectGapId(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors"
+              style={{ background: "#161922", borderColor: "#2a2d3a" }}
+            >
+              {gaps.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.indicator_name}（ギャップ: {g.gap_value}）
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-3 justify-end mt-5">
+              <button
+                onClick={() => setShowAiGapSelect(false)}
+                className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => void handleAiSuggest(aiSelectGapId)}
+                disabled={!aiSelectGapId}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                style={{ background: "#8b5cf6" }}
+              >
+                生成する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 追加モーダル */}
       {showModal && (
         <div
@@ -658,9 +811,14 @@ export default function IssueHypothesisClient({
             className="rounded-xl border w-full max-w-lg mx-4 p-6"
             style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
           >
-            <h2 className="text-base font-semibold text-slate-100 mb-4">
+            <h2 className="text-base font-semibold text-slate-100 mb-1">
               課題仮説を追加
             </h2>
+            {formTitle && formRootCause && (
+              <p className="text-xs text-purple-400 mb-3">
+                ✨ AIの提案内容が入力されています。内容を確認して保存してください。
+              </p>
+            )}
 
             <div className="space-y-3">
               <div>

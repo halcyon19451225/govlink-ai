@@ -14,17 +14,91 @@ import "reactflow/dist/style.css";
 import BackButton from "@/components/BackButton";
 import type { LineageNode, LineageEdge } from "@/app/api/admin/projects/[id]/lineage/route";
 
-// ─── モジュール設定 ──────────────────────────────────────────────────────
+// ─── モジュール設定（色・ラベルのみ。X座標は自動計算） ───────────────────
 
-const MODULE_CONFIG: Record<string, { label: string; color: string; x: number }> = {
-  gap_analysis:       { label: "ギャップ分析",   color: "#f59e0b", x: 0    },
-  issue_hypothesis:   { label: "課題仮説",       color: "#8b5cf6", x: 280  },
-  logic_model:        { label: "ロジックモデル", color: "#10b981", x: 560  },
-  program_evaluation: { label: "プログラム評価", color: "#3b82f6", x: 840  },
-  cost_efficiency:    { label: "コスト効率",     color: "#ef4444", x: 1120 },
-  service_volume:     { label: "サービス見込量", color: "#06b6d4", x: 1120 },
-  self_evaluation:    { label: "自己評価",       color: "#ec4899", x: 1400 },
+const MODULE_CONFIG: Record<string, { label: string; color: string }> = {
+  gap_analysis:       { label: "ギャップ分析",   color: "#f59e0b" },
+  issue_hypothesis:   { label: "課題仮説",       color: "#8b5cf6" },
+  logic_model:        { label: "ロジックモデル", color: "#10b981" },
+  program_evaluation: { label: "プログラム評価", color: "#3b82f6" },
+  cost_efficiency:    { label: "コスト効率",     color: "#ef4444" },
+  service_volume:     { label: "サービス見込量", color: "#06b6d4" },
+  self_evaluation:    { label: "自己評価",       color: "#ec4899" },
 };
+
+// ─── トポロジカルレイアウト計算 ──────────────────────────────────────────
+
+const NODE_H = 90;
+const COL_GAP = 260; // X 方向の列間隔
+const ROW_GAP = 150; // Y 方向の行間隔
+
+/**
+ * DAG 全体のノード位置をトポロジカルソート + BFS で計算する。
+ * 1. 各ノードの「深さ（列インデックス）」を BFS で決定
+ * 2. 同じ深さのノードを Y 方向に均等配置
+ */
+function computeLayout(
+  nodes: LineageNode[],
+  edges: LineageEdge[],
+): Map<string, { x: number; y: number }> {
+  if (nodes.length === 0) return new Map();
+
+  const idSet = new Set(nodes.map((n) => n.id));
+
+  // 隣接リスト（children: source → targets）
+  const children = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+  for (const n of nodes) { children.set(n.id, []); inDegree.set(n.id, 0); }
+  for (const e of edges) {
+    if (idSet.has(e.source) && idSet.has(e.target)) {
+      children.get(e.source)!.push(e.target);
+      inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+    }
+  }
+
+  // BFS でノードの「深さ（列）」を計算（最大深さ優先: 複数の親がいる場合は最大値）
+  const depth = new Map<string, number>();
+  const queue: string[] = [];
+  for (const n of nodes) {
+    if ((inDegree.get(n.id) ?? 0) === 0) { depth.set(n.id, 0); queue.push(n.id); }
+  }
+  // 孤立ノード（入次数 0 でない & キューに入っていない）は深さ 0 に
+  for (const n of nodes) { if (!depth.has(n.id)) depth.set(n.id, 0); }
+
+  let qi = 0;
+  while (qi < queue.length) {
+    const cur = queue[qi++]!;
+    const d = depth.get(cur) ?? 0;
+    for (const child of children.get(cur) ?? []) {
+      const prev = depth.get(child) ?? 0;
+      depth.set(child, Math.max(prev, d + 1));
+      // 既にキューにある場合でも更新（トポロジカル順は後で整合される）
+      if (!queue.includes(child)) queue.push(child);
+    }
+  }
+
+  // 深さごとにノードをグループ化
+  const byDepth = new Map<number, string[]>();
+  for (const [id, d] of Array.from(depth.entries())) {
+    if (!byDepth.has(d)) byDepth.set(d, []);
+    byDepth.get(d)!.push(id);
+  }
+
+  // Y オフセット計算: 各深さで均等配置
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const [d, ids] of Array.from(byDepth.entries())) {
+    const totalH = ids.length * NODE_H + (ids.length - 1) * (ROW_GAP - NODE_H);
+    const startY = -totalH / 2;
+    ids.forEach((id: string, i: number) => {
+      positions.set(id, {
+        x: d * COL_GAP,
+        y: startY + i * ROW_GAP,
+      });
+    });
+  }
+
+  return positions;
+}
 
 const MODULE_PATH: Record<string, string> = {
   gap_analysis:       "gap-analysis",
@@ -121,38 +195,31 @@ export default function LineageGraphClient({ project, projectId }: Props) {
       .finally(() => setLoading(false));
   }, [projectId]);
 
-  // react-flow ノード/エッジを構築
+  // react-flow ノード/エッジを構築（トポロジカルレイアウト）
   const { nodes, edges } = (() => {
     const rfNodes: Node[] = [];
     const rfEdges: Edge[] = [];
 
-    // モジュールごとのY位置カウンター
-    const yCounters: Record<string, number> = {};
-
-    // nodeId → LineageNode のマップ
     const nodeMap = new Map(lineageNodes.map((n) => [n.id, n]));
 
+    // トポロジカルレイアウト計算
+    const positions = computeLayout(lineageNodes, lineageEdges);
+
     for (const n of lineageNodes) {
-      const cfg = MODULE_CONFIG[n.module_id] ?? {
-        label: n.module_id,
-        color: "#6b7280",
-        x: 1680,
-      };
-      const yIdx = yCounters[n.module_id] ?? 0;
-      yCounters[n.module_id] = yIdx + 1;
+      const cfg = MODULE_CONFIG[n.module_id] ?? { label: n.module_id, color: "#6b7280" };
+      const pos = positions.get(n.id) ?? { x: 0, y: 0 };
 
       rfNodes.push({
         id: n.id,
         type: "artifact",
-        position: { x: cfg.x, y: yIdx * 130 },
+        position: pos,
         data: { node: n, color: cfg.color, moduleLabel: cfg.label },
       });
     }
 
     for (const e of lineageEdges) {
       const srcNode = nodeMap.get(e.source);
-      const srcColor =
-        srcNode ? (MODULE_CONFIG[srcNode.module_id]?.color ?? "#6b7280") : "#6b7280";
+      const srcColor = MODULE_CONFIG[srcNode?.module_id ?? ""]?.color ?? "#6b7280";
       const tgtNode = nodeMap.get(e.target);
       rfEdges.push({
         id: `e-${e.source}-${e.target}`,

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import CostEfficiencyClient from "./CostEfficiencyClient";
 
@@ -78,6 +79,24 @@ export default async function CostEfficiencyPage({
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">コスト効率分析</h2>
       </div>
+
+      {/* 移動案内バナー（フェーズP4: 効率性評価はプログラム評価へ統合） */}
+      <div
+        className="mb-6 rounded-xl border px-4 py-3 flex items-center justify-between gap-4"
+        style={{ background: "#6366f110", borderColor: "#6366f140" }}
+      >
+        <p className="text-sm text-slate-300">
+          ℹ️ この機能はプログラム評価の「効率性評価」タブに移動しました。
+        </p>
+        <Link
+          href={`/projects/${project.id}/program-evaluation`}
+          className="shrink-0 text-sm font-medium px-4 py-1.5 rounded-lg text-white"
+          style={{ background: "#6366f1" }}
+        >
+          プログラム評価へ移動 →
+        </Link>
+      </div>
+
       <CostEfficiencyClient
         project={project}
         records={records}

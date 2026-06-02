@@ -2,13 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { uploadToStorage } from "@/lib/supabase-storage";
 
 const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
-const s3 = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" });
-const BUCKET = process.env.S3_BUCKET_NAME ?? "";
 
 function getFileType(filename: string): string {
   const ext = filename.toLowerCase().split(".").pop() ?? "";
@@ -51,19 +49,25 @@ export async function POST(req: NextRequest) {
   }
 
   const ext = file.name.toLowerCase().split(".").pop() ?? "bin";
-  const s3Key = `knowledge/tier1/${docId}.${ext}`;
+  const storagePath = `tier1/${docId}.${ext}`;
 
   const arrayBuffer = await file.arrayBuffer();
-  await s3.send(new PutObjectCommand({
-    Bucket: BUCKET,
-    Key: s3Key,
-    Body: Buffer.from(arrayBuffer),
-    ContentType: file.type || "application/octet-stream",
-  }));
+  try {
+    await uploadToStorage(
+      "knowledge",
+      storagePath,
+      Buffer.from(arrayBuffer),
+      file.type || "application/octet-stream",
+    );
+  } catch (err) {
+    console.error("Knowledge upload error:", err);
+    await query(`UPDATE knowledge_documents SET status = 'error' WHERE id = $1`, [docId]);
+    return NextResponse.json({ data: null, error: "ファイルのアップロードに失敗しました" }, { status: 500 });
+  }
 
   await query(
     `UPDATE knowledge_documents SET s3_key = $1, updated_at = NOW() WHERE id = $2`,
-    [s3Key, docId],
+    [storagePath, docId],
   );
 
   return NextResponse.json({ data: { documentId: docId, status: "pending" }, error: null }, { status: 201 });

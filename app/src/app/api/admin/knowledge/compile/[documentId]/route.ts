@@ -2,13 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import Anthropic from "@anthropic-ai/sdk";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { downloadFromStorage } from "@/lib/supabase-storage";
 
-const s3 = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" });
-const BUCKET = process.env.S3_BUCKET_NAME ?? "";
 const MAX_TEXT_CHARS = 80_000;
 
 type Params = { params: { documentId: string } };
@@ -22,10 +20,7 @@ interface ClaudeResult {
 }
 
 async function extractText(s3Key: string, fileType: string): Promise<string> {
-  const res = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: s3Key }));
-  const chunks: Uint8Array[] = [];
-  for await (const chunk of res.Body as AsyncIterable<Uint8Array>) chunks.push(chunk);
-  const buffer = Buffer.concat(chunks);
+  const buffer = await downloadFromStorage("knowledge", s3Key);
 
   if (fileType === "pdf") {
     const { PDFParse } = await import("pdf-parse");

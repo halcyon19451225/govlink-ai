@@ -4,33 +4,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
 import { requireModulePermission } from "@/lib/permissions";
+import { downloadFromStorage } from "@/lib/supabase-storage";
 
 type Params = { params: { id: string } };
-
-const s3 = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" });
 
 const bodySchema = z.union([
   z.object({ gap_ids: z.array(z.string()).min(1) }),
   z.object({ from_datasets: z.literal(true) }),
 ]);
 
-async function fetchS3AsText(s3Key: string, bucket: string): Promise<string | null> {
+const MAX_BYTES = 60_000;
+
+async function fetchStorageAsText(storagePath: string): Promise<string | null> {
   try {
-    const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: s3Key }));
-    const chunks: Uint8Array[] = [];
-    let totalBytes = 0;
-    const MAX_BYTES = 60_000;
-    for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
-      chunks.push(chunk);
-      totalBytes += chunk.length;
-      if (totalBytes >= MAX_BYTES) break;
-    }
-    const buffer = Buffer.concat(chunks).slice(0, MAX_BYTES);
+    const buffer = (await downloadFromStorage("datasets", storagePath)).slice(0, MAX_BYTES);
     // バイナリファイル（Excel等）を簡易判定
     const sample = buffer.subarray(0, 256);
     let nonPrintable = 0;
@@ -69,11 +60,6 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // ── モード1: データセットから自動抽出・gap_analyses 登録 ──
   if ("from_datasets" in parsed.data) {
-    const bucket = process.env.S3_BUCKET_NAME;
-    if (!bucket) {
-      return NextResponse.json({ data: null, error: "S3_BUCKET_NAME が未設定です" }, { status: 500 });
-    }
-
     const datasets = await query<{
       id: string;
       dataset_def_id: string;
@@ -99,7 +85,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
 
-    // S3から各ファイルをテキストとして取得
+    // Storage から各ファイルをテキストとして取得
     const datasetContents: Array<{
       def_id: string;
       display_name: string;
@@ -110,7 +96,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }> = [];
 
     for (const ds of datasets) {
-      const content = await fetchS3AsText(ds.s3_key, bucket);
+      const content = await fetchStorageAsText(ds.s3_key);
       if (content) {
         datasetContents.push({
           def_id: ds.dataset_def_id,
@@ -125,7 +111,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     if (datasetContents.length === 0) {
       return NextResponse.json(
-        { data: null, error: "データセットファイルの読み込みに失敗しました（S3アクセスエラーまたは非テキストファイルのみ）" },
+        { data: null, error: "データセットファイルの読み込みに失敗しました（Storageアクセスエラーまたは非テキストファイルのみ）" },
         { status: 500 },
       );
     }
