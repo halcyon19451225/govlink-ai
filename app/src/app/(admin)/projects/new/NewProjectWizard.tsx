@@ -39,7 +39,7 @@ function calcCheckpointDate(planStartDate: Date, planYear: number, monthStart: n
 
 // ─── StepIndicator ───────────────────────────────────────────────────────────
 
-const STEP_LABELS = ["テンプレート選択", "基本情報", "目的・目標", "モジュール確認", "スケジュール確認"];
+const STEP_LABELS = ["テンプレート選択", "基本情報", "目的の設定", "目標の設定", "モジュール確認", "スケジュール確認"];
 
 function StepIndicator({ current }: { current: number }) {
   return (
@@ -307,16 +307,45 @@ function Step2({
   );
 }
 
-// ─── Step 2.5: 目的・目標設定（スキップ可）────────────────────────────────
+// ─── 型定義 ──────────────────────────────────────────────────────────────────
+
+interface KpiItem {
+  indicator_name: string;
+  target_value: string;   // 数値だが入力は文字列で管理
+  unit: string;
+  evaluation_timing: "interim" | "final" | "annual";
+  baseline_value: string; // 任意
+}
 
 interface GoalItem {
   title: string;
   description: string;
+  kpis: KpiItem[];
 }
 
-interface AiSuggestedGoal extends GoalItem {
+interface AiSuggestedGoal {
+  title: string;
+  description: string;
   adopted?: boolean;
 }
+
+interface AiSuggestedKpi {
+  indicator_name: string;
+  target_value: number;
+  unit: string;
+  baseline_description?: string;
+  adopted?: boolean;
+}
+
+const EMPTY_KPI = (): KpiItem => ({
+  indicator_name: "",
+  target_value: "",
+  unit: "",
+  evaluation_timing: "final",
+  baseline_value: "",
+});
+
+// ─── Step 2.5: 目的の設定（スキップ可）──────────────────────────────────────
 
 function Step2_5({
   goals,
@@ -339,9 +368,9 @@ function Step2_5({
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestedGoal[]>([]);
 
-  // ─ 基本目標の操作 ─
+  // ─ 目的の操作 ─
   const addGoal = () =>
-    onGoalsChange([...goals, { title: "", description: "" }]);
+    onGoalsChange([...goals, { title: "", description: "", kpis: [] }]);
 
   const removeGoal = (idx: number) =>
     onGoalsChange(goals.filter((_, i) => i !== idx));
@@ -392,7 +421,7 @@ function Step2_5({
   const adoptSuggestion = (idx: number) => {
     const s = aiSuggestions[idx];
     if (!s || s.adopted) return;
-    onGoalsChange([...goals, { title: s.title, description: s.description }]);
+    onGoalsChange([...goals, { title: s.title, description: s.description, kpis: [] }]);
     setAiSuggestions((prev) =>
       prev.map((sg, i) => (i === idx ? { ...sg, adopted: true } : sg))
     );
@@ -401,7 +430,7 @@ function Step2_5({
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-lg font-bold text-slate-100 mb-1">基本目標を設定</h3>
+        <h3 className="text-lg font-bold text-slate-100 mb-1">目的の設定</h3>
         <p className="text-sm text-slate-500">
           後から編集できます。入力せずにスキップすることもできます。
         </p>
@@ -426,7 +455,7 @@ function Step2_5({
               AI提案を生成中...
             </>
           ) : (
-            "✦ AIで基本目標を提案"
+            "✦ AIで目的を提案"
           )}
         </button>
         {aiError && (
@@ -475,14 +504,14 @@ function Step2_5({
       {/* ─ 基本目標リスト ─ */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-slate-300">基本目標</label>
+          <label className="text-sm font-medium text-slate-300">目的</label>
           <button
             type="button"
             onClick={addGoal}
             className="text-xs font-medium px-3 py-1 rounded-lg border transition-colors duration-200 hover:border-indigo-400 hover:text-indigo-400"
             style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
           >
-            ＋ 基本目標を追加
+            ＋ 目的を追加
           </button>
         </div>
 
@@ -491,7 +520,7 @@ function Step2_5({
             className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500"
             style={{ borderColor: "var(--border)" }}
           >
-            「＋ 基本目標を追加」またはAI提案を採用してください
+            「＋ 目的を追加」またはAI提案を採用してください
           </div>
         ) : (
           <div className="space-y-3">
@@ -504,10 +533,10 @@ function Step2_5({
                 {/* 上段: 番号 + タイトル + 操作ボタン */}
                 <div className="flex items-center gap-2">
                   <span
-                    className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white"
+                    className="shrink-0 flex items-center justify-center rounded-full text-xs font-bold text-white px-2 h-6 whitespace-nowrap"
                     style={{ background: "#6366f1" }}
                   >
-                    {i + 1}
+                    目的{i + 1}
                   </span>
                   <input
                     type="text"
@@ -515,7 +544,7 @@ function Step2_5({
                     onChange={(e) => updateGoal(i, "title", e.target.value)}
                     className={inputClass}
                     style={inputStyle}
-                    placeholder={`基本目標 ${i + 1} のタイトル`}
+                    placeholder={`目的 ${i + 1} のタイトル`}
                   />
                   {/* 並び替え・削除ボタン */}
                   <div className="flex items-center gap-1 shrink-0">
@@ -584,6 +613,273 @@ function Step2_5({
             >
               次へ →
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── StepGoals: 目標の設定（スキップ可）─────────────────────────────────────
+
+const TIMING_LABELS: Record<KpiItem["evaluation_timing"], string> = {
+  interim: "中間評価",
+  final:   "最終評価",
+  annual:  "毎年度",
+};
+
+function StepGoals({
+  goals,
+  onGoalsChange,
+  planName,
+  onNext,
+  onSkip,
+  onBack,
+}: {
+  goals: GoalItem[];
+  onGoalsChange: (goals: GoalItem[]) => void;
+  planName: string;
+  onNext: () => void;
+  onSkip: () => void;
+  onBack: () => void;
+}) {
+  // AI提案の状態（目的ごと）
+  const [aiLoading, setAiLoading] = useState<Record<number, boolean>>({});
+  const [aiError, setAiError] = useState<Record<number, string>>({});
+  const [aiKpiSuggestions, setAiKpiSuggestions] = useState<Record<number, AiSuggestedKpi[]>>({});
+
+  // ─ KPI操作 ─
+  const addKpi = (gIdx: number) => {
+    const next = goals.map((g, i) =>
+      i === gIdx ? { ...g, kpis: [...g.kpis, EMPTY_KPI()] } : g
+    );
+    onGoalsChange(next);
+  };
+
+  const removeKpi = (gIdx: number, kIdx: number) => {
+    const next = goals.map((g, i) =>
+      i === gIdx ? { ...g, kpis: g.kpis.filter((_, ki) => ki !== kIdx) } : g
+    );
+    onGoalsChange(next);
+  };
+
+  const updateKpi = (gIdx: number, kIdx: number, field: keyof KpiItem, val: string) => {
+    const next = goals.map((g, i) =>
+      i === gIdx
+        ? { ...g, kpis: g.kpis.map((k, ki) => (ki === kIdx ? { ...k, [field]: val } : k)) }
+        : g
+    );
+    onGoalsChange(next);
+  };
+
+  // ─ AI提案 ─
+  const handleAiKpi = async (gIdx: number) => {
+    const goal = goals[gIdx];
+    if (!goal?.title.trim()) return;
+    setAiLoading((p) => ({ ...p, [gIdx]: true }));
+    setAiError((p) => ({ ...p, [gIdx]: "" }));
+    setAiKpiSuggestions((p) => ({ ...p, [gIdx]: [] }));
+    try {
+      const res = await fetch("/api/ai/suggest-goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "kpi", purposeTitle: goal.title, planName }),
+      });
+      const json = (await res.json()) as {
+        data: { kpis: Array<{ indicator_name: string; target_value: number; unit: string; baseline_description?: string }> } | null;
+        error: string | null;
+      };
+      if (!res.ok || !json.data) {
+        setAiError((p) => ({ ...p, [gIdx]: json.error ?? "AI提案の取得に失敗しました" }));
+        return;
+      }
+      setAiKpiSuggestions((p) => ({
+        ...p,
+        [gIdx]: json.data!.kpis.map((k) => ({ ...k, adopted: false })),
+      }));
+    } catch {
+      setAiError((p) => ({ ...p, [gIdx]: "通信エラーが発生しました" }));
+    } finally {
+      setAiLoading((p) => ({ ...p, [gIdx]: false }));
+    }
+  };
+
+  const adoptKpi = (gIdx: number, kIdx: number) => {
+    const s = aiKpiSuggestions[gIdx]?.[kIdx];
+    if (!s || s.adopted) return;
+    const newKpi: KpiItem = {
+      indicator_name: s.indicator_name,
+      target_value: String(s.target_value),
+      unit: s.unit,
+      evaluation_timing: "final",
+      baseline_value: "",
+    };
+    const next = goals.map((g, i) =>
+      i === gIdx ? { ...g, kpis: [...g.kpis, newKpi] } : g
+    );
+    onGoalsChange(next);
+    setAiKpiSuggestions((p) => ({
+      ...p,
+      [gIdx]: (p[gIdx] ?? []).map((sg, i) => (i === kIdx ? { ...sg, adopted: true } : sg)),
+    }));
+  };
+
+  if (goals.length === 0) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h3 className="text-lg font-bold text-slate-100 mb-1">目標の設定</h3>
+          <p className="text-sm text-slate-500">目的が設定されていないためスキップします。</p>
+        </div>
+        <div className="flex gap-3 pt-2 justify-between">
+          <button type="button" onClick={onBack}
+            className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
+            style={{ borderColor: "var(--border)" }}>← 戻る</button>
+          <div className="flex gap-2">
+            <button type="button" onClick={onSkip}
+              className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
+              style={{ borderColor: "var(--border)" }}>スキップ →</button>
+            <div className="neu-button-wrap">
+              <button type="button" onClick={onNext}
+                className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 neu-button-primary"
+                style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>次へ →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-lg font-bold text-slate-100 mb-1">目標の設定</h3>
+        <p className="text-sm text-slate-500">
+          各目的に対して測定可能な目標指標を設定します。後から編集できます。
+        </p>
+      </div>
+
+      {goals.map((goal, gIdx) => (
+        <div key={gIdx} className="rounded-xl border space-y-3 p-4" style={{ borderColor: "#6366f140", background: "#6366f108" }}>
+          {/* 目的ヘッダー */}
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 flex items-center justify-center rounded-full text-xs font-bold text-white px-2 h-6 whitespace-nowrap"
+              style={{ background: "#6366f1" }}>
+              目的{gIdx + 1}
+            </span>
+            <span className="text-sm font-semibold text-slate-200 truncate">
+              {goal.title || `（タイトル未入力）`}
+            </span>
+          </div>
+
+          {/* AI提案ボタン */}
+          <div>
+            <button type="button" onClick={() => handleAiKpi(gIdx)}
+              disabled={aiLoading[gIdx] || !goal.title.trim()}
+              className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ borderColor: "#0891b240", background: "#0891b210", color: "#67e8f9" }}>
+              {aiLoading[gIdx] ? (
+                <><span className="inline-block w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />AI提案を生成中...</>
+              ) : "✦ AIで目標を提案"}
+            </button>
+            {aiError[gIdx] && <p className="text-xs text-red-400 mt-1">{aiError[gIdx]}</p>}
+          </div>
+
+          {/* AI提案一覧 */}
+          {(aiKpiSuggestions[gIdx]?.length ?? 0) > 0 && (
+            <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: "#0891b240", background: "#0891b208" }}>
+              <p className="text-xs font-semibold text-cyan-400 mb-1">AI提案</p>
+              {aiKpiSuggestions[gIdx]!.map((s, kIdx) => (
+                <div key={kIdx} className="flex items-start gap-2 rounded p-2 transition-all duration-200"
+                  style={{ background: s.adopted ? "#10b98110" : "var(--bg-secondary)", opacity: s.adopted ? 0.6 : 1 }}>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-medium text-slate-200">{s.indicator_name}</span>
+                    <span className="text-xs text-slate-500 ml-2">目標: {s.target_value}{s.unit}</span>
+                    {s.baseline_description && <p className="text-xs text-slate-600 mt-0.5">{s.baseline_description}</p>}
+                  </div>
+                  <button type="button" onClick={() => adoptKpi(gIdx, kIdx)} disabled={s.adopted}
+                    className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded disabled:opacity-40"
+                    style={{ background: s.adopted ? "#10b98120" : "#0891b220", color: s.adopted ? "#10b981" : "#67e8f9",
+                      border: `1px solid ${s.adopted ? "#10b98140" : "#0891b240"}` }}>
+                    {s.adopted ? "採用済み ✓" : "採用"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* KPIリスト */}
+          {goal.kpis.length > 0 && (
+            <div className="space-y-2">
+              {goal.kpis.map((kpi, kIdx) => (
+                <div key={kIdx} className="rounded-lg border p-3 space-y-2"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-cyan-400 shrink-0">目標{kIdx + 1}</span>
+                    <input type="text" value={kpi.indicator_name}
+                      onChange={(e) => updateKpi(gIdx, kIdx, "indicator_name", e.target.value)}
+                      className={inputClass} style={inputStyle}
+                      placeholder="指標名（例: 要介護認定率）" />
+                    <button type="button" onClick={() => removeKpi(gIdx, kIdx)}
+                      className="w-6 h-6 flex items-center justify-center rounded text-red-500 hover:text-red-400 transition-colors shrink-0">✕</button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">目標値</label>
+                      <input type="number" value={kpi.target_value}
+                        onChange={(e) => updateKpi(gIdx, kIdx, "target_value", e.target.value)}
+                        className={inputClass} style={inputStyle} placeholder="例: 19.8" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">単位</label>
+                      <input type="text" value={kpi.unit}
+                        onChange={(e) => updateKpi(gIdx, kIdx, "unit", e.target.value)}
+                        className={inputClass} style={inputStyle} placeholder="例: %" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">評価時期</label>
+                      <select value={kpi.evaluation_timing}
+                        onChange={(e) => updateKpi(gIdx, kIdx, "evaluation_timing", e.target.value as KpiItem["evaluation_timing"])}
+                        className={inputClass} style={inputStyle}>
+                        {(Object.entries(TIMING_LABELS) as [KpiItem["evaluation_timing"], string][]).map(([v, l]) => (
+                          <option key={v} value={v}>{l}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">ベースライン値（現状値・任意）</label>
+                    <input type="number" value={kpi.baseline_value}
+                      onChange={(e) => updateKpi(gIdx, kIdx, "baseline_value", e.target.value)}
+                      className={inputClass} style={inputStyle} placeholder="例: 22.2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ＋ 目標を追加 */}
+          <button type="button" onClick={() => addKpi(gIdx)}
+            className="w-full text-xs font-medium py-2 rounded-lg border border-dashed transition-colors duration-200 hover:border-cyan-500 hover:text-cyan-400"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
+            ＋ 目標を追加
+          </button>
+        </div>
+      ))}
+
+      {/* フッター */}
+      <div className="flex gap-3 pt-2 justify-between">
+        <button type="button" onClick={onBack}
+          className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
+          style={{ borderColor: "var(--border)" }}>← 戻る</button>
+        <div className="flex gap-2">
+          <button type="button" onClick={onSkip}
+            className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
+            style={{ borderColor: "var(--border)" }}>スキップ →</button>
+          <div className="neu-button-wrap">
+            <button type="button" onClick={onNext}
+              className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 neu-button-primary"
+              style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>次へ →</button>
           </div>
         </div>
       </div>
@@ -870,7 +1166,7 @@ export default function NewProjectWizard({
   modules: PlanModule[];
 }) {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
   // Step 1
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateWithCycles | null>(null);
@@ -884,7 +1180,7 @@ export default function NewProjectWizard({
     planEndDate: "",
   });
 
-  // Step 2.5: 基本目標
+  // Step 3: 目的
   const [goals, setGoals] = useState<GoalItem[]>([]);
 
   // Step 4 (旧3): moduleConfig
@@ -915,9 +1211,28 @@ export default function NewProjectWizard({
     setSubmitError(null);
 
     try {
-      const goalsPayload = goals
-        .filter((g) => g.title.trim().length > 0)
-        .map((g, i) => ({ goal_number: i + 1, title: g.title, description: g.description, sort_order: i }));
+      // goals をフィルタして payload 化（空タイトルは除外）
+      const filteredGoals = goals.filter((g) => g.title.trim().length > 0);
+      const goalsPayload = filteredGoals.map((g, i) => ({
+        goal_number: i + 1,
+        title: g.title,
+        description: g.description,
+        sort_order: i,
+      }));
+
+      // 各目的の kpis を goal_index 付きでフラットに展開
+      const kpisPayload = filteredGoals.flatMap((g, gIdx) =>
+        g.kpis
+          .filter((k) => k.indicator_name.trim().length > 0)
+          .map((k) => ({
+            label: k.indicator_name,
+            target: parseFloat(k.target_value) || 0,
+            unit: k.unit,
+            goal_index: gIdx,
+            indicator_type: "outcome_initial" as const,
+            previous_value: k.baseline_value ? parseFloat(k.baseline_value) : null,
+          }))
+      );
 
       const payload = {
         title: basicInfo.title,
@@ -929,6 +1244,7 @@ export default function NewProjectWizard({
         plan_end_date: basicInfo.planEndDate || null,
         module_overrides: moduleConfig,
         goals: goalsPayload,
+        kpis: kpisPayload,
       };
 
       const res = await fetch("/api/admin/projects", {
@@ -993,19 +1309,29 @@ export default function NewProjectWizard({
           />
         )}
         {step === 4 && (
-          <Step3
-            modules={modules}
-            moduleConfig={moduleConfig}
-            onModuleConfigChange={setModuleConfig}
+          <StepGoals
+            goals={goals}
+            onGoalsChange={setGoals}
+            planName={basicInfo.title}
             onNext={() => setStep(5)}
+            onSkip={() => setStep(5)}
             onBack={() => setStep(3)}
           />
         )}
         {step === 5 && (
+          <Step3
+            modules={modules}
+            moduleConfig={moduleConfig}
+            onModuleConfigChange={setModuleConfig}
+            onNext={() => setStep(6)}
+            onBack={() => setStep(4)}
+          />
+        )}
+        {step === 6 && (
           <Step4
             template={selectedTemplate}
             planStartDate={basicInfo.planStartDate}
-            onBack={() => setStep(4)}
+            onBack={() => setStep(5)}
             onSubmit={handleSubmit}
             submitting={submitting}
             error={submitError}
