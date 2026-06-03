@@ -28,6 +28,8 @@ interface Goal {
   sort_order: number;
 }
 
+type AchievementCondition = "lte" | "lt" | "gte" | "gt" | "eq";
+
 interface Kpi {
   id: string;
   label: string;
@@ -37,6 +39,8 @@ interface Kpi {
   goal_id: string | null;
   indicator_type: string;
   previous_value: number | null;
+  achievement_condition: AchievementCondition | null;
+  target_deadline: string | null; // "YYYY-MM-DD"
 }
 
 interface LogicModel {
@@ -80,6 +84,39 @@ const LOGIC_COLS = [
   { key: "initial_outcomes",      label: "初期成果", color: "#10b981" },
   { key: "intermediate_outcomes", label: "中期成果", color: "#0d9488" },
 ] as const;
+
+// ─── 達成水準 ─────────────────────────────────────────────────────────────────
+
+const CONDITION_LABELS: Record<AchievementCondition, string> = {
+  gte: "以上",
+  gt:  "超",
+  lte: "以下",
+  lt:  "未満",
+  eq:  "達成",
+};
+
+const CONDITION_OPTIONS: { value: AchievementCondition; label: string }[] = [
+  { value: "gte", label: "以上" },
+  { value: "gt",  label: "超" },
+  { value: "lte", label: "以下" },
+  { value: "lt",  label: "未満" },
+  { value: "eq",  label: "達成" },
+];
+
+/** "YYYY-MM-DD" → "YYYY年M月" */
+function fmtDeadline(d: string | null): string | null {
+  if (!d) return null;
+  const [y, m] = d.split("-");
+  return `${y}年${parseInt(m ?? "1", 10)}月`;
+}
+
+/** KPI を「{期限}までに{指標}について、{値}{単位}{水準}を実現する。」形式に整形 */
+function fmtKpiSentence(k: Kpi): string {
+  const cond = k.achievement_condition ? CONDITION_LABELS[k.achievement_condition] : "以上";
+  const deadline = fmtDeadline(k.target_deadline);
+  const core = `${k.label}について、${k.target}${k.unit}${cond}を実現する。`;
+  return deadline ? `${deadline}までに${core}` : core;
+}
 
 // ─── ユーティリティ ───────────────────────────────────────────────────────────
 
@@ -284,10 +321,21 @@ export default function ProjectOverviewClient({
 
   // ── KPI state ──
   const [kpis, setKpis] = useState<Kpi[]>(initialKpis);
-  const [kpiEditMap, setKpiEditMap] = useState<Record<string, { label: string; target_str: string; unit: string; prev_str: string }>>({});
+  const [kpiEditMap, setKpiEditMap] = useState<Record<string, {
+    label: string;
+    target_str: string;
+    unit: string;
+    prev_str: string;
+    achievement_condition: AchievementCondition | "";
+    target_deadline: string;
+  }>>({});
   const [kpiSaving, setKpiSaving]   = useState<Record<string, boolean>>({});
   const [kpiAddingFor, setKpiAddingFor] = useState<string | null>(null);
-  const [newKpi, setNewKpi] = useState({ label: "", target_str: "", unit: "", prev_str: "" });
+  const [newKpi, setNewKpi] = useState({
+    label: "", target_str: "", unit: "", prev_str: "",
+    achievement_condition: "" as AchievementCondition | "",
+    target_deadline: "",
+  });
   const [kpiAddSaving, setKpiAddSaving] = useState(false);
   const kpiFb = useSaveFeedback();
 
@@ -298,6 +346,8 @@ export default function ProjectOverviewClient({
         target_str: String(k.target),
         unit: k.unit,
         prev_str: k.previous_value != null ? String(k.previous_value) : "",
+        achievement_condition: k.achievement_condition ?? "",
+        target_deadline: k.target_deadline ?? "",
       },
     }));
   const cancelEditKpi = (id: string) =>
@@ -316,6 +366,8 @@ export default function ProjectOverviewClient({
           target: parseFloat(edit.target_str) || 0,
           unit: edit.unit,
           previous_value: edit.prev_str ? parseFloat(edit.prev_str) : null,
+          achievement_condition: edit.achievement_condition || null,
+          target_deadline: edit.target_deadline || null,
         }),
       });
       setKpis((p) => p.map((k) => k.id === id ? {
@@ -324,6 +376,8 @@ export default function ProjectOverviewClient({
         target: parseFloat(edit.target_str) || k.target,
         unit: edit.unit,
         previous_value: edit.prev_str ? parseFloat(edit.prev_str) : null,
+        achievement_condition: (edit.achievement_condition as AchievementCondition | null) || null,
+        target_deadline: edit.target_deadline || null,
       } : k));
       cancelEditKpi(id);
       kpiFb.show();
@@ -350,6 +404,8 @@ export default function ProjectOverviewClient({
           unit: newKpi.unit,
           goal_id: goalId,
           previous_value: newKpi.prev_str ? parseFloat(newKpi.prev_str) : null,
+          achievement_condition: newKpi.achievement_condition || null,
+          target_deadline: newKpi.target_deadline || null,
         }),
       });
       const json = (await res.json()) as { data: { id: string } | null };
@@ -360,8 +416,10 @@ export default function ProjectOverviewClient({
           current: 0, unit: newKpi.unit,
           goal_id: goalId, indicator_type: "outcome_initial",
           previous_value: newKpi.prev_str ? parseFloat(newKpi.prev_str) : null,
+          achievement_condition: (newKpi.achievement_condition as AchievementCondition | null) || null,
+          target_deadline: newKpi.target_deadline || null,
         }]);
-        setNewKpi({ label: "", target_str: "", unit: "", prev_str: "" });
+        setNewKpi({ label: "", target_str: "", unit: "", prev_str: "", achievement_condition: "", target_deadline: "" });
         setKpiAddingFor(null);
         kpiFb.show();
       }
@@ -583,13 +641,11 @@ export default function ProjectOverviewClient({
               transition: "max-height 0.35s ease",
             }}>
               <div className="pt-4 space-y-3">
-                {/* ビジョン（設定時のみ） */}
-                {vision && (
-                  <div className="text-sm" style={{ color: "var(--text-primary)" }}>
-                    <span className="font-semibold text-indigo-400 mr-2">🔭 ビジョン:</span>
-                    {vision}
-                  </div>
-                )}
+                {/* セクションタイトル */}
+                <p className="text-xs font-semibold tracking-wide"
+                  style={{ color: "var(--text-secondary)" }}>
+                  この計画の目的と政策における長期目標
+                </p>
                 {goals.length === 0 ? (
                   <p className="text-sm text-slate-500 py-2">まだ設定されていません</p>
                 ) : (
@@ -612,16 +668,14 @@ export default function ProjectOverviewClient({
                             style={{ color: "var(--text-secondary)" }}>{g.description}</p>
                         )}
                         {groupKpis.length > 0 && (
-                          <ul className="ml-2 space-y-1">
+                          <ul className="ml-2 space-y-1.5">
                             {groupKpis.map((k) => (
-                              <li key={k.id} className="flex items-center gap-2 text-xs"
+                              <li key={k.id} className="flex items-start gap-2 text-xs"
                                 style={{ color: "var(--text-secondary)" }}>
-                                <span className="text-cyan-400">└</span>
-                                <span style={{ color: "var(--text-primary)" }}>{k.label}</span>
-                                <span>目標: {k.target}{k.unit}</span>
-                                {k.previous_value != null && (
-                                  <span>/ 現状: {k.previous_value}{k.unit}</span>
-                                )}
+                                <span className="text-cyan-400 mt-0.5 shrink-0">└</span>
+                                <span className="leading-relaxed" style={{ color: "var(--text-primary)" }}>
+                                  {fmtKpiSentence(k)}
+                                </span>
                               </li>
                             ))}
                           </ul>
@@ -903,6 +957,25 @@ export default function ProjectOverviewClient({
                                     className={INP} style={INP_S} placeholder="任意" />
                                 </div>
                               </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-xs" style={{ color: "var(--text-secondary)" }}>達成水準</label>
+                                  <select value={ed.achievement_condition}
+                                    onChange={(e) => setKpiEditMap((p) => ({ ...p, [k.id]: { ...p[k.id]!, achievement_condition: e.target.value as AchievementCondition | "" } }))}
+                                    className={INP} style={INP_S}>
+                                    <option value="">（選択）</option>
+                                    {CONDITION_OPTIONS.map(({ value, label }) => (
+                                      <option key={value} value={value}>{label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="text-xs" style={{ color: "var(--text-secondary)" }}>達成期限</label>
+                                  <input type="date" value={ed.target_deadline}
+                                    onChange={(e) => setKpiEditMap((p) => ({ ...p, [k.id]: { ...p[k.id]!, target_deadline: e.target.value } }))}
+                                    className={INP} style={INP_S} placeholder="例：2030-03-31" />
+                                </div>
+                              </div>
                               <div className="flex gap-2">
                                 <SaveButton saving={kpiSaving[k.id] ?? false} onClick={() => saveKpi(k.id)} />
                                 <button type="button" onClick={() => cancelEditKpi(k.id)}
@@ -913,19 +986,21 @@ export default function ProjectOverviewClient({
                               </div>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium flex-1"
-                                style={{ color: "var(--text-primary)" }}>{k.label}</span>
-                              <span className="text-xs whitespace-nowrap"
-                                style={{ color: "var(--text-secondary)" }}>
-                                目標: {k.target}{k.unit}
-                                {k.previous_value != null && ` / 現状: ${k.previous_value}${k.unit}`}
+                            <div className="flex items-start gap-2">
+                              <span className="flex-1 text-xs leading-relaxed"
+                                style={{ color: "var(--text-primary)" }}>
+                                {fmtKpiSentence(k)}
+                                {k.previous_value != null && (
+                                  <span className="ml-1" style={{ color: "var(--text-secondary)" }}>
+                                    （現状: {k.previous_value}{k.unit}）
+                                  </span>
+                                )}
                               </span>
                               <button type="button" onClick={() => startEditKpi(k)}
-                                className="text-xs px-2 py-0.5 rounded border hover:border-indigo-400 hover:text-indigo-400"
+                                className="text-xs px-2 py-0.5 rounded border hover:border-indigo-400 hover:text-indigo-400 shrink-0"
                                 style={{ ...BORDER_S, color: "var(--text-secondary)" }}>✏️</button>
                               <button type="button" onClick={() => deleteKpi(k.id)}
-                                className="text-xs px-2 py-0.5 rounded border hover:border-red-400 hover:text-red-400"
+                                className="text-xs px-2 py-0.5 rounded border hover:border-red-400 hover:text-red-400 shrink-0"
                                 style={{ ...BORDER_S, color: "var(--text-secondary)" }}>✕</button>
                             </div>
                           )}
@@ -959,6 +1034,25 @@ export default function ProjectOverviewClient({
                               className={INP} style={INP_S} placeholder="任意" />
                           </div>
                         </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs" style={{ color: "var(--text-secondary)" }}>達成水準</label>
+                            <select value={newKpi.achievement_condition}
+                              onChange={(e) => setNewKpi((p) => ({ ...p, achievement_condition: e.target.value as AchievementCondition | "" }))}
+                              className={INP} style={INP_S}>
+                              <option value="">（選択）</option>
+                              {CONDITION_OPTIONS.map(({ value, label }) => (
+                                <option key={value} value={value}>{label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs" style={{ color: "var(--text-secondary)" }}>達成期限</label>
+                            <input type="date" value={newKpi.target_deadline}
+                              onChange={(e) => setNewKpi((p) => ({ ...p, target_deadline: e.target.value }))}
+                              className={INP} style={INP_S} placeholder="例：2030-03-31" />
+                          </div>
+                        </div>
                         <div className="flex gap-2">
                           <SaveButton saving={kpiAddSaving} onClick={() => addKpi(g.id)} disabled={!newKpi.label.trim()} />
                           <button type="button" onClick={() => setKpiAddingFor(null)}
@@ -972,7 +1066,7 @@ export default function ProjectOverviewClient({
                       <button type="button"
                         onClick={() => {
                           setKpiAddingFor(g.id);
-                          setNewKpi({ label: "", target_str: "", unit: "", prev_str: "" });
+                          setNewKpi({ label: "", target_str: "", unit: "", prev_str: "", achievement_condition: "", target_deadline: "" });
                         }}
                         className="w-full text-xs py-1.5 rounded-lg border border-dashed hover:border-cyan-500 hover:text-cyan-400 transition-colors"
                         style={{ ...BORDER_S, color: "var(--text-secondary)" }}>

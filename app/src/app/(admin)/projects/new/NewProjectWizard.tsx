@@ -324,12 +324,25 @@ function Step2({
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────────
 
+type AchievementCondition = "lte" | "lt" | "gte" | "gt" | "eq";
+
+const WIZARD_CONDITION_OPTIONS: { value: AchievementCondition | ""; label: string }[] = [
+  { value: "",    label: "（選択）" },
+  { value: "gte", label: "以上" },
+  { value: "gt",  label: "超" },
+  { value: "lte", label: "以下" },
+  { value: "lt",  label: "未満" },
+  { value: "eq",  label: "達成" },
+];
+
 interface KpiItem {
   indicator_name: string;
-  target_value: string;   // 数値だが入力は文字列で管理
+  target_value: string;          // 数値だが入力は文字列で管理
   unit: string;
   evaluation_timing: "interim" | "final" | "annual";
-  baseline_value: string; // 任意
+  baseline_value: string;        // 任意
+  achievement_condition: AchievementCondition | "";
+  target_deadline: string;       // "YYYY-MM-DD"・任意
 }
 
 interface GoalItem {
@@ -358,6 +371,8 @@ const EMPTY_KPI = (): KpiItem => ({
   unit: "",
   evaluation_timing: "final",
   baseline_value: "",
+  achievement_condition: "",
+  target_deadline: "",
 });
 
 // ─── Step 2.5: 目的の設定（スキップ可）──────────────────────────────────────
@@ -728,6 +743,8 @@ function StepGoals({
       unit: s.unit,
       evaluation_timing: "final",
       baseline_value: "",
+      achievement_condition: "",
+      target_deadline: "",
     };
     const next = goals.map((g, i) =>
       i === gIdx ? { ...g, kpis: [...g.kpis, newKpi] } : g
@@ -867,6 +884,24 @@ function StepGoals({
                     <input type="number" value={kpi.baseline_value}
                       onChange={(e) => updateKpi(gIdx, kIdx, "baseline_value", e.target.value)}
                       className={inputClass} style={inputStyle} placeholder="例: 22.2" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">達成水準</label>
+                      <select value={kpi.achievement_condition}
+                        onChange={(e) => updateKpi(gIdx, kIdx, "achievement_condition", e.target.value)}
+                        className={inputClass} style={inputStyle}>
+                        {WIZARD_CONDITION_OPTIONS.map(({ value, label }) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">達成期限（任意）</label>
+                      <input type="date" value={kpi.target_deadline}
+                        onChange={(e) => updateKpi(gIdx, kIdx, "target_deadline", e.target.value)}
+                        className={inputClass} style={inputStyle} />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1247,6 +1282,8 @@ export default function NewProjectWizard({
             goal_index: gIdx,
             indicator_type: "outcome_initial" as const,
             previous_value: k.baseline_value ? parseFloat(k.baseline_value) : null,
+            achievement_condition: k.achievement_condition || null,
+            target_deadline: k.target_deadline || null,
           }))
       );
 

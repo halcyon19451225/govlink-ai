@@ -7,12 +7,14 @@ import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 
 const patchSchema = z.object({
-  label:          z.string().min(1).optional(),
-  target:         z.union([z.number(), z.string()]).transform((v) => Number(v)).optional(),
-  unit:           z.string().optional(),
-  goal_id:        z.string().nullable().optional(),
-  indicator_type: z.enum(["process","outcome_initial","outcome_mid","outcome_long","efficiency"]).optional(),
-  previous_value: z.number().nullable().optional(),
+  label:                 z.string().min(1).optional(),
+  target:                z.union([z.number(), z.string()]).transform((v) => Number(v)).optional(),
+  unit:                  z.string().optional(),
+  goal_id:               z.string().nullable().optional(),
+  indicator_type:        z.enum(["process","outcome_initial","outcome_mid","outcome_long","efficiency"]).optional(),
+  previous_value:        z.number().nullable().optional(),
+  achievement_condition: z.enum(["lte","lt","gte","gt","eq"]).nullable().optional(),
+  target_deadline:       z.string().nullable().optional(), // "YYYY-MM-DD"
 });
 
 // PATCH: KPIを更新
@@ -35,8 +37,12 @@ export async function PATCH(
 
   const colMap: Record<string, string> = {
     label: "label", target: "target", unit: "unit",
-    goal_id: "goal_id", indicator_type: "indicator_type", previous_value: "previous_value",
+    goal_id: "goal_id", indicator_type: "indicator_type",
+    previous_value: "previous_value",
+    achievement_condition: "achievement_condition",
+    target_deadline: "target_deadline",
   };
+
   const sets: string[] = [];
   const vals: unknown[] = [];
   let i = 1;

@@ -34,6 +34,8 @@ interface KpiRow {
   goal_id: string | null;
   indicator_type: string;
   previous_value: number | null;
+  achievement_condition: "lte" | "lt" | "gte" | "gt" | "eq" | null;
+  target_deadline: string | null;
 }
 
 interface LogicModelRow {
@@ -79,7 +81,9 @@ export default async function AdminProjectDetailPage({
     ),
     query<KpiRow>(
       `SELECT id, label, target::float, current::float, unit,
-              goal_id, indicator_type, previous_value::float
+              goal_id, indicator_type, previous_value::float,
+              achievement_condition,
+              to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline
        FROM kpis WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),

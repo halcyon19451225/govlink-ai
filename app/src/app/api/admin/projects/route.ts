@@ -22,6 +22,8 @@ const kpiSchema = z.object({
   previous_value: z.number().optional().nullable(),
   previous_target: z.number().optional().nullable(),
   sort_order: z.number().int().default(0),
+  achievement_condition: z.enum(["lte","lt","gte","gt","eq"]).nullable().optional(),
+  target_deadline: z.string().nullable().optional(),
 });
 
 const goalSchema = z.object({
@@ -159,12 +161,15 @@ export async function POST(req: NextRequest) {
         await client.query(
           `INSERT INTO kpis
              (project_id, label, target, unit, goal_id,
-              indicator_type, previous_value, previous_target)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              indicator_type, previous_value, previous_target,
+              achievement_condition, target_deadline)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             newProjectId, kpi.label, kpi.target, kpi.unit,
             goalId, kpi.indicator_type,
             kpi.previous_value ?? null, kpi.previous_target ?? null,
+            kpi.achievement_condition ?? null,
+            kpi.target_deadline ?? null,
           ],
         );
       }
