@@ -16,6 +16,7 @@ const patchSchema = z.object({
   plan_end_date:   z.string().nullable().optional(),
   purpose:         z.string().nullable().optional(),
   major_policy:    z.string().nullable().optional(),
+  vision:          z.string().nullable().optional(),
 });
 
 const goalSchema = z.object({
@@ -71,6 +72,7 @@ export async function PATCH(
     plan_end_date:   "plan_end_date",
     purpose:         "purpose",
     major_policy:    "major_policy",
+    vision:          "vision",
   };
 
   for (const [key, col] of Object.entries(fieldMap)) {

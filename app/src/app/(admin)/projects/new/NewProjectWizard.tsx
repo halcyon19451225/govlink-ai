@@ -196,7 +196,7 @@ function Step2({
   onNext,
   onBack,
 }: {
-  values: { title: string; description: string; department: string; planStartDate: string; planEndDate: string };
+  values: { title: string; description: string; department: string; vision: string; planStartDate: string; planEndDate: string };
   onChange: (k: string, v: string) => void;
   onNext: () => void;
   onBack: () => void;
@@ -246,6 +246,21 @@ function Step2({
           className={inputClass}
           style={inputStyle}
           placeholder="例: 高齢福祉課"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">
+          🔭 ビジョン
+          <span className="text-slate-500 font-normal ml-2 text-xs">（任意）</span>
+        </label>
+        <textarea
+          value={values.vision}
+          onChange={(e) => onChange("vision", e.target.value)}
+          rows={2}
+          className={inputClass}
+          style={inputStyle}
+          placeholder="この計画が目指す将来像・ビジョンを入力してください"
         />
       </div>
 
@@ -1176,6 +1191,7 @@ export default function NewProjectWizard({
     title: "",
     description: "",
     department: "",
+    vision: "",
     planStartDate: "",
     planEndDate: "",
   });
@@ -1238,6 +1254,7 @@ export default function NewProjectWizard({
         title: basicInfo.title,
         description: basicInfo.description,
         department: basicInfo.department,
+        vision: basicInfo.vision || null,
         status: "draft",
         template_id: selectedTemplate?.id ?? null,
         plan_start_date: basicInfo.planStartDate || null,

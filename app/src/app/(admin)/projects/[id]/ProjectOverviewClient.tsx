@@ -16,6 +16,7 @@ interface Project {
   municipality_name: string;
   plan_start_date: string | null;
   plan_end_date: string | null;
+  vision: string | null;
   created_at: string;
 }
 
@@ -180,6 +181,25 @@ export default function ProjectOverviewClient({
       headerFb.show();
       router.refresh();
     } finally { setHeaderSaving(false); }
+  };
+
+  // ── ビジョン state ──
+  const [vision, setVision]         = useState(project.vision ?? "");
+  const [visionSaving, setVisionSaving] = useState(false);
+  const visionFb = useSaveFeedback();
+  const visionDirty = vision !== (project.vision ?? "");
+
+  const saveVision = async () => {
+    setVisionSaving(true);
+    try {
+      await fetch(`/api/admin/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vision: vision || null }),
+      });
+      visionFb.show();
+      router.refresh();
+    } finally { setVisionSaving(false); }
   };
 
   // ── 概要 state ──
@@ -432,20 +452,13 @@ export default function ProjectOverviewClient({
         {/* メインカード */}
         <div className="neu-card p-6 space-y-4">
 
-          {/* 上段: タイトル + バッジ + ボタン */}
+          {/* 上段: タイトル + 操作ボタン */}
           <div className="flex items-start gap-3">
             <h2 className="flex-1 text-xl font-bold leading-snug"
               style={{ color: "var(--text-primary)" }}>
               {title}
             </h2>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-              {/* ステータスバッジ（表示モードでもクリックで変更可） */}
-              <button type="button" onClick={handleStatusCycle}
-                className="text-xs px-3 py-1 rounded-full font-medium hover:opacity-80 transition-opacity cursor-pointer"
-                style={STATUS_STYLE[status]}
-                title="クリックでステータスを変更">
-                {STATUS_LABEL[status]}
-              </button>
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setEditMode(true)}
@@ -457,23 +470,84 @@ export default function ProjectOverviewClient({
             </div>
           </div>
 
-          {/* 基本情報グリッド */}
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <div>
-              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>計画期間</span>
-              <p style={{ color: "var(--text-primary)" }}>
+          {/* ビジョン（計画名直下） */}
+          {vision ? (
+            <div style={{
+              borderLeft: "3px solid rgba(99, 102, 241, 0.45)",
+              paddingLeft: 16,
+              paddingTop: 6,
+              paddingBottom: 6,
+            }}>
+              <p style={{
+                fontSize: "1.1rem",
+                fontWeight: 500,
+                fontStyle: "italic",
+                lineHeight: 1.6,
+                background: "linear-gradient(135deg, #06b6d4, #8b5cf6, #6366f1)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+                whiteSpace: "pre-wrap",
+              }}>
+                &#8220;{vision}&#8221;
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditMode(true)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                paddingLeft: 16,
+                paddingTop: 6,
+                paddingBottom: 6,
+                background: "none",
+                border: "none",
+                borderLeft: "3px solid rgba(99, 102, 241, 0.2)",
+                cursor: "pointer",
+                fontSize: "0.95rem",
+                fontStyle: "italic",
+                color: "var(--text-secondary)",
+                opacity: 0.5,
+              }}
+            >
+              &#8220; ビジョンを設定する... &#8221;
+            </button>
+          )}
+
+          {/* ステータス・基本情報バー */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm pt-1">
+            {/* ステータスバッジ */}
+            <button type="button" onClick={handleStatusCycle}
+              className="text-xs px-3 py-1 rounded-full font-medium hover:opacity-80 transition-opacity cursor-pointer shrink-0"
+              style={STATUS_STYLE[status]}
+              title="クリックでステータスを変更">
+              {STATUS_LABEL[status]}
+            </button>
+
+            {/* 計画期間 */}
+            <div className="flex items-center gap-1">
+              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>📅</span>
+              <span style={{ color: "var(--text-primary)" }}>
                 {fmtDateShort(startDate || null)} 〜 {fmtDateShort(endDate || null)}
-              </p>
+              </span>
             </div>
-            <div>
-              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>担当課名</span>
-              <p style={{ color: "var(--text-primary)" }}>{deptName || "—"}</p>
-            </div>
-            <div className="col-span-2">
-              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>登録日</span>
-              <p style={{ color: "var(--text-primary)" }}>
-                {new Date(project.created_at).toLocaleDateString("ja-JP")}
-              </p>
+
+            {/* 担当課名 */}
+            {deptName && (
+              <div className="flex items-center gap-1">
+                <span className="text-xs" style={{ color: "var(--text-secondary)" }}>🏢</span>
+                <span style={{ color: "var(--text-primary)" }}>{deptName}</span>
+              </div>
+            )}
+
+            {/* 登録日 */}
+            <div className="flex items-center gap-1 ml-auto">
+              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                登録: {new Date(project.created_at).toLocaleDateString("ja-JP")}
+              </span>
             </div>
           </div>
 
@@ -509,6 +583,13 @@ export default function ProjectOverviewClient({
               transition: "max-height 0.35s ease",
             }}>
               <div className="pt-4 space-y-3">
+                {/* ビジョン（設定時のみ） */}
+                {vision && (
+                  <div className="text-sm" style={{ color: "var(--text-primary)" }}>
+                    <span className="font-semibold text-indigo-400 mr-2">🔭 ビジョン:</span>
+                    {vision}
+                  </div>
+                )}
                 {goals.length === 0 ? (
                   <p className="text-sm text-slate-500 py-2">まだ設定されていません</p>
                 ) : (
@@ -637,17 +718,39 @@ export default function ProjectOverviewClient({
 
         <div className="border-t" style={BORDER_S} />
 
-        {/* ② 概要セクション */}
-        <section className="space-y-2">
+        {/* ② 概要・ビジョンセクション */}
+        <section className="space-y-4">
           <p className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--text-secondary)" }}>📋 計画概要</p>
-          <textarea value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-            rows={4} className={INP} style={INP_S}
-            placeholder="計画の概要・背景を入力してください" />
-          <div className="flex items-center gap-3">
-            {descFb.msg && <span className="text-xs text-emerald-400">{descFb.msg}</span>}
-            {descDirty && <SaveButton saving={descSaving} onClick={saveDesc} />}
+            style={{ color: "var(--text-secondary)" }}>📋 計画概要 / ビジョン</p>
+
+          {/* ビジョン */}
+          <div className="space-y-2">
+            <label className="block text-xs" style={{ color: "var(--text-secondary)" }}>
+              🔭 ビジョン
+            </label>
+            <textarea value={vision}
+              onChange={(e) => setVision(e.target.value)}
+              rows={2} className={INP} style={INP_S}
+              placeholder="この計画が目指す将来像・ビジョン（任意）" />
+            <div className="flex items-center gap-3">
+              {visionFb.msg && <span className="text-xs text-emerald-400">{visionFb.msg}</span>}
+              {visionDirty && <SaveButton saving={visionSaving} onClick={saveVision} />}
+            </div>
+          </div>
+
+          {/* 概要 */}
+          <div className="space-y-2">
+            <label className="block text-xs" style={{ color: "var(--text-secondary)" }}>
+              計画概要
+            </label>
+            <textarea value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              rows={4} className={INP} style={INP_S}
+              placeholder="計画の概要・背景を入力してください" />
+            <div className="flex items-center gap-3">
+              {descFb.msg && <span className="text-xs text-emerald-400">{descFb.msg}</span>}
+              {descDirty && <SaveButton saving={descSaving} onClick={saveDesc} />}
+            </div>
           </div>
         </section>
 

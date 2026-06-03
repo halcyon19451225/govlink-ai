@@ -13,6 +13,7 @@ interface ProjectRow {
   municipality_name: string;
   plan_start_date: string | null;
   plan_end_date: string | null;
+  vision: string | null;
   created_at: string;
 }
 
@@ -58,6 +59,7 @@ export default async function AdminProjectDetailPage({
        p.department_name,
        p.plan_start_date::text,
        p.plan_end_date::text,
+       p.vision,
        p.created_at,
        m.name AS municipality_name
      FROM projects p
