@@ -337,17 +337,19 @@ export default function DatasetsClient({
               >
                 キャンセル
               </button>
-              <button
+              <div className="neu-button-wrap flex-1">
+                <button
                 type="button"
                 onClick={() => void handleUpload()}
                 disabled={uploading || !file}
-                className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 disabled:opacity-50 neu-button-primary"
+                className="w-full text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 disabled:opacity-50 neu-button-primary"
                 style={{
                   background: "linear-gradient(135deg, #6366f1, #06b6d4)",
                 }}
               >
                 {uploading ? "アップロード中..." : "アップロード"}
               </button>
+              </div>
             </div>
           </div>
         </div>

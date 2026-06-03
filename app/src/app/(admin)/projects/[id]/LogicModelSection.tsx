@@ -184,7 +184,8 @@ export default function LogicModelSection({
         <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
           AIロジックモデル
         </h3>
-        <button
+        <div className="neu-button-wrap">
+          <button
           onClick={handleGenerate}
           disabled={generating}
           className="text-white text-sm font-semibold px-4 py-2 rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -201,6 +202,7 @@ export default function LogicModelSection({
             "AIロジックモデルを生成"
           )}
         </button>
+        </div>
       </div>
 
       {error && (

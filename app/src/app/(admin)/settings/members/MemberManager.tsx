@@ -172,7 +172,8 @@ export default function MemberManager() {
             組織メンバーの役職割り当てを管理します
           </p>
         </div>
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="button"
           onClick={() => { setShowInvite(true); setInviteError(null); setInviteSuccess(null); }}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-opacity hover:opacity-90 neu-button-primary"
@@ -180,6 +181,7 @@ export default function MemberManager() {
         >
           ＋ 役職を割り当て
         </button>
+        </div>
       </div>
 
       {error && (
@@ -358,15 +360,17 @@ export default function MemberManager() {
               >
                 閉じる
               </button>
-              <button
+              <div className="neu-button-wrap flex-1">
+                <button
                 type="button"
                 onClick={() => void handleInvite()}
                 disabled={inviteSaving || !inviteEmail.trim() || !inviteRoleId}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
+                className="w-full py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {inviteSaving ? "処理中..." : "割り当て"}
               </button>
+              </div>
             </div>
           </div>
         </div>
@@ -404,15 +408,17 @@ export default function MemberManager() {
               >
                 キャンセル
               </button>
-              <button
+              <div className="neu-button-wrap flex-1">
+                <button
                 type="button"
                 onClick={() => void handleRoleChange()}
                 disabled={roleSaving || !roleNewId}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
+                className="w-full py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {roleSaving ? "保存中..." : "変更"}
               </button>
+              </div>
             </div>
           </div>
         </div>

@@ -348,13 +348,15 @@ export default function RegisterPage() {
             </label>
 
             {/* 送信ボタン */}
-            <button
-              type="submit" disabled={submitting}
-              className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-cyan-500/20 mt-2 neu-button-primary"
-              style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
-            >
-              {submitting ? "登録中..." : "登録する"}
-            </button>
+            <div className="neu-button-wrap w-full mt-2">
+              <button
+                type="submit" disabled={submitting}
+                className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-cyan-500/20 neu-button-primary"
+                style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
+              >
+                {submitting ? "登録中..." : "登録する"}
+              </button>
+            </div>
           </form>
 
           <div className="border-t mt-6 pt-5 text-center" style={{ borderColor: "var(--border)" }}>

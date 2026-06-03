@@ -535,25 +535,27 @@ export default function IssueHypothesisClient({
             <div className="flex items-center justify-end gap-3 mb-4">
               {gaps.length > 0 && (
                 <PermissionGate module="issue_hypothesis" level="edit" projectId={projectId}>
-                  <button
-                    onClick={handleAiButtonClick}
-                    disabled={aiGenerating}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                    style={{
-                      background: "#8b5cf618",
-                      color: "#a78bfa",
-                      border: "1px solid #8b5cf640",
-                    }}
-                  >
-                    {aiGenerating ? (
-                      <>
-                        <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                        生成中...
-                      </>
-                    ) : (
-                      "✨ AIで生成"
-                    )}
-                  </button>
+                  <div className="neu-button-wrap">
+                    <button
+                      onClick={handleAiButtonClick}
+                      disabled={aiGenerating}
+                      className="neu-button-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      style={{
+                        background: "#8b5cf618",
+                        color: "#a78bfa",
+                        border: "1px solid #8b5cf640",
+                      }}
+                    >
+                      {aiGenerating ? (
+                        <>
+                          <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                          生成中...
+                        </>
+                      ) : (
+                        "✨ AIで生成"
+                      )}
+                    </button>
+                  </div>
                 </PermissionGate>
               )}
               <button

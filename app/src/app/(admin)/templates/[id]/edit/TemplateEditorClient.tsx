@@ -188,7 +188,8 @@ function BasicInfoTab({
       </div>
 
       {!readOnly && (
-        <button
+        <div className="neu-button-wrap">
+          <button
           onClick={handleSave}
           disabled={saving}
           className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -196,6 +197,7 @@ function BasicInfoTab({
         >
           {saving ? "保存中..." : "保存"}
         </button>
+        </div>
       )}
     </div>
   );
@@ -386,7 +388,8 @@ function ModulesTab({
       </div>
 
       {!readOnly && (
-        <button
+        <div className="neu-button-wrap">
+          <button
           onClick={handleSave}
           disabled={saving}
           className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -394,6 +397,7 @@ function ModulesTab({
         >
           {saving ? "保存中..." : "保存"}
         </button>
+        </div>
       )}
     </div>
   );

@@ -245,7 +245,8 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
       {activeTab === "乖離テーブル" && (
         <div className="space-y-4">
           <div className="flex justify-end">
-            <button
+            <div className="neu-button-wrap">
+              <button
               type="button"
               onClick={() => setModalOpen(true)}
               className="text-sm font-semibold px-4 py-2 rounded-xl text-white neu-button-primary"
@@ -253,6 +254,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
             >
               新規登録
             </button>
+            </div>
           </div>
 
           {plans.length === 0 ? (
@@ -742,7 +744,8 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
               >
                 キャンセル
               </button>
-              <button
+              <div className="neu-button-wrap">
+                <button
                 type="button"
                 onClick={() => void handleSave()}
                 disabled={submitting || !form.service_name || !form.fiscal_year}
@@ -751,6 +754,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
               >
                 {submitting ? "保存中..." : "保存"}
               </button>
+              </div>
             </div>
           </div>
         </div>

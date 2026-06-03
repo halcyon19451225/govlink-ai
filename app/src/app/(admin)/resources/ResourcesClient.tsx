@@ -195,7 +195,8 @@ function AddResourceModal({ onClose, onSaved }: ModalProps) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <button
+            <div className="neu-button-wrap">
+              <button
               type="submit"
               disabled={submitting}
               className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -203,6 +204,7 @@ function AddResourceModal({ onClose, onSaved }: ModalProps) {
             >
               {submitting ? "登録中..." : "登録する"}
             </button>
+            </div>
             <button
               type="button"
               onClick={onClose}
@@ -248,13 +250,15 @@ export default function ResourcesClient({ initialResources }: Props) {
           <h2 className="text-2xl font-bold text-slate-100">組織リソース管理</h2>
           <p className="text-sm text-slate-500 mt-1">諮問機関・会議体・ツールなどを登録して政策に活用できます</p>
         </div>
-        <button
+        <div className="neu-button-wrap">
+          <button
           onClick={() => setShowModal(true)}
           className="text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           + リソースを追加
         </button>
+        </div>
       </div>
 
       {/* タブ */}

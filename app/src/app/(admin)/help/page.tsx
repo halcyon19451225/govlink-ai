@@ -102,13 +102,15 @@ export default function HelpPage() {
             サポートチームが対応いたします
           </p>
         </div>
-        <Link
+        <div className="neu-button-wrap">
+          <Link
           href="/contact"
           className="text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 transition-all duration-200 shrink-0 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
         >
           お問い合わせ
         </Link>
+        </div>
       </div>
     </div>
   );

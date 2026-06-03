@@ -444,7 +444,8 @@ export default function PermissionMatrix() {
                     <span style={{ color: "#22c55e" }}>✓ 保存しました</span>
                   ) : null}
                 </div>
-                <button
+                <div className="neu-button-wrap">
+                  <button
                   type="button"
                   onClick={() => void handleSave()}
                   disabled={saving || !hasChanges}
@@ -453,6 +454,7 @@ export default function PermissionMatrix() {
                 >
                   {saving ? "保存中..." : "保存"}
                 </button>
+                </div>
               </div>
             </div>
           )}

@@ -203,13 +203,15 @@ export default async function AdminProjectDetailPage({
         </div>
 
         <div className="mt-5 flex gap-3 flex-wrap">
-          <Link
+          <div className="neu-button-wrap">
+            <Link
             href={`/projects/${project.id}/post`}
             className="text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             進捗を報告する
           </Link>
+          </div>
           <Link
             href={`/projects/${project.id}/schedule`}
             className="text-sm font-medium px-5 py-2 rounded-xl border hover:border-indigo-500/40 hover:text-indigo-400 transition-all duration-200 text-slate-400"

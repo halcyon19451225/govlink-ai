@@ -219,7 +219,8 @@ export default function DocumentsClient({
           </div>
         </div>
 
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="submit"
           disabled={uploading}
           className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -227,6 +228,7 @@ export default function DocumentsClient({
         >
           {uploading ? "アップロード中..." : "アップロード"}
         </button>
+        </div>
       </form>
 
       {/* タブ + 一覧 */}

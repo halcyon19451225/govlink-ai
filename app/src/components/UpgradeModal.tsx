@@ -38,14 +38,16 @@ export default function UpgradeModal({ message, onClose }: UpgradeModalProps) {
         </p>
 
         <div className="flex items-center gap-3">
-          <Link
+          <div className="neu-button-wrap flex-1">
+            <Link
             href="/pricing"
-            className="flex-1 text-center text-sm font-semibold text-white px-4 py-2.5 rounded-xl transition-all duration-200 neu-button-primary"
+            className="w-full text-center text-sm font-semibold text-white px-4 py-2.5 rounded-xl transition-all duration-200 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
             onClick={onClose}
           >
             プランを見る
           </Link>
+          </div>
           <button
             onClick={onClose}
             className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2.5 rounded-xl border transition-colors duration-200"

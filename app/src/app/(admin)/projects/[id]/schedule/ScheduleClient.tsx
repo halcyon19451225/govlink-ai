@@ -359,7 +359,8 @@ export default function ScheduleClient({
               style={inputStyle}
             />
           </div>
-          <button
+          <div className="neu-button-wrap">
+            <button
             onClick={handleGenerate}
             disabled={generating}
             className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -374,6 +375,7 @@ export default function ScheduleClient({
               "AIでスケジュールを生成"
             )}
           </button>
+          </div>
         </div>
       </div>
 

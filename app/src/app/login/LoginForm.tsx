@@ -291,13 +291,15 @@ export default function LoginForm({ providers }: Props) {
                 </div>
               </div>
 
-              <button
-                type="submit" disabled={loading}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 neu-button-primary"
-                style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
-              >
-                {loading ? "ログイン中..." : "ログイン"}
-              </button>
+              <div className="neu-button-wrap w-full">
+                <button
+                  type="submit" disabled={loading}
+                  className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 neu-button-primary"
+                  style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
+                >
+                  {loading ? "ログイン中..." : "ログイン"}
+                </button>
+              </div>
             </form>
 
             {/* 区切り線 */}
@@ -374,13 +376,15 @@ export default function LoginForm({ providers }: Props) {
                 />
               </div>
 
-              <button
+              <div className="neu-button-wrap w-full">
+                <button
                 type="submit" disabled={resetLoading}
                 className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
               >
                 {resetLoading ? "送信中..." : "確認コードを送信"}
               </button>
+              </div>
             </form>
 
             <button
@@ -476,13 +480,15 @@ export default function LoginForm({ providers }: Props) {
                 />
               </div>
 
-              <button
+              <div className="neu-button-wrap w-full">
+                <button
                 type="submit" disabled={resetLoading}
                 className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
               >
                 {resetLoading ? "変更中..." : "パスワードを変更する"}
               </button>
+              </div>
             </form>
 
             <div className="flex flex-col items-center gap-2">
@@ -519,13 +525,15 @@ export default function LoginForm({ providers }: Props) {
                 新しいパスワードでログインしてください。
               </p>
             </div>
-            <button
+            <div className="neu-button-wrap w-full">
+              <button
               type="button" onClick={goBackToLogin}
               className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 shadow-lg shadow-cyan-500/20 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
             >
               ログインへ戻る
             </button>
+            </div>
           </div>
         )}
       </div>

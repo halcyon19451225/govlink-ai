@@ -404,14 +404,16 @@ export default function LogicModelEditorClient({
             </select>
 
             <PermissionGate module="logic_model" level="edit" projectId={projectId}>
-              <button
-                onClick={handleAiGenerate}
-                disabled={aiGenerating}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
-                style={{ background: "#6366f1" }}
-              >
-                {aiGenerating ? "生成中..." : "AIで生成"}
-              </button>
+              <div className="neu-button-wrap">
+                <button
+                  onClick={handleAiGenerate}
+                  disabled={aiGenerating}
+                  className="neu-button-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  style={{ background: "#6366f1" }}
+                >
+                  {aiGenerating ? "生成中..." : "AIで生成"}
+                </button>
+              </div>
             </PermissionGate>
 
             <button

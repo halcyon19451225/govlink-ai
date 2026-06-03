@@ -255,7 +255,8 @@ export default function OrgTreeManager() {
             階層型組織ツリーと役職を管理します
           </p>
         </div>
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="button"
           onClick={() => { setAddParent(selected); setShowAddUnit(true); }}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-opacity hover:opacity-90 neu-button-primary"
@@ -263,6 +264,7 @@ export default function OrgTreeManager() {
         >
           ＋ 組織を追加
         </button>
+        </div>
       </div>
 
       {error && (
@@ -318,7 +320,8 @@ export default function OrgTreeManager() {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>役職一覧</h3>
-                  <button
+                  <div className="neu-button-wrap">
+                    <button
                     type="button"
                     onClick={openAddRole}
                     className="text-xs px-3 py-1.5 rounded-lg font-medium text-white neu-button-primary"
@@ -326,6 +329,7 @@ export default function OrgTreeManager() {
                   >
                     ＋ 役職追加
                   </button>
+                  </div>
                 </div>
 
                 {selectedUnit.roles.length === 0 ? (
@@ -407,15 +411,17 @@ export default function OrgTreeManager() {
               >
                 キャンセル
               </button>
-              <button
+              <div className="neu-button-wrap flex-1">
+                <button
                 type="button"
                 onClick={() => void handleAddUnit()}
                 disabled={addSaving || !addName.trim()}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
+                className="w-full py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {addSaving ? "保存中..." : "追加"}
               </button>
+              </div>
             </div>
           </div>
         </div>
@@ -457,15 +463,17 @@ export default function OrgTreeManager() {
               >
                 キャンセル
               </button>
-              <button
+              <div className="neu-button-wrap flex-1">
+                <button
                 type="button"
                 onClick={() => void handleSaveRole()}
                 disabled={roleSaving || !roleName.trim()}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
+                className="w-full py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {roleSaving ? "保存中..." : "保存"}
               </button>
+              </div>
             </div>
           </div>
         </div>

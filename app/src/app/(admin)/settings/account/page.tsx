@@ -263,13 +263,15 @@ export default function AccountSettingsPage() {
             className={`${inputClass} flex-1`} style={inputStyle}
             placeholder="氏名を入力"
           />
-          <button
+          <div className="neu-button-wrap">
+            <button
             type="submit" disabled={nameLoading}
             className="px-5 py-3 rounded-xl text-sm font-medium text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 shrink-0 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
           >
             {nameSaved ? "保存済み ✓" : nameLoading ? "保存中..." : "保存"}
           </button>
+          </div>
         </form>
       </div>
 
@@ -323,13 +325,15 @@ export default function AccountSettingsPage() {
             className={inputClass} style={inputStyle}
             placeholder="新しいパスワード（確認）"
           />
-          <button
+          <div className="neu-button-wrap">
+            <button
             type="submit" disabled={passwordLoading}
             className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
           >
             {passwordLoading ? "変更中..." : "パスワードを変更"}
           </button>
+          </div>
         </form>
       </div>
 

@@ -210,13 +210,15 @@ export default function PricingPage() {
             >
               ログイン
             </Link>
-            <Link
-              href="/register"
-              className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 hover:opacity-90 neu-button-primary"
-              style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
-            >
-              無料で始める
-            </Link>
+            <div className="neu-button-wrap">
+              <Link
+                href="/register"
+                className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 hover:opacity-90 neu-button-primary"
+                style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
+              >
+                無料で始める
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -287,13 +289,15 @@ export default function PricingPage() {
 
               {/* CTAボタン（左寄せ） */}
               <div className="flex justify-start">
-                <Link
-                  href="/register"
-                  className="inline-block text-white font-bold px-8 py-3.5 rounded-xl text-sm transition-all duration-200 hover:opacity-90 hover:scale-105 neu-button-primary"
-                  style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
-                >
-                  無料で始める →
-                </Link>
+                <div className="neu-button-wrap">
+                  <Link
+                    href="/register"
+                    className="inline-block text-white font-bold px-8 py-3.5 rounded-xl text-sm transition-all duration-200 hover:opacity-90 hover:scale-105 neu-button-primary"
+                    style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
+                  >
+                    無料で始める →
+                  </Link>
+                </div>
               </div>
 
               {/* パーティクルのテキスト境界フェードゾーン（左端: 透明→不透明） */}
@@ -418,7 +422,8 @@ export default function PricingPage() {
               className="inline-flex items-center gap-3 p-1 rounded-xl border"
               style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
             >
-              <button
+              <div className="neu-button-wrap">
+                <button
                 onClick={() => setAnnual(false)}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 neu-button-primary"
                 style={
@@ -429,7 +434,9 @@ export default function PricingPage() {
               >
                 月払い
               </button>
-              <button
+              </div>
+              <div className="neu-button-wrap">
+                <button
                 onClick={() => setAnnual(true)}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 neu-button-primary"
                 style={
@@ -446,6 +453,7 @@ export default function PricingPage() {
                   2ヶ月分無料
                 </span>
               </button>
+              </div>
             </div>
           </div>
 
@@ -634,13 +642,15 @@ export default function PricingPage() {
             <p className="mb-6" style={{ color: "var(--text-secondary)" }}>
               50以上の部署・複数自治体での一括契約など、ご要望に応じたカスタムプランをご用意します。
             </p>
-            <Link
-              href="/contact"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-white px-6 py-3 rounded-xl transition-all duration-200 hover:opacity-90 neu-button-primary"
-              style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
-            >
-              お問い合わせフォーム →
-            </Link>
+            <div className="neu-button-wrap">
+              <Link
+                href="/contact"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-white px-6 py-3 rounded-xl transition-all duration-200 hover:opacity-90 neu-button-primary"
+                style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
+              >
+                お問い合わせフォーム →
+              </Link>
+            </div>
           </div>
         </main>
       </div>

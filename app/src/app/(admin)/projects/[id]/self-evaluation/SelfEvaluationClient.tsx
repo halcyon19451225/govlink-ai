@@ -293,7 +293,8 @@ function EntryForm({ projectId, sheetId, fiscalYear, periodType, existing, onSav
 
       <div className="flex justify-end">
         <PermissionGate module="self_evaluation" level="edit" projectId={projectId}>
-          <button
+          <div className="neu-button-wrap">
+            <button
             type="button"
             onClick={() => void handleSave()}
             disabled={saving}
@@ -302,6 +303,7 @@ function EntryForm({ projectId, sheetId, fiscalYear, periodType, existing, onSav
           >
             {saving ? "保存中..." : "保存"}
           </button>
+          </div>
         </PermissionGate>
       </div>
     </div>
@@ -452,7 +454,8 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
       >
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
           <h3 className="text-sm font-semibold text-slate-200">シート一覧</h3>
-          <button
+          <div className="neu-button-wrap">
+            <button
             type="button"
             onClick={() => setNewSheetModalOpen(true)}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white neu-button-primary"
@@ -460,6 +463,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
           >
             新規作成
           </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {sheets.length === 0 ? (
@@ -540,7 +544,8 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                     </button>
                   </PermissionGate>
                   <PermissionGate module="self_evaluation" level="edit" projectId={project.id}>
-                    <button
+                    <div className="neu-button-wrap">
+                      <button
                       type="button"
                       onClick={() => void handleSheetSave(selectedSheet)}
                       disabled={sheetSaving[selectedSheet.id]}
@@ -549,6 +554,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                     >
                       {sheetSaving[selectedSheet.id] ? "保存中..." : "保存"}
                     </button>
+                    </div>
                   </PermissionGate>
                 </div>
               </div>
@@ -733,7 +739,8 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
               >
                 キャンセル
               </button>
-              <button
+              <div className="neu-button-wrap">
+                <button
                 type="button"
                 onClick={() => void handleCreateSheet()}
                 disabled={creatingSheet || !newTitle.trim()}
@@ -742,6 +749,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
               >
                 {creatingSheet ? "作成中..." : "作成"}
               </button>
+              </div>
             </div>
           </div>
         </div>

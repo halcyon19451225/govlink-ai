@@ -33,13 +33,15 @@ export default function DashboardError({
         </p>
       </div>
       <div className="flex gap-3">
-        <button
+        <div className="neu-button-wrap">
+          <button
           onClick={reset}
           className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           再試行
         </button>
+        </div>
         <Link
           href="/dashboard"
           className="text-sm font-medium px-5 py-2 rounded-xl border hover:border-indigo-500/40 hover:text-indigo-400 transition-all duration-200 text-slate-400"

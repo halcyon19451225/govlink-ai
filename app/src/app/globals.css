@@ -153,30 +153,49 @@ body {
     inset -3px -3px 6px var(--neu-shadow-light);
 }
 
-/* 色付きプライマリボタン（グラデーション等の色は維持しつつニューモーフィズム影を付与） */
-.neu-button-primary {
-  border-radius: 12px;
-  border: none;
+/* 色付きプライマリボタン（2層構造）
+   外側フレーム = 凸型・余白あり / 内側ボタン = 色付き凹型 */
+
+/* 外側フレーム（凸型・余白あり）*/
+.neu-button-wrap {
+  display: inline-block;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--bg-primary, #e8e8e8);
   box-shadow:
     4px 4px 8px rgba(163, 163, 163, 0.6),
     -4px -4px 8px rgba(255, 255, 255, 0.8);
-  cursor: pointer;
-  transition: box-shadow 0.15s ease;
 }
-.neu-button-primary:active {
-  box-shadow:
-    inset 3px 3px 6px rgba(0, 0, 0, 0.2),
-    inset -3px -3px 6px rgba(255, 255, 255, 0.1);
-}
-[data-theme="dark"] .neu-button-primary {
+[data-theme="dark"] .neu-button-wrap {
+  background: var(--bg-primary, #1e1e2e);
   box-shadow:
     4px 4px 8px rgba(0, 0, 0, 0.4),
     -4px -4px 8px rgba(40, 40, 60, 0.6);
 }
-[data-theme="dark"] .neu-button-primary:active {
+
+/* 内側ボタン（凹型）*/
+.neu-button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
   box-shadow:
-    inset 3px 3px 6px rgba(0, 0, 0, 0.4),
-    inset -3px -3px 6px rgba(40, 40, 60, 0.3);
+    inset 3px 3px 6px rgba(0, 0, 0, 0.2),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.15);
+}
+.neu-button-primary:hover {
+  box-shadow:
+    inset 2px 2px 4px rgba(0, 0, 0, 0.15),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.1);
+}
+.neu-button-primary:active {
+  box-shadow:
+    inset 5px 5px 10px rgba(0, 0, 0, 0.3),
+    inset -5px -5px 10px rgba(255, 255, 255, 0.1);
+  transform: scale(0.98);
 }
 
 /* 入力フィールド（凹型） */

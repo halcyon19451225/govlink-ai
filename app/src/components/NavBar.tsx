@@ -26,23 +26,28 @@ function AvatarButton({
   name?: string | null;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className="flex items-center justify-center rounded-full overflow-hidden shrink-0 hover:ring-2 hover:ring-cyan-500 transition-all duration-200"
-      style={{ width: 36, height: 36 }}
-      aria-label="アカウントメニュー"
+    <div
+      className="neu-button-wrap shrink-0"
+      style={{ borderRadius: "50%", padding: 3 }}
     >
-      {image ? (
-        <Image src={image} alt={name ?? "avatar"} width={36} height={36} style={{ objectFit: "cover" }} />
-      ) : (
-        <span
-          className="w-full h-full flex items-center justify-center text-xs font-bold text-white"
-          style={{ background: "linear-gradient(135deg, #06b6d4, #6366f1)" }}
-        >
-          {getInitials(name)}
-        </span>
-      )}
-    </button>
+      <button
+        onClick={onClick}
+        className="flex items-center justify-center rounded-full overflow-hidden hover:ring-2 hover:ring-cyan-500 transition-all duration-200 neu-button-primary"
+        style={{ width: 36, height: 36, borderRadius: "50%" }}
+        aria-label="アカウントメニュー"
+      >
+        {image ? (
+          <Image src={image} alt={name ?? "avatar"} width={36} height={36} style={{ objectFit: "cover" }} />
+        ) : (
+          <span
+            className="w-full h-full flex items-center justify-center text-xs font-bold text-white"
+            style={{ background: "linear-gradient(135deg, #06b6d4, #6366f1)" }}
+          >
+            {getInitials(name)}
+          </span>
+        )}
+      </button>
+    </div>
   );
 }
 

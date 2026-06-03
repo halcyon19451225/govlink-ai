@@ -132,7 +132,8 @@
       "Bash(grep -iE \"#[0-9a-f]{3,6}|backgroundColor|background:\")",
       "Bash(echo \"=== TSC EXIT: $? ===\")",
       "Bash(NODE_OPTIONS='--max-old-space-size=4096' npx next build)",
-      "Bash(echo \"BUILD EXIT: $?\")"
+      "Bash(echo \"BUILD EXIT: $?\")",
+      "Bash(echo \"TSC EXIT: $?\")"
     ]
   }
 }

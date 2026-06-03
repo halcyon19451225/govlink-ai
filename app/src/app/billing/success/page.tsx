@@ -17,11 +17,13 @@ export default function BillingSuccessPage() {
             決済が完了しました。プランが有効になりました。
           </p>
         </div>
-        <Link href="/dashboard"
+        <div className="neu-button-wrap">
+          <Link href="/dashboard"
           className="block text-sm font-semibold text-white py-3 rounded-xl transition-all duration-200 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
           ダッシュボードへ →
         </Link>
+        </div>
         <Link href="/billing" className="block text-sm text-slate-500 hover:text-slate-300 transition-colors duration-200">
           プラン・請求を確認する
         </Link>

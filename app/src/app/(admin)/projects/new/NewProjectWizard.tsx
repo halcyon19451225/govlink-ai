@@ -174,7 +174,8 @@ function Step1({
       </div>
 
       <div className="flex gap-3 pt-2">
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="button"
           onClick={onNext}
           className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -182,6 +183,7 @@ function Step1({
         >
           次へ →
         </button>
+        </div>
       </div>
     </div>
   );
@@ -273,7 +275,8 @@ function Step2({
         >
           ← 戻る
         </button>
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="button"
           onClick={onNext}
           disabled={!canNext}
@@ -282,6 +285,7 @@ function Step2({
         >
           次へ →
         </button>
+        </div>
       </div>
     </div>
   );
@@ -382,7 +386,8 @@ function Step3({
         >
           ← 戻る
         </button>
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="button"
           onClick={onNext}
           className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 neu-button-primary"
@@ -390,6 +395,7 @@ function Step3({
         >
           次へ →
         </button>
+        </div>
       </div>
     </div>
   );
@@ -538,7 +544,8 @@ function Step4({
         >
           ← 戻る
         </button>
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="button"
           onClick={onSubmit}
           disabled={submitting}
@@ -547,6 +554,7 @@ function Step4({
         >
           {submitting ? "作成中..." : "プロジェクトを作成"}
         </button>
+        </div>
       </div>
     </div>
   );

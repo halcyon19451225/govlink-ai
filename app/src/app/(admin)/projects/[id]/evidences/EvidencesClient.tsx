@@ -259,7 +259,8 @@ export default function EvidencesClient({
           </div>
         </div>
 
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="submit"
           disabled={submitting}
           className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -267,6 +268,7 @@ export default function EvidencesClient({
         >
           {submitting ? "登録中..." : "登録する"}
         </button>
+        </div>
       </form>
 
       {/* 因果関係マップ + 一覧 */}

@@ -18,10 +18,12 @@ export default function PrivacyPage() {
     <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
       <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
+          <div className="neu-button-wrap">
+            <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
             style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             Sinap-sys
           </Link>
+          </div>
           <div className="flex gap-4 text-sm">
             <Link href="/terms" className="text-slate-500 hover:text-slate-300 transition-colors duration-200">利用規約</Link>
             <Link href="/contact" className="text-slate-500 hover:text-slate-300 transition-colors duration-200">お問い合わせ</Link>

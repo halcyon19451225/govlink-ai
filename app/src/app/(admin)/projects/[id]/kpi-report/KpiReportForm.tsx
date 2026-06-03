@@ -283,7 +283,8 @@ export default function KpiReportForm({
 
       {/* Submit */}
       <div className="flex gap-3 pt-2">
-        <button
+        <div className="neu-button-wrap">
+          <button
           type="button"
           onClick={handleSubmit}
           disabled={submitting || enabledEntries.length === 0}
@@ -292,6 +293,7 @@ export default function KpiReportForm({
         >
           {submitting ? "送信中..." : `${enabledEntries.length}件の実績を報告する`}
         </button>
+        </div>
         <button
           type="button"
           onClick={() => router.back()}

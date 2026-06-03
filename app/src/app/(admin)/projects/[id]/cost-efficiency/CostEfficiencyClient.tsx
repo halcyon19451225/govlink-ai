@@ -493,11 +493,13 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                 <h3 className="text-sm font-semibold text-slate-200">感度分析（トルネードチャート）</h3>
                 <p className="text-xs text-slate-500 mt-0.5">各パラメータを ±10% 変化させたときのコスト比率の変動を可視化します</p>
               </div>
-              <button type="button" onClick={handleSensitivity} disabled={analysisCalc.total_investment === 0}
+              <div className="neu-button-wrap">
+                <button type="button" onClick={handleSensitivity} disabled={analysisCalc.total_investment === 0}
                 className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 shrink-0 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 感度分析を実行
               </button>
+              </div>
             </div>
             {analysisCalc.total_investment === 0 && <p className="text-xs text-slate-500">上の入力フォームにパラメータを入力してから実行してください。</p>}
             {sensitivityResult && (
@@ -543,11 +545,13 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                 <h3 className="text-sm font-semibold text-slate-200">モンテカルロシミュレーション（10,000回）</h3>
                 <p className="text-xs text-slate-500 mt-0.5">各パラメータにガウス分布（平均±10%の標準偏差）を仮定してシミュレーションします</p>
               </div>
-              <button type="button" onClick={handleMonteCarlo} disabled={mcRunning || analysisCalc.total_investment === 0}
+              <div className="neu-button-wrap">
+                <button type="button" onClick={handleMonteCarlo} disabled={mcRunning || analysisCalc.total_investment === 0}
                 className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 shrink-0 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 {mcRunning ? "実行中..." : "シミュレーション開始"}
               </button>
+              </div>
             </div>
             {analysisCalc.total_investment === 0 && <p className="text-xs text-slate-500">上の入力フォームにパラメータを入力してから実行してください。</p>}
             {mcRunning && (
@@ -731,11 +735,13 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                 キャンセル
               </button>
               <PermissionGate module="cost_efficiency" level="edit" projectId={project.id}>
-                <button type="button" onClick={() => void handleSave()} disabled={submitting}
+                <div className="neu-button-wrap">
+                  <button type="button" onClick={() => void handleSave()} disabled={submitting}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                   style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                   {submitting ? "保存中..." : editingId ? "更新" : "保存"}
                 </button>
+                </div>
               </PermissionGate>
             </div>
           </div>

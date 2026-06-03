@@ -33,13 +33,15 @@ export default function Error({
             {error.message || "予期しないエラーが発生しました。"}
           </p>
         </div>
-        <button
+        <div className="neu-button-wrap">
+          <button
           onClick={reset}
           className="text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           再試行
         </button>
+        </div>
       </div>
     </div>
   );

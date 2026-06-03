@@ -109,10 +109,12 @@ function InvoiceRequestForm() {
     <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
       <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
+          <div className="neu-button-wrap">
+            <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
             style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             Sinap-sys
           </Link>
+          </div>
           <Link href="/pricing" className="text-sm text-slate-500 hover:text-slate-300 transition-colors duration-200">
             ← 料金プランへ戻る
           </Link>
@@ -235,11 +237,13 @@ function InvoiceRequestForm() {
                 placeholder="ご質問・特記事項があればご記入ください" />
             </div>
 
-            <button type="submit" disabled={submitting}
+            <div className="neu-button-wrap w-full">
+              <button type="submit" disabled={submitting}
               className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
               {submitting ? "送信中..." : "申し込みを送信する"}
             </button>
+            </div>
           </form>
 
           {/* Summary */}

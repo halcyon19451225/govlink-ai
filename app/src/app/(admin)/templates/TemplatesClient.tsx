@@ -357,11 +357,13 @@ function TemplateFormModal({
         </div>
 
         <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: "var(--border)" }}>
-          <button type="button" onClick={onSubmit} disabled={submitting || !form.name.trim()}
+          <div className="neu-button-wrap">
+            <button type="button" onClick={onSubmit} disabled={submitting || !form.name.trim()}
             className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             {submitting ? "作成中..." : "作成する"}
           </button>
+          </div>
           <button type="button" onClick={onClose}
             className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 transition-colors duration-200">
             キャンセル
@@ -494,13 +496,15 @@ export default function TemplatesClient({
           </p>
         </div>
         {municipalityId && (
-          <button
+          <div className="neu-button-wrap">
+            <button
             onClick={() => { setForm(EMPTY_FORM(modules)); setError(null); setShowForm(true); }}
             className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             ＋ 新規作成
           </button>
+          </div>
         )}
       </div>
 

@@ -307,7 +307,8 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
-            <button
+            <div className="neu-button-wrap">
+              <button
               type="button"
               onClick={handleSensitivity}
               disabled={calc.total_investment === 0}
@@ -316,7 +317,9 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
             >
               感度分析
             </button>
-            <button
+            </div>
+            <div className="neu-button-wrap">
+              <button
               type="button"
               onClick={handleMonteCarlo}
               disabled={mcRunning || calc.total_investment === 0}
@@ -325,6 +328,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
             >
               {mcRunning ? "実行中..." : "モンテカルロ"}
             </button>
+            </div>
           </div>
         </div>
         {calc.total_investment === 0 && (
@@ -505,7 +509,8 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
                 キャンセル
               </button>
               <PermissionGate module="program_evaluation" level="edit" projectId={projectId}>
-                <button
+                <div className="neu-button-wrap">
+                  <button
                   type="button"
                   onClick={() => void handleSave()}
                   disabled={submitting}
@@ -514,6 +519,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
                 >
                   {submitting ? "保存中..." : "保存"}
                 </button>
+                </div>
               </PermissionGate>
             </div>
           </div>

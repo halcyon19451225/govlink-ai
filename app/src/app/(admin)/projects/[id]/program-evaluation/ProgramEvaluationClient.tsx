@@ -358,11 +358,13 @@ export default function ProgramEvaluationClient({
 
             {procError && <p className="text-xs text-red-400">{procError}</p>}
             <PermissionGate module="program_evaluation" level="edit" projectId={project.id}>
-              <button type="button" onClick={() => void handleProcSave()} disabled={procSubmitting}
+              <div className="neu-button-wrap">
+                <button type="button" onClick={() => void handleProcSave()} disabled={procSubmitting}
                 className="text-sm font-semibold px-5 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 {procSubmitting ? "保存中..." : "プロセス評価を保存"}
               </button>
+              </div>
             </PermissionGate>
           </div>
 
@@ -425,11 +427,13 @@ export default function ProgramEvaluationClient({
 
             {outError && <p className="text-xs text-red-400">{outError}</p>}
             <PermissionGate module="program_evaluation" level="edit" projectId={project.id}>
-              <button type="button" onClick={() => void handleOutSave()} disabled={outSubmitting}
+              <div className="neu-button-wrap">
+                <button type="button" onClick={() => void handleOutSave()} disabled={outSubmitting}
                 className="text-sm font-semibold px-5 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 {outSubmitting ? "保存中..." : "アウトカム評価を保存"}
               </button>
+              </div>
             </PermissionGate>
           </div>
 
@@ -504,10 +508,12 @@ export default function ProgramEvaluationClient({
                 </div>
               ))}
             </div>
-            <button type="button" onClick={handleDid}
+            <div className="neu-button-wrap w-full">
+              <button type="button" onClick={handleDid}
               className="w-full text-sm font-semibold px-4 py-2 rounded-xl text-white neu-button-primary" style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
               計算
             </button>
+            </div>
             {didResult && (
               <div className="space-y-3">
                 <div className="rounded-xl border p-3 space-y-2 text-sm" style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>

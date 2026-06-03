@@ -215,11 +215,13 @@ export default function UsersPage() {
               </div>
             </div>
             <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: "var(--border)" }}>
-              <button type="button" onClick={handleSubmit} disabled={submitting || !displayName.trim()}
+              <div className="neu-button-wrap">
+                <button type="button" onClick={handleSubmit} disabled={submitting || !displayName.trim()}
                 className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 {submitting ? "保存中..." : editUser ? "更新する" : "追加する"}
               </button>
+              </div>
               <button type="button" onClick={() => setShowForm(false)}
                 className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 transition-colors duration-200">
                 キャンセル
@@ -245,13 +247,15 @@ export default function UsersPage() {
             自治体内のユーザーとロールを管理します。
           </p>
         </div>
-        <button
+        <div className="neu-button-wrap">
+          <button
           onClick={openCreate}
           className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           ＋ ユーザーを追加
         </button>
+        </div>
       </div>
 
       {/* Role legend */}

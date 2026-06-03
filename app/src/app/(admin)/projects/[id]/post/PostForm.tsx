@@ -290,7 +290,8 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
 
         {/* 送信 */}
         <div className="flex gap-3 pt-2">
-          <button
+          <div className="neu-button-wrap">
+            <button
             type="submit"
             disabled={submitting}
             className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -298,6 +299,7 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
           >
             {submitting ? "投稿中..." : "投稿する"}
           </button>
+          </div>
           <a
             href={`/projects/${projectId}`}
             className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 inline-flex items-center transition-colors duration-200"

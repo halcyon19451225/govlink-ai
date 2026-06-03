@@ -359,7 +359,8 @@ export default function EbpmClient({
                 ))}
               </select>
             </div>
-            <button
+            <div className="neu-button-wrap">
+              <button
               onClick={handleEstat}
               disabled={estatLoading || !estatKeyword.trim()}
               className="text-white px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200 neu-button-primary"
@@ -367,6 +368,7 @@ export default function EbpmClient({
             >
               {estatLoading ? "検索中..." : "統計データを検索"}
             </button>
+            </div>
           </div>
 
           {/* ベンチマーク一覧 */}
@@ -424,7 +426,8 @@ export default function EbpmClient({
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
             AI改善提案
           </h3>
-          <button
+          <div className="neu-button-wrap">
+            <button
             onClick={handleSuggest}
             disabled={streamMode !== "idle"}
             className="text-white px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -432,6 +435,7 @@ export default function EbpmClient({
           >
             {streamMode === "suggest" ? "生成中..." : "AIで改善提案を生成"}
           </button>
+          </div>
         </div>
 
         {streamMode === "suggest" && (
@@ -510,7 +514,8 @@ export default function EbpmClient({
               />
             </div>
           </div>
-          <button
+          <div className="neu-button-wrap">
+            <button
             onClick={handleReport}
             disabled={streamMode !== "idle"}
             className="text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -518,6 +523,7 @@ export default function EbpmClient({
           >
             {streamMode === "report" ? "生成中..." : "AIでレポートを生成"}
           </button>
+          </div>
 
           {/* ストリーミング中のプレビュー */}
           {streamMode === "report" && (

@@ -59,10 +59,12 @@ export default function ContactPage() {
       <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-primary)" }}>
         <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
           <div className="max-w-4xl mx-auto px-6 py-4">
-            <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
+            <div className="neu-button-wrap">
+              <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
               style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
               Sinap-sys
             </Link>
+            </div>
           </div>
         </header>
         <div className="flex-1 flex items-center justify-center px-4">
@@ -103,10 +105,12 @@ export default function ContactPage() {
     <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-primary)" }}>
       <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
+          <div className="neu-button-wrap">
+            <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
             style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             Sinap-sys
           </Link>
+          </div>
           <div className="flex gap-4 text-sm">
             <Link href="/pricing" className="text-slate-500 hover:text-slate-300 transition-colors duration-200">料金プラン</Link>
             <Link href="/terms" className="text-slate-500 hover:text-slate-300 transition-colors duration-200">利用規約</Link>
@@ -226,7 +230,8 @@ export default function ContactPage() {
             </label>
           </div>
 
-          <button
+          <div className="neu-button-wrap w-full">
+            <button
             type="submit"
             disabled={submitting || !agreed}
             className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
@@ -234,6 +239,7 @@ export default function ContactPage() {
           >
             {submitting ? "送信中..." : "送信する"}
           </button>
+          </div>
         </form>
 
         <div className="mt-10 rounded-xl border p-4 text-xs text-slate-500 space-y-1" style={{ borderColor: "var(--border)" }}>

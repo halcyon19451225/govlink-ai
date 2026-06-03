@@ -281,25 +281,29 @@ export default function GapAnalysisClient({
           <div className="flex items-center gap-2">
             {datasets.length > 0 && (
               <PermissionGate module="gap_analysis" level="edit" projectId={projectId}>
-                <button
-                  type="button"
-                  onClick={() => void handleImportFromDatasets()}
-                  disabled={importingFromDatasets}
-                  className="text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #0ea5e9, #10b981)" }}
-                >
-                  {importingFromDatasets ? "取込中..." : "CSVから自動取込"}
-                </button>
+                <div className="neu-button-wrap">
+                  <button
+                    type="button"
+                    onClick={() => void handleImportFromDatasets()}
+                    disabled={importingFromDatasets}
+                    className="text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 disabled:opacity-50 neu-button-primary"
+                    style={{ background: "linear-gradient(135deg, #0ea5e9, #10b981)" }}
+                  >
+                    {importingFromDatasets ? "取込中..." : "CSVから自動取込"}
+                  </button>
+                </div>
               </PermissionGate>
             )}
-            <button
-              type="button"
-              onClick={() => setShowAddForm((v) => !v)}
-              className="text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 neu-button-primary"
-              style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
-            >
-              + ギャップを追加
-            </button>
+            <div className="neu-button-wrap">
+              <button
+                type="button"
+                onClick={() => setShowAddForm((v) => !v)}
+                className="text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 neu-button-primary"
+                style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+              >
+                + ギャップを追加
+              </button>
+            </div>
           </div>
         </div>
 
@@ -449,15 +453,17 @@ export default function GapAnalysisClient({
               >
                 キャンセル
               </button>
-              <button
-                type="button"
-                onClick={() => void handleAdd()}
-                disabled={submitting}
-                className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
-                style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
-              >
-                {submitting ? "追加中..." : "追加"}
-              </button>
+              <div className="neu-button-wrap flex-1">
+                <button
+                  type="button"
+                  onClick={() => void handleAdd()}
+                  disabled={submitting}
+                  className="w-full text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+                >
+                  {submitting ? "追加中..." : "追加"}
+                </button>
+              </div>
             </div>
           </div>
         )}
