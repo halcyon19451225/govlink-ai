@@ -309,76 +309,254 @@ function Step2({
 
 // ─── Step 2.5: 目的・目標設定（スキップ可）────────────────────────────────
 
+interface GoalItem {
+  title: string;
+  description: string;
+}
+
+interface AiSuggestedGoal extends GoalItem {
+  adopted?: boolean;
+}
+
 function Step2_5({
-  values,
-  onChange,
-  onGoalChange,
+  goals,
+  onGoalsChange,
+  planName,
+  templateName,
   onNext,
   onSkip,
   onBack,
 }: {
-  values: { purpose: string; goals: string[]; majorPolicy: string };
-  onChange: (k: "purpose" | "majorPolicy", v: string) => void;
-  onGoalChange: (idx: number, v: string) => void;
+  goals: GoalItem[];
+  onGoalsChange: (goals: GoalItem[]) => void;
+  planName: string;
+  templateName?: string;
   onNext: () => void;
   onSkip: () => void;
   onBack: () => void;
 }) {
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestedGoal[]>([]);
+
+  // ─ 基本目標の操作 ─
+  const addGoal = () =>
+    onGoalsChange([...goals, { title: "", description: "" }]);
+
+  const removeGoal = (idx: number) =>
+    onGoalsChange(goals.filter((_, i) => i !== idx));
+
+  const updateGoal = (idx: number, field: keyof GoalItem, val: string) => {
+    const next = goals.map((g, i) => (i === idx ? { ...g, [field]: val } : g));
+    onGoalsChange(next);
+  };
+
+  const moveGoal = (idx: number, dir: -1 | 1) => {
+    const next = [...goals];
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= next.length) return;
+    const tmp = next[idx]!;
+    next[idx] = next[swapIdx]!;
+    next[swapIdx] = tmp;
+    onGoalsChange(next);
+  };
+
+  // ─ AI提案 ─
+  const handleAiSuggest = async () => {
+    if (!planName.trim()) return;
+    setAiLoading(true);
+    setAiError(null);
+    setAiSuggestions([]);
+    try {
+      const res = await fetch("/api/ai/suggest-goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planName, templateName }),
+      });
+      const json = (await res.json()) as {
+        data: { goals: GoalItem[] } | null;
+        error: string | null;
+      };
+      if (!res.ok || !json.data) {
+        setAiError(json.error ?? "AI提案の取得に失敗しました");
+        return;
+      }
+      setAiSuggestions(json.data.goals.map((g) => ({ ...g, adopted: false })));
+    } catch {
+      setAiError("通信エラーが発生しました");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const adoptSuggestion = (idx: number) => {
+    const s = aiSuggestions[idx];
+    if (!s || s.adopted) return;
+    onGoalsChange([...goals, { title: s.title, description: s.description }]);
+    setAiSuggestions((prev) =>
+      prev.map((sg, i) => (i === idx ? { ...sg, adopted: true } : sg))
+    );
+  };
+
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-lg font-bold text-slate-100 mb-1">目的・目標を設定</h3>
+        <h3 className="text-lg font-bold text-slate-100 mb-1">基本目標を設定</h3>
         <p className="text-sm text-slate-500">
           後から編集できます。入力せずにスキップすることもできます。
         </p>
       </div>
 
+      {/* ─ AI提案ボタン ─ */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">計画の目的</label>
-        <textarea
-          value={values.purpose}
-          onChange={(e) => onChange("purpose", e.target.value)}
-          rows={3}
-          className={inputClass}
-          style={inputStyle}
-          placeholder="この計画が解決しようとする課題や達成すべき目的を記入してください"
-        />
+        <button
+          type="button"
+          onClick={handleAiSuggest}
+          disabled={aiLoading || !planName.trim()}
+          className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            borderColor: "#6366f140",
+            background: "#6366f110",
+            color: "#a5b4fc",
+          }}
+        >
+          {aiLoading ? (
+            <>
+              <span className="inline-block w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+              AI提案を生成中...
+            </>
+          ) : (
+            "✦ AIで基本目標を提案"
+          )}
+        </button>
+        {aiError && (
+          <p className="text-xs text-red-400 mt-1.5">{aiError}</p>
+        )}
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-300 mb-2">
-          基本目標
-          <span className="text-xs text-slate-500 ml-2">（最大3つ）</span>
-        </label>
-        <div className="space-y-2">
-          {values.goals.map((g, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="text-xs font-bold text-indigo-400 w-5 shrink-0">#{i + 1}</span>
-              <input
-                type="text"
-                value={g}
-                onChange={(e) => onGoalChange(i, e.target.value)}
-                className={inputClass}
-                style={inputStyle}
-                placeholder={`基本目標 ${i + 1}`}
-              />
+      {/* ─ AI提案一覧 ─ */}
+      {aiSuggestions.length > 0 && (
+        <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: "#6366f140", background: "#6366f108" }}>
+          <p className="text-xs font-semibold text-indigo-400 mb-2">AI提案（クリックで採用）</p>
+          {aiSuggestions.map((s, i) => (
+            <div
+              key={i}
+              className="flex items-start gap-3 rounded-lg border p-3 transition-all duration-200"
+              style={{
+                borderColor: s.adopted ? "#10b98140" : "#6366f130",
+                background: s.adopted ? "#10b98110" : "var(--bg-secondary)",
+                opacity: s.adopted ? 0.6 : 1,
+              }}
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-200">{s.title}</p>
+                {s.description && (
+                  <p className="text-xs text-slate-500 mt-0.5">{s.description}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => adoptSuggestion(i)}
+                disabled={s.adopted}
+                className="shrink-0 text-xs font-semibold px-3 py-1 rounded-lg transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{
+                  background: s.adopted ? "#10b98120" : "#6366f120",
+                  color: s.adopted ? "#10b981" : "#a5b4fc",
+                  border: `1px solid ${s.adopted ? "#10b98140" : "#6366f140"}`,
+                }}
+              >
+                {s.adopted ? "採用済み ✓" : "採用"}
+              </button>
             </div>
           ))}
         </div>
-      </div>
+      )}
 
+      {/* ─ 基本目標リスト ─ */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">重点施策の方向性</label>
-        <textarea
-          value={values.majorPolicy}
-          onChange={(e) => onChange("majorPolicy", e.target.value)}
-          rows={3}
-          className={inputClass}
-          style={inputStyle}
-          placeholder="計画期間中の重点施策・取り組みの方向性を記入してください"
-        />
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-slate-300">基本目標</label>
+          <button
+            type="button"
+            onClick={addGoal}
+            className="text-xs font-medium px-3 py-1 rounded-lg border transition-colors duration-200 hover:border-indigo-400 hover:text-indigo-400"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+          >
+            ＋ 基本目標を追加
+          </button>
+        </div>
+
+        {goals.length === 0 ? (
+          <div
+            className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500"
+            style={{ borderColor: "var(--border)" }}
+          >
+            「＋ 基本目標を追加」またはAI提案を採用してください
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {goals.map((g, i) => (
+              <div
+                key={i}
+                className="rounded-xl border p-3 space-y-2"
+                style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
+              >
+                {/* 上段: 番号 + タイトル + 操作ボタン */}
+                <div className="flex items-center gap-2">
+                  <span
+                    className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white"
+                    style={{ background: "#6366f1" }}
+                  >
+                    {i + 1}
+                  </span>
+                  <input
+                    type="text"
+                    value={g.title}
+                    onChange={(e) => updateGoal(i, "title", e.target.value)}
+                    className={inputClass}
+                    style={inputStyle}
+                    placeholder={`基本目標 ${i + 1} のタイトル`}
+                  />
+                  {/* 並び替え・削除ボタン */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => moveGoal(i, -1)}
+                      disabled={i === 0}
+                      className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-slate-300 disabled:opacity-30 transition-colors"
+                      title="上へ"
+                    >▲</button>
+                    <button
+                      type="button"
+                      onClick={() => moveGoal(i, 1)}
+                      disabled={i === goals.length - 1}
+                      className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-slate-300 disabled:opacity-30 transition-colors"
+                      title="下へ"
+                    >▼</button>
+                    <button
+                      type="button"
+                      onClick={() => removeGoal(i)}
+                      className="w-6 h-6 flex items-center justify-center rounded text-red-500 hover:text-red-400 transition-colors"
+                      title="削除"
+                    >✕</button>
+                  </div>
+                </div>
+                {/* 説明（任意） */}
+                <textarea
+                  value={g.description}
+                  onChange={(e) => updateGoal(i, "description", e.target.value)}
+                  rows={2}
+                  className={inputClass}
+                  style={{ ...inputStyle, fontSize: 12 }}
+                  placeholder="説明（任意）"
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
+      {/* ─ フッターボタン ─ */}
       <div className="flex gap-3 pt-2 justify-between">
         <button
           type="button"
@@ -706,12 +884,8 @@ export default function NewProjectWizard({
     planEndDate: "",
   });
 
-  // Step 2.5: 目的・目標
-  const [goalsInfo, setGoalsInfo] = useState({
-    purpose: "",
-    goals: ["", "", ""],
-    majorPolicy: "",
-  });
+  // Step 2.5: 基本目標
+  const [goals, setGoals] = useState<GoalItem[]>([]);
 
   // Step 4 (旧3): moduleConfig
   const [moduleConfig, setModuleConfig] = useState<Record<string, { enabled: boolean }>>({});
@@ -735,24 +909,15 @@ export default function NewProjectWizard({
   const updateBasicInfo = (k: string, v: string) =>
     setBasicInfo((prev) => ({ ...prev, [k]: v }));
 
-  const updateGoalsInfo = (k: "purpose" | "majorPolicy", v: string) =>
-    setGoalsInfo((prev) => ({ ...prev, [k]: v }));
-
-  const updateGoal = (idx: number, v: string) =>
-    setGoalsInfo((prev) => {
-      const next = [...prev.goals];
-      next[idx] = v;
-      return { ...prev, goals: next };
-    });
 
   const handleSubmit = async () => {
     setSubmitting(true);
     setSubmitError(null);
 
     try {
-      const goalsPayload = goalsInfo.goals
-        .map((t, i) => ({ goal_number: i + 1, title: t, description: "", sort_order: i }))
-        .filter((g) => g.title.trim().length > 0);
+      const goalsPayload = goals
+        .filter((g) => g.title.trim().length > 0)
+        .map((g, i) => ({ goal_number: i + 1, title: g.title, description: g.description, sort_order: i }));
 
       const payload = {
         title: basicInfo.title,
@@ -762,8 +927,6 @@ export default function NewProjectWizard({
         template_id: selectedTemplate?.id ?? null,
         plan_start_date: basicInfo.planStartDate || null,
         plan_end_date: basicInfo.planEndDate || null,
-        purpose: goalsInfo.purpose || null,
-        major_policy: goalsInfo.majorPolicy || null,
         module_overrides: moduleConfig,
         goals: goalsPayload,
       };
@@ -820,9 +983,10 @@ export default function NewProjectWizard({
         )}
         {step === 3 && (
           <Step2_5
-            values={goalsInfo}
-            onChange={updateGoalsInfo}
-            onGoalChange={updateGoal}
+            goals={goals}
+            onGoalsChange={setGoals}
+            planName={basicInfo.title}
+            templateName={selectedTemplate?.name ?? ""}
             onNext={() => setStep(4)}
             onSkip={() => setStep(4)}
             onBack={() => setStep(2)}

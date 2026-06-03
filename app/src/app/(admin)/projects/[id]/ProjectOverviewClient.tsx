@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import KnowledgePanel from "@/components/KnowledgePanel";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -87,6 +88,9 @@ export default function ProjectOverviewClient({ project, goals, logicModel }: Pr
   // ステータスを楽観的更新
   const [status, setStatus] = useState<Project["status"]>(project.status);
   const [statusSaving, setStatusSaving] = useState(false);
+
+  // ナレッジパネル
+  const [knowledgePanelOpen, setKnowledgePanelOpen] = useState(false);
 
   // 概要編集モーダル
   const [showEditModal, setShowEditModal] = useState(false);
@@ -443,12 +447,12 @@ export default function ProjectOverviewClient({ project, goals, logicModel }: Pr
             </div>
 
             <div className="pt-1">
-              <Link
-                href={`/projects/${project.id}/knowledge`}
+              <button
+                onClick={() => { setShowEditModal(false); setKnowledgePanelOpen(true); }}
                 className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors duration-200"
               >
                 📚 ナレッジを管理 →
-              </Link>
+              </button>
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
@@ -550,6 +554,13 @@ export default function ProjectOverviewClient({ project, goals, logicModel }: Pr
           </div>
         </div>
       )}
+
+      {/* ══════════ ナレッジパネル ══════════ */}
+      <KnowledgePanel
+        projectId={project.id}
+        open={knowledgePanelOpen}
+        onClose={() => setKnowledgePanelOpen(false)}
+      />
     </div>
   );
 }
