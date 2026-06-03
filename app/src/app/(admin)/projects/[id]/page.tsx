@@ -4,8 +4,6 @@ import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import ProjectOverviewClient from "./ProjectOverviewClient";
 
-// ─── DB 型 ───────────────────────────────────────────────────────────────────
-
 interface ProjectRow {
   id: string;
   title: string;
@@ -15,8 +13,6 @@ interface ProjectRow {
   municipality_name: string;
   plan_start_date: string | null;
   plan_end_date: string | null;
-  purpose: string | null;
-  major_policy: string | null;
   created_at: string;
 }
 
@@ -26,6 +22,17 @@ interface GoalRow {
   title: string;
   description: string | null;
   sort_order: number;
+}
+
+interface KpiRow {
+  id: string;
+  label: string;
+  target: number;
+  current: number;
+  unit: string;
+  goal_id: string | null;
+  indicator_type: string;
+  previous_value: number | null;
 }
 
 interface LogicModelRow {
@@ -40,8 +47,6 @@ interface LogicModelRow {
   generated_at: string | null;
 }
 
-// ─── Page ────────────────────────────────────────────────────────────────────
-
 export default async function AdminProjectDetailPage({
   params,
 }: {
@@ -53,8 +58,6 @@ export default async function AdminProjectDetailPage({
        p.department_name,
        p.plan_start_date::text,
        p.plan_end_date::text,
-       p.purpose,
-       p.major_policy,
        p.created_at,
        m.name AS municipality_name
      FROM projects p
@@ -66,10 +69,16 @@ export default async function AdminProjectDetailPage({
   const project = rows[0];
   if (!project) notFound();
 
-  const [goals, logicModelRows] = await Promise.all([
+  const [goals, kpis, logicModelRows] = await Promise.all([
     query<GoalRow>(
       `SELECT id, goal_number, title, description, sort_order
        FROM project_goals WHERE project_id = $1 ORDER BY sort_order, goal_number`,
+      [params.id],
+    ),
+    query<KpiRow>(
+      `SELECT id, label, target::float, current::float, unit,
+              goal_id, indicator_type, previous_value::float
+       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
     query<LogicModelRow>(
@@ -87,7 +96,8 @@ export default async function AdminProjectDetailPage({
   return (
     <ProjectOverviewClient
       project={project}
-      goals={goals}
+      initialGoals={goals}
+      initialKpis={kpis}
       logicModel={logicModel}
     />
   );
