@@ -80,7 +80,7 @@ function PlanProgress({
     return (
       <div
         className="rounded-xl border px-4 py-3 text-sm"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a", color: "#94a3b8" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)", color: "#94a3b8" }}
       >
         計画開始日が未設定です
       </div>
@@ -101,7 +101,7 @@ function PlanProgress({
   return (
     <div
       className="rounded-xl border px-4 py-3 space-y-2"
-      style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
     >
       <div className="flex items-center justify-between text-xs text-slate-400">
         <span>計画期間の進捗</span>
@@ -115,7 +115,7 @@ function PlanProgress({
       </div>
       <div
         className="h-2 rounded-full overflow-hidden"
-        style={{ background: "#2a2d3a" }}
+        style={{ background: "var(--border)" }}
       >
         <div
           className="h-full rounded-full transition-all duration-700"
@@ -153,7 +153,7 @@ function NextCheckpointCard({
     return (
       <div
         className="rounded-xl border border-dashed p-6 text-center text-sm"
-        style={{ borderColor: "#2a2d3a", color: "#64748b" }}
+        style={{ borderColor: "var(--border)", color: "#64748b" }}
       >
         未着手・進行中のチェックポイントはありません
       </div>
@@ -166,7 +166,7 @@ function NextCheckpointCard({
   return (
     <div
       className="rounded-xl border p-5 space-y-3"
-      style={{ background: "#1a1d27", borderColor: "#6366f130" }}
+      style={{ background: "var(--bg-secondary)", borderColor: "#6366f130" }}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -261,14 +261,14 @@ function Timeline({
       </h3>
       <div
         className="rounded-xl border overflow-hidden"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <div className="overflow-x-auto">
           {/* ヘッダー行（月） */}
           <div className="flex" style={{ minWidth: LANE_W + months.length * CELL_W }}>
             <div
               className="shrink-0 px-3 py-2 text-xs font-semibold text-slate-500 border-b border-r"
-              style={{ width: LANE_W, borderColor: "#2a2d3a" }}
+              style={{ width: LANE_W, borderColor: "var(--border)" }}
             >
               サイクル
             </div>
@@ -276,7 +276,7 @@ function Timeline({
               <div
                 key={m.label}
                 className="shrink-0 px-1 py-2 text-center text-xs text-slate-500 border-b border-r"
-                style={{ width: CELL_W, borderColor: "#2a2d3a" }}
+                style={{ width: CELL_W, borderColor: "var(--border)" }}
               >
                 {m.label}
               </div>
@@ -295,7 +295,7 @@ function Timeline({
                 {/* レーン名 */}
                 <div
                   className="shrink-0 px-3 py-2 text-xs text-slate-300 border-b border-r flex items-center"
-                  style={{ width: LANE_W, borderColor: "#2a2d3a" }}
+                  style={{ width: LANE_W, borderColor: "var(--border)" }}
                 >
                   {ct}
                 </div>
@@ -305,7 +305,7 @@ function Timeline({
                   <div
                     key={mi}
                     className="shrink-0 border-b border-r"
-                    style={{ width: CELL_W, borderColor: "#2a2d3a" }}
+                    style={{ width: CELL_W, borderColor: "var(--border)" }}
                   />
                 ))}
 
@@ -399,7 +399,7 @@ export default function PdcaDashboardClient({ project, checkpoints, projectId }:
         {checkpoints.length === 0 ? (
           <div
             className="rounded-xl border border-dashed p-8 text-center"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             <p className="text-sm text-slate-400">PDCAチェックポイントがまだありません。</p>
             <p className="text-xs text-slate-500 mt-2">
@@ -409,13 +409,13 @@ export default function PdcaDashboardClient({ project, checkpoints, projectId }:
         ) : (
           <div
             className="rounded-xl border overflow-hidden"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
             <table className="w-full text-sm">
               <thead>
                 <tr
                   className="text-left text-xs text-slate-500 uppercase tracking-wider border-b"
-                  style={{ borderColor: "#2a2d3a" }}
+                  style={{ borderColor: "var(--border)" }}
                 >
                   <th className="px-4 py-3">チェックポイント名</th>
                   <th className="px-4 py-3">フェーズ</th>
@@ -432,7 +432,7 @@ export default function PdcaDashboardClient({ project, checkpoints, projectId }:
                     <tr
                       key={cp.id}
                       className="border-b last:border-0 hover:bg-white/5 transition-colors"
-                      style={{ borderColor: "#2a2d3a" }}
+                      style={{ borderColor: "var(--border)" }}
                     >
                       <td className="px-4 py-3 font-medium text-slate-200">{cp.name}</td>
                       <td className="px-4 py-3">

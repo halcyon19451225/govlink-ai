@@ -16,13 +16,13 @@ export default function Error({
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: "#0f1117" }}
+      style={{ background: "var(--bg-primary)" }}
     >
       <div
         className="w-full max-w-md rounded-2xl border p-10 flex flex-col items-center gap-6 text-center"
         style={{
-          background: "#1a1d27",
-          borderColor: "#2a2d3a",
+          background: "var(--bg-secondary)",
+          borderColor: "var(--border)",
           boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
         }}
       >
@@ -35,7 +35,7 @@ export default function Error({
         </div>
         <button
           onClick={reset}
-          className="text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           再試行

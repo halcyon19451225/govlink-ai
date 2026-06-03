@@ -95,7 +95,7 @@ export default function PdcaNav({
   return (
     <nav
       className="rounded-2xl border mb-6 overflow-hidden"
-      style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
     >
       {/* ── メインバー ── */}
       <div className="flex items-stretch">
@@ -121,7 +121,7 @@ export default function PdcaNav({
                   style={
                     isActive
                       ? { background: "rgba(255,255,255,0.25)", color: "#fff" }
-                      : { background: "#2a2d3a", color: stage.color }
+                      : { background: "var(--border)", color: stage.color }
                   }
                 >
                   {stage.label}
@@ -175,7 +175,7 @@ export default function PdcaNav({
           <div
             key={`dropdown-${stage.key}`}
             className="border-t px-4 py-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"
-            style={{ borderColor: "#2a2d3a", background: "#0f1117" }}
+            style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}
           >
             {stage.items.map((item) => {
               const href = resolveHref(item.href, projectId);
@@ -187,7 +187,7 @@ export default function PdcaNav({
                   <span
                     key={item.label}
                     className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg opacity-40 cursor-not-allowed"
-                    style={{ color: "#94a3b8", background: "#1a1d27" }}
+                    style={{ color: "#94a3b8", background: "var(--bg-secondary)" }}
                     title="近日公開予定"
                   >
                     <svg className="shrink-0" width={12} height={12} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -207,7 +207,7 @@ export default function PdcaNav({
                   style={
                     isCurrentStep
                       ? { borderColor: stage.color + "60", color: "#fff", background: stage.color + "18" }
-                      : { borderColor: "#2a2d3a", color: "#94a3b8", background: "#1a1d27" }
+                      : { borderColor: "var(--border)", color: "#94a3b8", background: "var(--bg-secondary)" }
                   }
                 >
                   {isCurrentStep && (
@@ -226,7 +226,7 @@ export default function PdcaNav({
       {/* ── ボトムバー: ステージ間の矢印（sm以上） ── */}
       <div
         className="hidden sm:flex items-center justify-center gap-1 px-4 py-1.5 border-t"
-        style={{ borderColor: "#2a2d3a" }}
+        style={{ borderColor: "var(--border)" }}
       >
         {STAGES.map((stage, idx) => (
           <span key={stage.key} className="flex items-center gap-1">

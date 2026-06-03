@@ -5,7 +5,7 @@ const LAST_UPDATED = "2026年5月1日";
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="text-lg font-bold text-slate-100 mb-3 pb-2 border-b" style={{ borderColor: "#2a2d3a" }}>
+      <h2 className="text-lg font-bold text-slate-100 mb-3 pb-2 border-b" style={{ borderColor: "var(--border)" }}>
         {title}
       </h2>
       {children}
@@ -15,10 +15,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen" style={{ background: "#0f1117" }}>
-      <header className="border-b" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
+      <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent"
+          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
             style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             Sinap-sys
           </Link>
@@ -69,10 +69,10 @@ export default function PrivacyPage() {
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-xs border-collapse">
                 <thead>
-                  <tr style={{ background: "#161922" }}>
-                    <th className="text-left px-3 py-2 border text-slate-400" style={{ borderColor: "#2a2d3a" }}>企業名</th>
-                    <th className="text-left px-3 py-2 border text-slate-400" style={{ borderColor: "#2a2d3a" }}>目的</th>
-                    <th className="text-left px-3 py-2 border text-slate-400" style={{ borderColor: "#2a2d3a" }}>所在</th>
+                  <tr style={{ background: "var(--bg-input)" }}>
+                    <th className="text-left px-3 py-2 border text-slate-400" style={{ borderColor: "var(--border)" }}>企業名</th>
+                    <th className="text-left px-3 py-2 border text-slate-400" style={{ borderColor: "var(--border)" }}>目的</th>
+                    <th className="text-left px-3 py-2 border text-slate-400" style={{ borderColor: "var(--border)" }}>所在</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -82,9 +82,9 @@ export default function PrivacyPage() {
                     ["Anthropic PBC", "AI生成機能（Claude API）", "米国"],
                   ].map(([name, purpose, country]) => (
                     <tr key={name}>
-                      <td className="px-3 py-2 border text-slate-300" style={{ borderColor: "#2a2d3a" }}>{name}</td>
-                      <td className="px-3 py-2 border text-slate-400" style={{ borderColor: "#2a2d3a" }}>{purpose}</td>
-                      <td className="px-3 py-2 border text-slate-400" style={{ borderColor: "#2a2d3a" }}>{country}</td>
+                      <td className="px-3 py-2 border text-slate-300" style={{ borderColor: "var(--border)" }}>{name}</td>
+                      <td className="px-3 py-2 border text-slate-400" style={{ borderColor: "var(--border)" }}>{purpose}</td>
+                      <td className="px-3 py-2 border text-slate-400" style={{ borderColor: "var(--border)" }}>{country}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -111,7 +111,7 @@ export default function PrivacyPage() {
           </Section>
 
           <Section title="お問い合わせ窓口">
-            <div className="rounded-xl border p-5 space-y-1.5" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+            <div className="rounded-xl border p-5 space-y-1.5" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
               <p className="font-semibold text-slate-300 mb-2">個人情報管理者</p>
               <p>会社名: 株式会社 Ordo</p>
               <p>個人情報管理者: 代表取締役 田上 一子</p>
@@ -126,7 +126,7 @@ export default function PrivacyPage() {
             </div>
           </Section>
 
-          <div className="pt-8 border-t text-xs text-slate-600" style={{ borderColor: "#2a2d3a" }}>
+          <div className="pt-8 border-t text-xs text-slate-600" style={{ borderColor: "var(--border)" }}>
             <p>本プライバシーポリシーは予告なく変更される場合があります。重要な変更がある場合は、サービス内またはメールにてお知らせします。</p>
           </div>
         </div>

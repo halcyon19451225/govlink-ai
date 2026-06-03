@@ -99,7 +99,7 @@ function CheckpointCard({ cp, cyclePhase, isSelected, readOnly, onClick }: Check
         top: 6,
         width,
         height: 44,
-        background: isSelected ? `${color}30` : "#1a1d27",
+        background: isSelected ? `${color}30` : "var(--bg-secondary)",
         border: `1.5px solid ${isSelected ? color : color + "80"}`,
         borderRadius: 8,
         cursor: readOnly ? "pointer" : "grab",
@@ -263,7 +263,7 @@ function CheckpointEditPanel({
 
   const inputClass =
     "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-  const inputStyle = { background: "#161922", borderColor: "#2a2d3a" };
+  const inputStyle = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
   const color = getPhaseColor(cycle.phase);
 
@@ -275,8 +275,8 @@ function CheckpointEditPanel({
         right: 0,
         bottom: 0,
         width: 360,
-        background: "#1a1d27",
-        borderLeft: "1px solid #2a2d3a",
+        background: "var(--bg-secondary)",
+        borderLeft: "1px solid var(--border)",
         zIndex: 100,
         overflowY: "auto",
         display: "flex",
@@ -287,7 +287,7 @@ function CheckpointEditPanel({
       <div
         style={{
           padding: "16px 20px",
-          borderBottom: "1px solid #2a2d3a",
+          borderBottom: "1px solid var(--border)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -380,7 +380,7 @@ function CheckpointEditPanel({
               style={inputStyle}
             >
               {yearOptions.map((y) => (
-                <option key={y} value={y} style={{ background: "#161922" }}>
+                <option key={y} value={y} style={{ background: "var(--bg-input)" }}>
                   {y === 0 ? "策定年度" : `${y}年目`}
                 </option>
               ))}
@@ -396,7 +396,7 @@ function CheckpointEditPanel({
               style={inputStyle}
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m} style={{ background: "#161922" }}>{m}月</option>
+                <option key={m} value={m} style={{ background: "var(--bg-input)" }}>{m}月</option>
               ))}
             </select>
           </div>
@@ -409,9 +409,9 @@ function CheckpointEditPanel({
               className={inputClass}
               style={inputStyle}
             >
-              <option value="" style={{ background: "#161922" }}>なし</option>
+              <option value="" style={{ background: "var(--bg-input)" }}>なし</option>
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m} style={{ background: "#161922" }}>{m}月</option>
+                <option key={m} value={m} style={{ background: "var(--bg-input)" }}>{m}月</option>
               ))}
             </select>
           </div>
@@ -467,9 +467,9 @@ function CheckpointEditPanel({
             className={inputClass}
             style={inputStyle}
           >
-            <option value="" style={{ background: "#161922" }}>なし</option>
+            <option value="" style={{ background: "var(--bg-input)" }}>なし</option>
             {QC_STEP_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value} style={{ background: "#161922" }}>{opt.label}</option>
+              <option key={opt.value} value={opt.value} style={{ background: "var(--bg-input)" }}>{opt.label}</option>
             ))}
           </select>
         </div>
@@ -493,7 +493,7 @@ function CheckpointEditPanel({
         <div
           style={{
             padding: "12px 20px",
-            borderTop: "1px solid #2a2d3a",
+            borderTop: "1px solid var(--border)",
             display: "flex",
             gap: 8,
           }}
@@ -559,7 +559,7 @@ function AddCycleDialog({ templateId, onCreated, onClose }: AddCycleDialogProps)
 
   const inputClass =
     "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-  const inputStyle = { background: "#161922", borderColor: "#2a2d3a" };
+  const inputStyle = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
   const handleCreate = async () => {
     if (!form.name.trim()) { setError("サイクル名を入力してください"); return; }
@@ -608,8 +608,8 @@ function AddCycleDialog({ templateId, onCreated, onClose }: AddCycleDialogProps)
     >
       <div
         style={{
-          background: "#1a1d27",
-          border: "1px solid #2a2d3a",
+          background: "var(--bg-secondary)",
+          border: "1px solid var(--border)",
           borderRadius: 16,
           padding: 24,
           width: 400,
@@ -651,7 +651,7 @@ function AddCycleDialog({ templateId, onCreated, onClose }: AddCycleDialogProps)
               style={inputStyle}
             >
               {["annual", "semi_annual", "quarterly", "monthly", "milestone"].map((v) => (
-                <option key={v} value={v} style={{ background: "#161922" }}>{v}</option>
+                <option key={v} value={v} style={{ background: "var(--bg-input)" }}>{v}</option>
               ))}
             </select>
           </div>
@@ -664,7 +664,7 @@ function AddCycleDialog({ templateId, onCreated, onClose }: AddCycleDialogProps)
               style={inputStyle}
             >
               {["P", "D", "C", "A", "P-D", "C-A"].map((v) => (
-                <option key={v} value={v} style={{ background: "#161922" }}>{v}</option>
+                <option key={v} value={v} style={{ background: "var(--bg-input)" }}>{v}</option>
               ))}
             </select>
           </div>
@@ -679,7 +679,7 @@ function AddCycleDialog({ templateId, onCreated, onClose }: AddCycleDialogProps)
             style={inputStyle}
           >
             {["yearly", "half_yearly", "quarterly", "monthly", "once"].map((v) => (
-              <option key={v} value={v} style={{ background: "#161922" }}>{v}</option>
+              <option key={v} value={v} style={{ background: "var(--bg-input)" }}>{v}</option>
             ))}
           </select>
         </div>
@@ -690,7 +690,7 @@ function AddCycleDialog({ templateId, onCreated, onClose }: AddCycleDialogProps)
             style={{
               padding: "8px 16px",
               background: "transparent",
-              border: "1px solid #2a2d3a",
+              border: "1px solid var(--border)",
               borderRadius: 8,
               color: "#94a3b8",
               fontSize: 13,
@@ -752,7 +752,7 @@ function CycleLane({
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid #2a2d3a" }}>
+    <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--border)" }}>
       {/* レーンラベル */}
       <div
         style={{
@@ -762,8 +762,8 @@ function CycleLane({
           display: "flex",
           alignItems: "center",
           gap: 8,
-          borderRight: "1px solid #2a2d3a",
-          background: "#0f1117",
+          borderRight: "1px solid var(--border)",
+          background: "var(--bg-primary)",
         }}
       >
         <div
@@ -830,7 +830,7 @@ function CycleLane({
                 top: 4,
                 bottom: 4,
                 width: 1,
-                background: "#2a2d3a",
+                background: "var(--border)",
                 pointerEvents: "none",
               }}
             />
@@ -1051,21 +1051,21 @@ export default function CycleDesigner({ template, readOnly = false }: CycleDesig
         {/* タイムライングリッド */}
         <div
           style={{
-            border: "1px solid #2a2d3a",
+            border: "1px solid var(--border)",
             borderRadius: 12,
             overflow: "hidden",
-            background: "#0f1117",
+            background: "var(--bg-primary)",
           }}
         >
           {/* ヘッダー行 */}
-          <div style={{ display: "flex", borderBottom: "1px solid #2a2d3a" }}>
+          <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
             {/* ラベル列ヘッダー */}
             <div
               style={{
                 width: LANE_LABEL_WIDTH,
                 flexShrink: 0,
-                borderRight: "1px solid #2a2d3a",
-                background: "#0f1117",
+                borderRight: "1px solid var(--border)",
+                background: "var(--bg-primary)",
               }}
             />
             {/* 月列ヘッダー（スクロールあり） */}
@@ -1083,8 +1083,8 @@ export default function CycleDesigner({ template, readOnly = false }: CycleDesig
                       fontSize: 11,
                       fontWeight: 700,
                       color: "#94a3b8",
-                      borderRight: "1px solid #2a2d3a",
-                      background: yi % 2 === 0 ? "#0f1117" : "#13151f",
+                      borderRight: "1px solid var(--border)",
+                      background: yi % 2 === 0 ? "var(--bg-primary)" : "#13151f",
                     }}
                   >
                     {yi === 0 ? "策定年度" : `${yi}年目`}
@@ -1092,7 +1092,7 @@ export default function CycleDesigner({ template, readOnly = false }: CycleDesig
                 ))}
               </div>
               {/* 月番号行 */}
-              <div style={{ display: "flex", minWidth: totalCols * CELL_WIDTH, borderTop: "1px solid #2a2d3a" }}>
+              <div style={{ display: "flex", minWidth: totalCols * CELL_WIDTH, borderTop: "1px solid var(--border)" }}>
                 {Array.from({ length: totalCols }, (_, i) => {
                   const month = (i % 12) + 1;
                   return (

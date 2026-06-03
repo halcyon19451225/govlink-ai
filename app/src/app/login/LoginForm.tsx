@@ -207,7 +207,7 @@ export default function LoginForm({ providers }: Props) {
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: "var(--bg-primary, #0f1117)" }}
+      style={{ background: "var(--bg-primary)" }}
     >
       {/* 背景グロー */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
@@ -293,7 +293,7 @@ export default function LoginForm({ providers }: Props) {
 
               <button
                 type="submit" disabled={loading}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20"
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
               >
                 {loading ? "ログイン中..." : "ログイン"}
@@ -376,7 +376,7 @@ export default function LoginForm({ providers }: Props) {
 
               <button
                 type="submit" disabled={resetLoading}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20"
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
               >
                 {resetLoading ? "送信中..." : "確認コードを送信"}
@@ -478,7 +478,7 @@ export default function LoginForm({ providers }: Props) {
 
               <button
                 type="submit" disabled={resetLoading}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20"
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/20 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
               >
                 {resetLoading ? "変更中..." : "パスワードを変更する"}
@@ -521,7 +521,7 @@ export default function LoginForm({ providers }: Props) {
             </div>
             <button
               type="button" onClick={goBackToLogin}
-              className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 shadow-lg shadow-cyan-500/20"
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 shadow-lg shadow-cyan-500/20 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
             >
               ログインへ戻る

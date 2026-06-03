@@ -97,20 +97,20 @@ export default function KpiSummaryClient({
               <div
                 key={kpi.id}
                 className="rounded-xl border p-4"
-                style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-slate-200">{kpi.label}</span>
                     <span className="text-xs text-slate-600">{kpi.unit}</span>
                     <span className="text-xs px-1.5 py-0.5 rounded"
-                      style={{ background: "#1e2133", color: "#64748b", border: "1px solid #2a2d3a" }}>
+                      style={{ background: "#1e2133", color: "#64748b", border: "1px solid var(--border)" }}>
                       {INDICATOR_LABELS[kpi.indicator_type] ?? kpi.indicator_type}
                     </span>
                   </div>
                   <span className="text-sm font-bold" style={{ color }}>{pct}%</span>
                 </div>
-                <div className="h-1.5 rounded-full overflow-hidden mb-1.5" style={{ background: "#2a2d3a" }}>
+                <div className="h-1.5 rounded-full overflow-hidden mb-1.5" style={{ background: "var(--border)" }}>
                   <div
                     className="h-full rounded-full transition-all duration-700"
                     style={{ width: `${pct}%`, background: color }}
@@ -149,7 +149,7 @@ export default function KpiSummaryClient({
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               className="text-xs rounded-lg border px-2 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500"
-              style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+              style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
             >
               <option value="all">全ステータス</option>
               <option value="pending">未確認</option>
@@ -161,7 +161,7 @@ export default function KpiSummaryClient({
               value={filterKpi}
               onChange={(e) => setFilterKpi(e.target.value)}
               className="text-xs rounded-lg border px-2 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500"
-              style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+              style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
             >
               <option value="all">全KPI</option>
               {kpis.map((k) => (
@@ -174,7 +174,7 @@ export default function KpiSummaryClient({
         {filtered.length === 0 ? (
           <div
             className="rounded-2xl border border-dashed p-8 text-center"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             <p className="text-sm text-slate-500">
               {reports.length === 0 ? "まだ報告がありません" : "条件に一致する報告はありません"}
@@ -190,7 +190,7 @@ export default function KpiSummaryClient({
                 <div
                   key={r.id}
                   className="rounded-xl border p-4"
-                  style={{ background: "#1a1d27", borderColor: isPending ? "#f59e0b30" : "#2a2d3a" }}
+                  style={{ background: "var(--bg-secondary)", borderColor: isPending ? "#f59e0b30" : "var(--border)" }}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -239,7 +239,7 @@ export default function KpiSummaryClient({
 
                       {r.comment && (
                         <p className="mt-2 text-xs text-slate-400 leading-relaxed border rounded-lg px-3 py-2"
-                          style={{ borderColor: "#2a2d3a", background: "#161922" }}>
+                          style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>
                           {r.comment}
                         </p>
                       )}
@@ -275,7 +275,7 @@ export default function KpiSummaryClient({
       </section>
 
       {/* Link to report form */}
-      <div className="pt-2 border-t" style={{ borderColor: "#2a2d3a" }}>
+      <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
         <a
           href={`/projects/${projectId}/kpi-report`}
           className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors duration-200"

@@ -22,7 +22,7 @@ const INDICATOR_LABELS: Record<string, string> = {
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 // Generate report period options (current + 3 past quarters)
 function getPeriodOptions(): string[] {
@@ -109,7 +109,7 @@ export default function KpiReportForm({
     return (
       <div
         className="rounded-2xl border p-8 text-center space-y-4"
-        style={{ background: "#1a1d27", borderColor: "#10b98130" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "#10b98130" }}
       >
         <div className="flex items-center justify-center w-12 h-12 rounded-full mx-auto"
           style={{ background: "#10b98120" }}>
@@ -142,7 +142,7 @@ export default function KpiReportForm({
   return (
     <div
       className="rounded-2xl border p-6 space-y-6"
-      style={{ background: "#1a1d27", borderColor: "#2a2d3a", boxShadow: "0 4px 24px rgba(0,0,0,0.3)" }}
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)", boxShadow: "0 4px 24px rgba(0,0,0,0.3)" }}
     >
       {error && (
         <div className="rounded-lg border px-4 py-3 text-sm text-red-400"
@@ -163,9 +163,9 @@ export default function KpiReportForm({
           style={inputStyle}
         >
           {periodOptions.map((p) => (
-            <option key={p} value={p} style={{ background: "#1a1d27" }}>{p}</option>
+            <option key={p} value={p} style={{ background: "var(--bg-secondary)" }}>{p}</option>
           ))}
-          <option value="custom" style={{ background: "#1a1d27" }}>カスタム入力...</option>
+          <option value="custom" style={{ background: "var(--bg-secondary)" }}>カスタム入力...</option>
         </select>
         {period === "custom" && (
           <input
@@ -193,8 +193,8 @@ export default function KpiReportForm({
                 key={kpi.id}
                 className="rounded-xl border overflow-hidden transition-all duration-200"
                 style={{
-                  borderColor: entry.enabled ? "#6366f140" : "#2a2d3a",
-                  background: entry.enabled ? "#6366f108" : "#161922",
+                  borderColor: entry.enabled ? "#6366f140" : "var(--border)",
+                  background: entry.enabled ? "#6366f108" : "var(--bg-input)",
                 }}
               >
                 {/* KPI header (click to enable) */}
@@ -222,7 +222,7 @@ export default function KpiReportForm({
                       <span className="text-xs text-slate-500">{kpi.unit && `(${kpi.unit})`}</span>
                       <span
                         className="text-xs px-1.5 py-0.5 rounded"
-                        style={{ background: "#1e2133", color: "#64748b", border: "1px solid #2a2d3a" }}
+                        style={{ background: "#1e2133", color: "#64748b", border: "1px solid var(--border)" }}
                       >
                         {INDICATOR_LABELS[kpi.indicator_type] ?? kpi.indicator_type}
                       </span>
@@ -245,7 +245,7 @@ export default function KpiReportForm({
 
                 {/* Input area (only when enabled) */}
                 {entry.enabled && (
-                  <div className="px-4 pb-4 space-y-3 border-t" style={{ borderColor: "#2a2d3a" }}>
+                  <div className="px-4 pb-4 space-y-3 border-t" style={{ borderColor: "var(--border)" }}>
                     <div className="pt-3">
                       <label className="block text-xs font-medium text-slate-400 mb-1">
                         実績値 <span className="text-red-400">*</span>
@@ -287,7 +287,7 @@ export default function KpiReportForm({
           type="button"
           onClick={handleSubmit}
           disabled={submitting || enabledEntries.length === 0}
-          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           {submitting ? "送信中..." : `${enabledEntries.length}件の実績を報告する`}

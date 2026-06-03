@@ -57,10 +57,10 @@ interface Props {
 const TABS = ["乖離テーブル", "要因分解", "需要予測"] as const;
 type Tab = (typeof TABS)[number];
 
-const cardStyle: React.CSSProperties = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const cardStyle: React.CSSProperties = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle: React.CSSProperties = { background: "#161922", borderColor: "#2a2d3a" };
+const inputStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
 function deviationColor(pct: number | null): string {
   if (pct == null) return "#64748b";
@@ -224,7 +224,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
   return (
     <div>
       {/* タブ */}
-      <div className="flex gap-1 border-b mb-6" style={{ borderColor: "#2a2d3a" }}>
+      <div className="flex gap-1 border-b mb-6" style={{ borderColor: "var(--border)" }}>
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -248,7 +248,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="text-sm font-semibold px-4 py-2 rounded-xl text-white"
+              className="text-sm font-semibold px-4 py-2 rounded-xl text-white neu-button-primary"
               style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
             >
               新規登録
@@ -258,7 +258,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
           {plans.length === 0 ? (
             <div
               className="rounded-2xl border border-dashed p-12 text-center"
-              style={{ borderColor: "#2a2d3a" }}
+              style={{ borderColor: "var(--border)" }}
             >
               <p className="text-sm text-slate-500">まだデータがありません</p>
             </div>
@@ -266,7 +266,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
             <div className="rounded-2xl border overflow-x-auto" style={cardStyle}>
               <table className="w-full text-sm min-w-[900px]">
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #2a2d3a", background: "#161922" }}>
+                  <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-input)" }}>
                     {[
                       "サービス名",
                       "年度",
@@ -293,7 +293,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
                   {plans.map((plan) => (
                     <tr
                       key={plan.id}
-                      style={{ borderBottom: "1px solid #2a2d3a" }}
+                      style={{ borderBottom: "1px solid var(--border)" }}
                       className="hover:bg-white/2 transition-colors"
                     >
                       <td className="px-3 py-3 text-slate-300 font-medium">{plan.service_name}</td>
@@ -336,7 +336,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
                       <td className="px-3 py-3 min-w-[200px]">
                         <textarea
                           className="w-full rounded-lg border px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 resize-none"
-                          style={{ background: "#161922", borderColor: "#2a2d3a" }}
+                          style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}
                           rows={2}
                           value={noteEdits[plan.id] ?? plan.deviation_notes ?? ""}
                           onChange={(e) =>
@@ -395,7 +395,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
               <div className="space-y-4">
                 <div
                   className="rounded-xl border p-4"
-                  style={{ borderColor: "#2a2d3a", background: "#161922" }}
+                  style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}
                 >
                   <p className="text-xs text-slate-400 mb-1">給付費乖離（実績－計画）</p>
                   <p
@@ -458,7 +458,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
                         </div>
                         <div
                           className="h-4 rounded-full overflow-hidden"
-                          style={{ background: "#2a2d3a" }}
+                          style={{ background: "var(--border)" }}
                         >
                           <div
                             className="h-full rounded-full transition-all duration-500"
@@ -517,13 +517,13 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
                         <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3a" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="year" stroke="#64748b" tick={{ fontSize: 12 }} />
                     <YAxis stroke="#64748b" tick={{ fontSize: 12 }} />
                     <Tooltip
                       contentStyle={{
-                        background: "#1a1d27",
-                        borderColor: "#2a2d3a",
+                        background: "var(--bg-secondary)",
+                        borderColor: "var(--border)",
                         borderRadius: 8,
                       }}
                       labelStyle={{ color: "#94a3b8" }}
@@ -541,7 +541,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
                       type="monotone"
                       dataKey="lower95"
                       stroke="none"
-                      fill="#0f1117"
+                      fill="var(--bg-primary)"
                       name="95%信頼区間(下限)"
                       dot={false}
                     />
@@ -610,7 +610,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
           }}
         >
           <div
-            className="rounded-2xl border w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4"
+            className="rounded-2xl border w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4 neu-card"
             style={cardStyle}
           >
             <h3 className="text-base font-semibold text-slate-100">サービス見込量を登録</h3>
@@ -738,7 +738,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
                   setForm(emptyForm());
                 }}
                 className="text-sm px-4 py-2 rounded-xl border text-slate-400 hover:text-slate-300 transition-colors"
-                style={{ borderColor: "#2a2d3a" }}
+                style={{ borderColor: "var(--border)" }}
               >
                 キャンセル
               </button>
@@ -746,7 +746,7 @@ export default function ServiceVolumeClient({ project, plans: initialPlans, chec
                 type="button"
                 onClick={() => void handleSave()}
                 disabled={submitting || !form.service_name || !form.fiscal_year}
-                className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
+                className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {submitting ? "保存中..." : "保存"}

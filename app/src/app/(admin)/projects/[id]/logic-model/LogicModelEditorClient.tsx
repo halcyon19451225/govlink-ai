@@ -365,8 +365,8 @@ export default function LogicModelEditorClient({
   const inputClass =
     "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors";
   const inputStyle: React.CSSProperties = {
-    background: "#161922",
-    borderColor: "#2a2d3a",
+    background: "var(--bg-input)",
+    borderColor: "var(--border)",
   };
 
   const allOutcomes = [
@@ -375,7 +375,7 @@ export default function LogicModelEditorClient({
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: "#0f1117" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
       <div className="max-w-full mx-auto px-4 py-8">
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-6">
@@ -453,8 +453,8 @@ export default function LogicModelEditorClient({
           <div
             className="rounded-xl border p-5 space-y-4"
             style={{
-              background: "#1a1d27",
-              borderColor: "#2a2d3a",
+              background: "var(--bg-secondary)",
+              borderColor: "var(--border)",
               width: 320,
               flexShrink: 0,
             }}
@@ -553,8 +553,8 @@ export default function LogicModelEditorClient({
             <div
               className="rounded-xl border overflow-hidden"
               style={{
-                background: "#0f1117",
-                borderColor: "#2a2d3a",
+                background: "var(--bg-primary)",
+                borderColor: "var(--border)",
                 height: 420,
               }}
             >
@@ -563,9 +563,9 @@ export default function LogicModelEditorClient({
                 edges={edges}
                 nodeTypes={nodeTypes}
                 fitView
-                style={{ background: "#0f1117" }}
+                style={{ background: "var(--bg-primary)" }}
               >
-                <Background color="#2a2d3a" gap={16} />
+                <Background color="#cbd5e1" gap={16} />
                 <Controls />
               </ReactFlow>
             </div>
@@ -595,8 +595,8 @@ export default function LogicModelEditorClient({
           style={{ background: "#00000080" }}
         >
           <div
-            className="rounded-xl border w-full max-w-md mx-4 p-6"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            className="rounded-xl border w-full max-w-md mx-4 p-6 neu-card"
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
             <h2 className="text-base font-semibold text-slate-100 mb-4">
               ロジックモデルの成果項目
@@ -607,7 +607,7 @@ export default function LogicModelEditorClient({
                 <div
                   key={i}
                   className="flex items-center gap-3 rounded-lg px-3 py-2"
-                  style={{ background: "#161922", border: "1px solid #2a2d3a" }}
+                  style={{ background: "var(--bg-input)", border: "1px solid var(--border)" }}
                 >
                   <span
                     className="text-xs px-1.5 py-0.5 rounded"

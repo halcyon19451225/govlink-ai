@@ -62,7 +62,7 @@ function UsageMeter({ label, current, limit }: { label: string; current: number;
         </span>
       </div>
       {!isInfinity && (
-        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#2a2d3a" }}>
+        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
           <div
             className="h-full rounded-full transition-all duration-700"
             style={{ width: `${pct}%`, background: color }}
@@ -104,7 +104,7 @@ export default function BillingPage() {
     ? Math.max(0, Math.ceil((new Date(data.trialEndsAt).getTime() - Date.now()) / 86400000))
     : null;
 
-  const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+  const cardStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
   return (
     <div className="max-w-4xl space-y-8">
@@ -122,7 +122,7 @@ export default function BillingPage() {
           <p className="text-sm text-slate-500 mt-1">現在の利用状況と請求履歴を確認します。</p>
         </div>
         <Link href="/pricing"
-          className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200"
+          className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
           プランを変更する
         </Link>
@@ -166,7 +166,7 @@ export default function BillingPage() {
                     onClick={() => void handleStripePortal()}
                     disabled={portalLoading}
                     className="text-xs text-slate-400 hover:text-slate-200 border rounded-lg px-3 py-2 transition-colors duration-200 disabled:opacity-50"
-                    style={{ borderColor: "#2a2d3a" }}
+                    style={{ borderColor: "var(--border)" }}
                   >
                     {portalLoading ? "..." : "支払い方法・解約の管理"}
                   </button>
@@ -212,14 +212,14 @@ export default function BillingPage() {
           <section>
             <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">請求履歴</h3>
             {data.invoices.length === 0 ? (
-              <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "#2a2d3a" }}>
+              <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "var(--border)" }}>
                 <p className="text-sm text-slate-500">請求履歴はありません</p>
               </div>
             ) : (
               <div className="rounded-2xl border overflow-hidden" style={cardStyle}>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b" style={{ background: "#161922", borderColor: "#2a2d3a" }}>
+                    <tr className="border-b" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">請求書番号</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">期間</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">金額</th>
@@ -227,7 +227,7 @@ export default function BillingPage() {
                       <th className="px-4 py-3" />
                     </tr>
                   </thead>
-                  <tbody className="divide-y" style={{ borderColor: "#2a2d3a" }}>
+                  <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                     {data.invoices.map((inv) => {
                       const sc = INV_STATUS[inv.status] ?? { label: inv.status, color: "#64748b" };
                       return (

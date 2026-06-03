@@ -35,7 +35,7 @@ function ArtifactCard({
   return (
     <div
       className="rounded-lg border p-3 space-y-1"
-      style={{ borderColor: "#2a2d3a", background: "#161922" }}
+      style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}
     >
       <div className="flex items-center gap-2">
         <span
@@ -115,12 +115,12 @@ export default function ArtifactLineagePanel({
   return (
     <div
       className="fixed top-0 right-0 h-full w-80 z-50 flex flex-col shadow-2xl"
-      style={{ background: "#1a1d27", borderLeft: "1px solid #2a2d3a" }}
+      style={{ background: "var(--bg-secondary)", borderLeft: "1px solid var(--border)" }}
     >
       {/* ヘッダー */}
       <div
         className="flex items-center justify-between px-4 py-3 border-b"
-        style={{ borderColor: "#2a2d3a" }}
+        style={{ borderColor: "var(--border)" }}
       >
         <div>
           <p className="text-xs text-slate-500">データ系譜</p>

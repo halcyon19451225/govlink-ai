@@ -37,8 +37,8 @@ const TEMPLATE_ONLY_DEPS: Record<string, string[]> = {
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#161922", borderColor: "#2a2d3a" };
-const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-input)", borderColor: "var(--border)" };
+const cardStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 // ─── タブ ──────────────────────────────────────────────────────────────────────
 
@@ -153,7 +153,7 @@ function BasicInfoTab({
           style={inputStyle}
         >
           {PLAN_TYPES.map((pt) => (
-            <option key={pt.value} value={pt.value} style={{ background: "#161922" }}>
+            <option key={pt.value} value={pt.value} style={{ background: "var(--bg-input)" }}>
               {pt.label}
             </option>
           ))}
@@ -191,7 +191,7 @@ function BasicInfoTab({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           {saving ? "保存中..." : "保存"}
@@ -325,8 +325,8 @@ function ModulesTab({
               className="rounded-xl border p-4 transition-all duration-200"
               style={{
                 ...cardStyle,
-                borderColor: enabled ? "#6366f160" : "#2a2d3a",
-                background: enabled ? "#6366f108" : "#1a1d27",
+                borderColor: enabled ? "#6366f160" : "var(--border)",
+                background: enabled ? "#6366f108" : "var(--bg-secondary)",
                 cursor: readOnly ? "default" : "pointer",
               }}
               onClick={() => toggleModule(mod.id)}
@@ -360,7 +360,7 @@ function ModulesTab({
                     width: 36,
                     height: 20,
                     borderRadius: 10,
-                    background: enabled ? "#6366f1" : "#2a2d3a",
+                    background: enabled ? "#6366f1" : "var(--border)",
                     position: "relative",
                     flexShrink: 0,
                     transition: "background 200ms",
@@ -389,7 +389,7 @@ function ModulesTab({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           {saving ? "保存中..." : "保存"}
@@ -436,7 +436,7 @@ export default function TemplateEditorClient({ template }: { template: TemplateW
       </div>
 
       {/* タブ */}
-      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: "#2a2d3a" }}>
+      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: "var(--border)" }}>
         {TABS.map((tab) => (
           <button
             key={tab.id}

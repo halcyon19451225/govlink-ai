@@ -41,8 +41,8 @@ const TAB_VALUES = ["all", ...DOC_TYPE_OPTIONS.map((o) => o.value)];
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
-const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
+const cardStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 export default function DocumentsClient({
   projectId,
@@ -180,7 +180,7 @@ export default function DocumentsClient({
               style={inputStyle}
             >
               {DOC_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value} style={{ background: "#1a1d27" }}>
+                <option key={o.value} value={o.value} style={{ background: "var(--bg-secondary)" }}>
                   {o.label}
                 </option>
               ))}
@@ -194,9 +194,9 @@ export default function DocumentsClient({
               className={inputClass}
               style={inputStyle}
             >
-              <option value="" style={{ background: "#1a1d27" }}>なし</option>
+              <option value="" style={{ background: "var(--bg-secondary)" }}>なし</option>
               {tasks.map((t) => (
-                <option key={t.id} value={t.id} style={{ background: "#1a1d27" }}>
+                <option key={t.id} value={t.id} style={{ background: "var(--bg-secondary)" }}>
                   {t.title}
                 </option>
               ))}
@@ -222,7 +222,7 @@ export default function DocumentsClient({
         <button
           type="submit"
           disabled={uploading}
-          className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           {uploading ? "アップロード中..." : "アップロード"}
@@ -251,7 +251,7 @@ export default function DocumentsClient({
         {filtered.length === 0 ? (
           <div
             className="rounded-2xl border border-dashed p-10 text-center"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             <p className="text-sm text-slate-500">ドキュメントがまだありません</p>
           </div>

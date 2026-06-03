@@ -85,7 +85,7 @@ function AddResourceModal({ onClose, onSaved }: ModalProps) {
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
     >
       <div
-        className="w-full max-w-lg rounded-2xl border p-6 space-y-4"
+        className="w-full max-w-lg rounded-2xl border p-6 space-y-4 neu-card"
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)", boxShadow: "0 8px 40px rgba(0,0,0,0.5)" }}
       >
         <div className="flex items-center justify-between">
@@ -198,7 +198,7 @@ function AddResourceModal({ onClose, onSaved }: ModalProps) {
             <button
               type="submit"
               disabled={submitting}
-              className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+              className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
             >
               {submitting ? "登録中..." : "登録する"}
@@ -250,7 +250,7 @@ export default function ResourcesClient({ initialResources }: Props) {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           + リソースを追加

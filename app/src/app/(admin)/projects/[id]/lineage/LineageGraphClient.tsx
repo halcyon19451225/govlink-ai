@@ -248,7 +248,7 @@ export default function LineageGraphClient({ project, projectId }: Props) {
   const staleCount = lineageNodes.filter((n) => n.is_stale).length;
 
   return (
-    <div className="min-h-screen" style={{ background: "#0f1117" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
       <div className="max-w-full mx-auto px-4 py-8">
         {/* ヘッダー */}
         <div className="flex items-center gap-4 mb-4">
@@ -292,7 +292,7 @@ export default function LineageGraphClient({ project, projectId }: Props) {
         {/* グラフ本体 */}
         <div
           className="rounded-xl border overflow-hidden"
-          style={{ background: "#0f1117", borderColor: "#2a2d3a", height: 600 }}
+          style={{ background: "var(--bg-primary)", borderColor: "var(--border)", height: 600 }}
         >
           {loading && (
             <div className="flex items-center justify-center h-full text-slate-500 text-sm">
@@ -316,9 +316,9 @@ export default function LineageGraphClient({ project, projectId }: Props) {
               nodeTypes={nodeTypes}
               fitView
               onNodeClick={handleNodeClick}
-              style={{ background: "#0f1117" }}
+              style={{ background: "var(--bg-primary)" }}
             >
-              <Background color="#2a2d3a" gap={16} />
+              <Background color="#cbd5e1" gap={16} />
               <Controls />
             </ReactFlow>
           )}

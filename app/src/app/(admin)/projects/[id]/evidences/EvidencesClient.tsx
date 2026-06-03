@@ -42,8 +42,8 @@ const STRENGTH_BADGE = ["", "bg-red-500/20 text-red-300", "bg-amber-500/20 text-
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
-const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
+const cardStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 export default function EvidencesClient({
   projectId,
@@ -182,25 +182,25 @@ export default function EvidencesClient({
             <label className="block text-xs font-medium text-slate-400 mb-1.5">エビデンス種別</label>
             <select value={evidenceType} onChange={(e) => setEvidenceType(e.target.value)} className={inputClass} style={inputStyle}>
               {EVIDENCE_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value} style={{ background: "#1a1d27" }}>{o.label}</option>
+                <option key={o.value} value={o.value} style={{ background: "var(--bg-secondary)" }}>{o.label}</option>
               ))}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">アウトプット指標</label>
             <select value={outputKpiId} onChange={(e) => setOutputKpiId(e.target.value)} className={inputClass} style={inputStyle}>
-              <option value="" style={{ background: "#1a1d27" }}>なし</option>
+              <option value="" style={{ background: "var(--bg-secondary)" }}>なし</option>
               {kpis.map((k) => (
-                <option key={k.id} value={k.id} style={{ background: "#1a1d27" }}>{k.label}</option>
+                <option key={k.id} value={k.id} style={{ background: "var(--bg-secondary)" }}>{k.label}</option>
               ))}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">アウトカム指標</label>
             <select value={outcomeKpiId} onChange={(e) => setOutcomeKpiId(e.target.value)} className={inputClass} style={inputStyle}>
-              <option value="" style={{ background: "#1a1d27" }}>なし</option>
+              <option value="" style={{ background: "var(--bg-secondary)" }}>なし</option>
               {kpis.map((k) => (
-                <option key={k.id} value={k.id} style={{ background: "#1a1d27" }}>{k.label}</option>
+                <option key={k.id} value={k.id} style={{ background: "var(--bg-secondary)" }}>{k.label}</option>
               ))}
             </select>
           </div>
@@ -251,9 +251,9 @@ export default function EvidencesClient({
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">関連ドキュメント（任意）</label>
             <select value={documentId} onChange={(e) => setDocumentId(e.target.value)} className={inputClass} style={inputStyle}>
-              <option value="" style={{ background: "#1a1d27" }}>なし</option>
+              <option value="" style={{ background: "var(--bg-secondary)" }}>なし</option>
               {documents.map((d) => (
-                <option key={d.id} value={d.id} style={{ background: "#1a1d27" }}>{d.title}</option>
+                <option key={d.id} value={d.id} style={{ background: "var(--bg-secondary)" }}>{d.title}</option>
               ))}
             </select>
           </div>
@@ -262,7 +262,7 @@ export default function EvidencesClient({
         <button
           type="submit"
           disabled={submitting}
-          className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           {submitting ? "登録中..." : "登録する"}
@@ -285,7 +285,7 @@ export default function EvidencesClient({
                       {ev.output_kpi_label}
                     </span>
                   ) : (
-                    <span className="px-2.5 py-1 rounded-lg border text-slate-500" style={{ borderColor: "#2a2d3a" }}>指標未設定</span>
+                    <span className="px-2.5 py-1 rounded-lg border text-slate-500" style={{ borderColor: "var(--border)" }}>指標未設定</span>
                   )}
                   <span className="text-slate-500 flex items-center gap-1">
                     →
@@ -299,7 +299,7 @@ export default function EvidencesClient({
                       {ev.outcome_kpi_label}
                     </span>
                   ) : (
-                    <span className="px-2.5 py-1 rounded-lg border text-slate-500" style={{ borderColor: "#2a2d3a" }}>指標未設定</span>
+                    <span className="px-2.5 py-1 rounded-lg border text-slate-500" style={{ borderColor: "var(--border)" }}>指標未設定</span>
                   )}
                 </div>
 
@@ -360,7 +360,7 @@ export default function EvidencesClient({
       {evidences.length === 0 && (
         <div
           className="rounded-2xl border border-dashed p-10 text-center"
-          style={{ borderColor: "#2a2d3a" }}
+          style={{ borderColor: "var(--border)" }}
         >
           <p className="text-sm text-slate-500">エビデンスがまだ登録されていません</p>
         </div>

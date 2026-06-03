@@ -2,7 +2,7 @@ import Link from "next/link";
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <tr className="border-b" style={{ borderColor: "#2a2d3a" }}>
+    <tr className="border-b" style={{ borderColor: "var(--border)" }}>
       <td className="py-3 pr-6 text-slate-400 whitespace-nowrap align-top" style={{ width: "200px" }}>{label}</td>
       <td className="py-3 text-slate-300 leading-relaxed">{value}</td>
     </tr>
@@ -11,10 +11,10 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function LegalPage() {
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#0f1117" }}>
-      <header className="border-b" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-primary)" }}>
+      <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent"
+          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
             style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             Sinap-sys
           </Link>
@@ -29,7 +29,7 @@ export default function LegalPage() {
         <h1 className="text-3xl font-bold text-slate-100 mb-2">特定商取引法に基づく表記</h1>
         <p className="text-sm text-slate-600 mb-12">特定商取引法第11条に基づく表示</p>
 
-        <div className="rounded-2xl border overflow-hidden text-sm" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+        <div className="rounded-2xl border overflow-hidden text-sm" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
           <table className="w-full">
             <tbody>
               <Row label="販売業者" value="株式会社 Ordo" />
@@ -116,7 +116,7 @@ export default function LegalPage() {
           </table>
         </div>
 
-        <div className="mt-8 rounded-xl border p-4 text-xs text-slate-500 space-y-1" style={{ borderColor: "#2a2d3a" }}>
+        <div className="mt-8 rounded-xl border p-4 text-xs text-slate-500 space-y-1" style={{ borderColor: "var(--border)" }}>
           <p>ご不明な点はお問い合わせフォームよりお問い合わせください。3営業日以内にご返信いたします。</p>
           <Link href="/contact" className="text-indigo-400 hover:text-indigo-300 underline">
             お問い合わせフォームへ →

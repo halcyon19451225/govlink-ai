@@ -47,7 +47,7 @@ const EVIDENCE_TYPE_COLORS: Record<string, string> = {
   rct: "#6366f1", observational: "#06b6d4",
   case_study: "#10b981", expert: "#f59e0b", statistics: "#8b5cf6", other: "#94a3b8",
 };
-const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const cardStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 // ────────────────── スコアゲージ ──────────────────
 function ScoreGauge({ label, score, color }: { label: string; score: number; color: string }) {
@@ -63,7 +63,7 @@ function ScoreGauge({ label, score, color }: { label: string; score: number; col
         <span className="text-xs text-slate-400">{label}</span>
         <span className={`text-xs font-semibold ${grade.cls}`}>{grade.text}</span>
       </div>
-      <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "#2a2d3a" }}>
+      <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
         <div
           className="h-full rounded-full transition-all duration-700"
           style={{ width: `${score}%`, background: color }}
@@ -313,7 +313,7 @@ export default function EbpmClient({
                 );
               })}
               {/* 凡例 */}
-              <div className="flex gap-3 flex-wrap pt-2 border-t" style={{ borderColor: "#2a2d3a" }}>
+              <div className="flex gap-3 flex-wrap pt-2 border-t" style={{ borderColor: "var(--border)" }}>
                 {Object.entries(EVIDENCE_TYPE_COLORS).map(([type, color]) => (
                   <div key={type} className="flex items-center gap-1">
                     <div className="w-3 h-3 rounded-full" style={{ background: color }} />
@@ -343,7 +343,7 @@ export default function EbpmClient({
                 onKeyDown={(e) => e.key === "Enter" && handleEstat()}
                 placeholder="例: 待機児童 保育所"
                 className="w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200"
-                style={{ background: "#0f1117", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
               />
             </div>
             <div className="min-w-36">
@@ -352,17 +352,17 @@ export default function EbpmClient({
                 value={benchmarkKpiId}
                 onChange={(e) => setBenchmarkKpiId(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors duration-200"
-                style={{ background: "#0f1117", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
               >
                 {kpis.map((k) => (
-                  <option key={k.id} value={k.id} style={{ background: "#1a1d27" }}>{k.label}</option>
+                  <option key={k.id} value={k.id} style={{ background: "var(--bg-secondary)" }}>{k.label}</option>
                 ))}
               </select>
             </div>
             <button
               onClick={handleEstat}
               disabled={estatLoading || !estatKeyword.trim()}
-              className="text-white px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200"
+              className="text-white px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
             >
               {estatLoading ? "検索中..." : "統計データを検索"}
@@ -397,7 +397,7 @@ export default function EbpmClient({
                         <div
                           key={bm.id}
                           className="rounded-lg border p-3 flex flex-col gap-0.5"
-                          style={{ borderColor: "#2a2d3a" }}
+                          style={{ borderColor: "var(--border)" }}
                         >
                           <span className="text-xs text-slate-500">
                             {bm.source === "estat" ? "e-Stat" : bm.source === "resas" ? "RESAS" : bm.source}
@@ -427,7 +427,7 @@ export default function EbpmClient({
           <button
             onClick={handleSuggest}
             disabled={streamMode !== "idle"}
-            className="text-white px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200 shadow-lg shadow-indigo-500/20"
+            className="text-white px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             {streamMode === "suggest" ? "生成中..." : "AIで改善提案を生成"}
@@ -446,7 +446,7 @@ export default function EbpmClient({
         )}
 
         {suggestions.length === 0 && streamMode !== "suggest" ? (
-          <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "#2a2d3a" }}>
+          <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "var(--border)" }}>
             <p className="text-sm text-slate-500">改善提案がまだ生成されていません</p>
           </div>
         ) : (
@@ -454,7 +454,7 @@ export default function EbpmClient({
             {suggestions.map((s) => (
               <div key={s.id} className="rounded-xl border p-5" style={cardStyle}>
                 <div className="flex items-start gap-3 flex-wrap mb-2">
-                  <span className="text-xs text-slate-500 border rounded px-2 py-0.5" style={{ borderColor: "#2a2d3a" }}>
+                  <span className="text-xs text-slate-500 border rounded px-2 py-0.5" style={{ borderColor: "var(--border)" }}>
                     {SUGGESTION_TYPE_LABEL[s.suggestion_type] ?? s.suggestion_type}
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${PRIORITY_BADGE[s.priority] ?? PRIORITY_BADGE.medium}`}>
@@ -482,10 +482,10 @@ export default function EbpmClient({
                 value={reportType}
                 onChange={(e) => setReportType(e.target.value as typeof reportType)}
                 className="w-full rounded-lg border px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors duration-200"
-                style={{ background: "#0f1117", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
               >
                 {REPORT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value} style={{ background: "#1a1d27" }}>{t.label}</option>
+                  <option key={t.value} value={t.value} style={{ background: "var(--bg-secondary)" }}>{t.label}</option>
                 ))}
               </select>
             </div>
@@ -496,7 +496,7 @@ export default function EbpmClient({
                 value={periodStart}
                 onChange={(e) => setPeriodStart(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors duration-200"
-                style={{ background: "#0f1117", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
               />
             </div>
             <div>
@@ -506,14 +506,14 @@ export default function EbpmClient({
                 value={periodEnd}
                 onChange={(e) => setPeriodEnd(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors duration-200"
-                style={{ background: "#0f1117", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
               />
             </div>
           </div>
           <button
             onClick={handleReport}
             disabled={streamMode !== "idle"}
-            className="text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200 shadow-lg shadow-indigo-500/20"
+            className="text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             {streamMode === "report" ? "生成中..." : "AIでレポートを生成"}
@@ -524,7 +524,7 @@ export default function EbpmClient({
             <div
               ref={reportRef}
               className="rounded-xl border p-4 max-h-80 overflow-y-auto text-sm text-slate-300 leading-relaxed whitespace-pre-wrap"
-              style={{ borderColor: "#2a2d3a", background: "#0f1117" }}
+              style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}
             >
               {streamText || "生成中..."}
             </div>
@@ -532,7 +532,7 @@ export default function EbpmClient({
 
           {/* レポート履歴 */}
           {reports.length > 0 && (
-            <div className="space-y-3 border-t pt-4" style={{ borderColor: "#2a2d3a" }}>
+            <div className="space-y-3 border-t pt-4" style={{ borderColor: "var(--border)" }}>
               <p className="text-xs text-slate-500">生成済みレポート</p>
               {reports.map((r) => (
                 <details key={r.id} className="rounded-xl border" style={cardStyle}>
@@ -541,7 +541,7 @@ export default function EbpmClient({
                     style={{ listStyle: "none" }}
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-xs border rounded px-2 py-0.5 text-slate-400" style={{ borderColor: "#2a2d3a" }}>
+                      <span className="text-xs border rounded px-2 py-0.5 text-slate-400" style={{ borderColor: "var(--border)" }}>
                         {REPORT_TYPES.find((t) => t.value === r.report_type)?.label ?? r.report_type}
                       </span>
                       <span className="text-sm text-slate-200">{r.title}</span>
@@ -553,7 +553,7 @@ export default function EbpmClient({
                   <div className="px-4 pb-4 space-y-3">
                     <div
                       className="rounded-lg border p-4 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto"
-                      style={{ background: "#0f1117", borderColor: "#2a2d3a" }}
+                      style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
                     >
                       {r.content}
                     </div>
@@ -561,7 +561,7 @@ export default function EbpmClient({
                       <button
                         onClick={() => navigator.clipboard.writeText(r.content)}
                         className="text-xs px-3 py-1.5 rounded-lg border text-slate-400 hover:text-slate-200 transition-colors"
-                        style={{ borderColor: "#2a2d3a" }}
+                        style={{ borderColor: "var(--border)" }}
                       >
                         コピー
                       </button>
@@ -574,7 +574,7 @@ export default function EbpmClient({
                           }
                         }}
                         className="text-xs px-3 py-1.5 rounded-lg border text-slate-400 hover:text-slate-200 transition-colors"
-                        style={{ borderColor: "#2a2d3a" }}
+                        style={{ borderColor: "var(--border)" }}
                       >
                         印刷
                       </button>

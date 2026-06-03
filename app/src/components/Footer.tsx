@@ -4,7 +4,7 @@ export default function Footer() {
   return (
     <footer
       className="border-t mt-auto"
-      style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
     >
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="flex flex-wrap gap-6 items-center justify-between text-xs" style={{ color: "#94a3b8" }}>

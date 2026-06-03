@@ -56,7 +56,7 @@ export default async function DashboardPage() {
           <h3 className="text-base font-semibold text-slate-300">政策一覧</h3>
           <Link
             href="/projects/new"
-            className="text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 active:opacity-80 transition-all duration-200 shadow-lg shadow-indigo-500/20"
+            className="text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 active:opacity-80 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             ＋ 新規政策を登録

@@ -34,10 +34,8 @@ const PersonIcon = () => (
 );
 
 const inputClass =
-  "w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:border-cyan-500 transition-colors duration-200";
+  "neu-input w-full text-sm focus:outline-none transition-colors duration-200";
 const inputStyle = {
-  background: "var(--bg-input, #161922)",
-  borderColor: "var(--border, rgba(255,255,255,0.1))",
   color: "var(--text-primary)",
 };
 
@@ -137,7 +135,7 @@ export default function RegisterPage() {
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 py-12"
-      style={{ background: "var(--bg-primary, #0f1117)" }}
+      style={{ background: "var(--bg-primary)" }}
     >
       {/* 背景グロー */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
@@ -161,7 +159,7 @@ export default function RegisterPage() {
         <div
           className="rounded-2xl border p-8 shadow-2xl"
           style={{
-            background: "var(--bg-secondary, #1a1d27)",
+            background: "var(--bg-secondary)",
             borderColor: "var(--border, rgba(255,255,255,0.1))",
           }}
         >
@@ -218,7 +216,7 @@ export default function RegisterPage() {
                 onDrop={handleDrop}
                 className="relative w-24 h-24 rounded-full overflow-hidden transition-all duration-200 hover:opacity-80"
                 style={{
-                  background: avatarPreview ? "transparent" : "var(--bg-input, #161922)",
+                  background: avatarPreview ? "transparent" : "var(--bg-input)",
                   border: `2px ${isDragging ? "solid #06b6d4" : "dashed rgba(255,255,255,0.2)"}`,
                 }}
                 title="クリックまたはドラッグ&ドロップで写真を選択"
@@ -352,7 +350,7 @@ export default function RegisterPage() {
             {/* 送信ボタン */}
             <button
               type="submit" disabled={submitting}
-              className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-cyan-500/20 mt-2"
+              className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-cyan-500/20 mt-2 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
             >
               {submitting ? "登録中..." : "登録する"}

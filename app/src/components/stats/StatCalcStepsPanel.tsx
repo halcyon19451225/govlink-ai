@@ -16,7 +16,7 @@ export default function StatCalcStepsPanel({
   return (
     <div
       className="rounded-lg border mt-2"
-      style={{ borderColor: "#2a2d3a", background: "#161922" }}
+      style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}
     >
       <button
         type="button"

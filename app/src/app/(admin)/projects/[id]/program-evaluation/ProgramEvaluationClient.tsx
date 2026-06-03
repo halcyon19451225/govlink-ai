@@ -61,10 +61,10 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-const cardStyle: React.CSSProperties = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const cardStyle: React.CSSProperties = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle: React.CSSProperties = { background: "#161922", borderColor: "#2a2d3a" };
+const inputStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
 interface ProcessFormState {
   fiscal_year: number;
@@ -251,14 +251,14 @@ export default function ProgramEvaluationClient({
 
   const EvalTable = ({ rows }: { rows: ProgramEvalRow[] }) =>
     rows.length === 0 ? (
-      <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "#2a2d3a" }}>
+      <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "var(--border)" }}>
         <p className="text-sm text-slate-500">保存済みの評価レコードはありません。</p>
       </div>
     ) : (
       <div className="rounded-2xl border overflow-hidden" style={cardStyle}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ borderBottom: "1px solid #2a2d3a", background: "#161922" }}>
+            <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-input)" }}>
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">対象年度</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">結果</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">達成率</th>
@@ -268,7 +268,7 @@ export default function ProgramEvaluationClient({
           </thead>
           <tbody>
             {rows.map((ev) => (
-              <tr key={ev.id} style={{ borderBottom: "1px solid #2a2d3a" }}>
+              <tr key={ev.id} style={{ borderBottom: "1px solid var(--border)" }}>
                 <td className="px-4 py-3 text-slate-300">{ev.fiscal_year ? `${ev.fiscal_year}年度` : "—"}</td>
                 <td className="px-4 py-3 text-slate-300 max-w-xs"><p className="truncate">{ev.result ?? "—"}</p></td>
                 <td className="px-4 py-3 text-slate-300">{ev.achievement_rate != null ? `${ev.achievement_rate}%` : "—"}</td>
@@ -284,7 +284,7 @@ export default function ProgramEvaluationClient({
   return (
     <div>
       {/* タブ */}
-      <div className="flex gap-1 border-b mb-6" style={{ borderColor: "#2a2d3a" }}>
+      <div className="flex gap-1 border-b mb-6" style={{ borderColor: "var(--border)" }}>
         {TABS.map((tab) => (
           <button
             key={tab.key}
@@ -359,7 +359,7 @@ export default function ProgramEvaluationClient({
             {procError && <p className="text-xs text-red-400">{procError}</p>}
             <PermissionGate module="program_evaluation" level="edit" projectId={project.id}>
               <button type="button" onClick={() => void handleProcSave()} disabled={procSubmitting}
-                className="text-sm font-semibold px-5 py-2 rounded-xl text-white disabled:opacity-50"
+                className="text-sm font-semibold px-5 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 {procSubmitting ? "保存中..." : "プロセス評価を保存"}
               </button>
@@ -379,13 +379,13 @@ export default function ProgramEvaluationClient({
             {kpisWithPrev.length > 0 && (
               <button type="button" onClick={handlePrePost}
                 className="text-sm font-medium px-4 py-2 rounded-xl border text-slate-300 hover:border-indigo-500/40 hover:text-indigo-400 transition-colors"
-                style={{ borderColor: "#2a2d3a", background: "#161922" }}>
+                style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>
                 前後比較分析
               </button>
             )}
             <button type="button" onClick={() => { setShowDidModal(true); setDidResult(null); }}
               className="text-sm font-medium px-4 py-2 rounded-xl border text-slate-300 hover:border-cyan-500/40 hover:text-cyan-400 transition-colors"
-              style={{ borderColor: "#2a2d3a", background: "#161922" }}>
+              style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>
               DiD分析
             </button>
           </div>
@@ -426,7 +426,7 @@ export default function ProgramEvaluationClient({
             {outError && <p className="text-xs text-red-400">{outError}</p>}
             <PermissionGate module="program_evaluation" level="edit" projectId={project.id}>
               <button type="button" onClick={() => void handleOutSave()} disabled={outSubmitting}
-                className="text-sm font-semibold px-5 py-2 rounded-xl text-white disabled:opacity-50"
+                className="text-sm font-semibold px-5 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 {outSubmitting ? "保存中..." : "アウトカム評価を保存"}
               </button>
@@ -448,12 +448,12 @@ export default function ProgramEvaluationClient({
       {/* 前後比較モーダル */}
       {showPrePostModal && prePostResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)" }} onClick={() => setShowPrePostModal(false)}>
-          <div className="rounded-2xl border w-full max-w-lg p-6 space-y-4" style={cardStyle} onClick={(e) => e.stopPropagation()}>
+          <div className="rounded-2xl border w-full max-w-lg p-6 space-y-4 neu-card" style={cardStyle} onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-slate-200">前後比較分析</h3>
             <p className="text-sm text-indigo-400 font-medium">{prePostResult.interpretation}</p>
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ borderBottom: "1px solid #2a2d3a" }}>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
                   <th className="text-left py-2 text-slate-500">指標</th>
                   <th className="text-right py-2 text-slate-500">事前</th>
                   <th className="text-right py-2 text-slate-500">事後</th>
@@ -463,7 +463,7 @@ export default function ProgramEvaluationClient({
               </thead>
               <tbody>
                 {prePostResult.items.map((it, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #2a2d3a22" }}>
+                  <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td className="py-2 text-slate-300">{it.label}</td>
                     <td className="py-2 text-right text-slate-400">{it.pre}</td>
                     <td className="py-2 text-right text-slate-400">{it.post}</td>
@@ -479,7 +479,7 @@ export default function ProgramEvaluationClient({
             </table>
             <StatCalcStepsPanel steps={prePostResult.calculationSteps} title="計算ステップ" />
             <button type="button" onClick={() => setShowPrePostModal(false)}
-              className="w-full text-sm px-4 py-2 rounded-xl border text-slate-400 hover:text-slate-200 transition-colors" style={{ borderColor: "#2a2d3a" }}>
+              className="w-full text-sm px-4 py-2 rounded-xl border text-slate-400 hover:text-slate-200 transition-colors" style={{ borderColor: "var(--border)" }}>
               閉じる
             </button>
           </div>
@@ -489,7 +489,7 @@ export default function ProgramEvaluationClient({
       {/* DiDモーダル */}
       {showDidModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)" }} onClick={() => setShowDidModal(false)}>
-          <div className="rounded-2xl border w-full max-w-lg p-6 space-y-4" style={cardStyle} onClick={(e) => e.stopPropagation()}>
+          <div className="rounded-2xl border w-full max-w-lg p-6 space-y-4 neu-card" style={cardStyle} onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-slate-200">差分の差分（DiD）分析</h3>
             <div className="grid grid-cols-2 gap-3">
               {([
@@ -505,12 +505,12 @@ export default function ProgramEvaluationClient({
               ))}
             </div>
             <button type="button" onClick={handleDid}
-              className="w-full text-sm font-semibold px-4 py-2 rounded-xl text-white" style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
+              className="w-full text-sm font-semibold px-4 py-2 rounded-xl text-white neu-button-primary" style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
               計算
             </button>
             {didResult && (
               <div className="space-y-3">
-                <div className="rounded-xl border p-3 space-y-2 text-sm" style={{ borderColor: "#2a2d3a", background: "#161922" }}>
+                <div className="rounded-xl border p-3 space-y-2 text-sm" style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>
                   <p className="text-indigo-400 font-semibold">{didResult.interpretation}</p>
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     <div><p className="text-slate-500">介入群変化</p><p className="text-slate-200 font-mono">{didResult.treat_diff.toFixed(4)}</p></div>
@@ -525,7 +525,7 @@ export default function ProgramEvaluationClient({
               </div>
             )}
             <button type="button" onClick={() => setShowDidModal(false)}
-              className="w-full text-sm px-4 py-2 rounded-xl border text-slate-400 hover:text-slate-200 transition-colors" style={{ borderColor: "#2a2d3a" }}>
+              className="w-full text-sm px-4 py-2 rounded-xl border text-slate-400 hover:text-slate-200 transition-colors" style={{ borderColor: "var(--border)" }}>
               閉じる
             </button>
           </div>

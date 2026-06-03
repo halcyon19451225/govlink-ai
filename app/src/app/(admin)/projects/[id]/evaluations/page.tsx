@@ -66,7 +66,7 @@ export default async function EvaluationsPage({ params }: { params: { id: string
       {evaluations.length === 0 ? (
         <div
           className="rounded-2xl border border-dashed p-12 text-center"
-          style={{ borderColor: "#2a2d3a" }}
+          style={{ borderColor: "var(--border)" }}
         >
           <div
             className="inline-flex items-center justify-center w-14 h-14 rounded-full mb-4"
@@ -91,7 +91,7 @@ export default async function EvaluationsPage({ params }: { params: { id: string
               <div
                 key={ev.id}
                 className="rounded-xl border p-4"
-                style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">

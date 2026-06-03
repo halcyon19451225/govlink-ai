@@ -3,7 +3,7 @@ import Link from "next/link";
 const LAST_UPDATED = "2026年5月1日";
 
 const sectionHead = (
-  <h2 className="text-lg font-bold text-slate-100 mb-3 pb-2 border-b" style={{ borderColor: "#2a2d3a" }}>
+  <h2 className="text-lg font-bold text-slate-100 mb-3 pb-2 border-b" style={{ borderColor: "var(--border)" }}>
     dummy
   </h2>
 );
@@ -12,7 +12,7 @@ void sectionHead;
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="text-lg font-bold text-slate-100 mb-3 pb-2 border-b" style={{ borderColor: "#2a2d3a" }}>
+      <h2 className="text-lg font-bold text-slate-100 mb-3 pb-2 border-b" style={{ borderColor: "var(--border)" }}>
         {title}
       </h2>
       {children}
@@ -22,10 +22,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen" style={{ background: "#0f1117" }}>
-      <header className="border-b" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
+      <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent"
+          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
             style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             Sinap-sys
           </Link>
@@ -133,7 +133,7 @@ export default function TermsPage() {
             <p>本規約の解釈は日本法に準拠します。本規約に関する一切の紛争については、熊本地方裁判所を第一審の専属的合意管轄裁判所とします。</p>
           </Section>
 
-          <div className="pt-8 border-t space-y-1 text-sm text-slate-500" style={{ borderColor: "#2a2d3a" }}>
+          <div className="pt-8 border-t space-y-1 text-sm text-slate-500" style={{ borderColor: "var(--border)" }}>
             <p className="font-semibold text-slate-400 mb-2">事業者情報</p>
             <p>会社名: 株式会社 Ordo</p>
             <p>法人番号: 3300-01-029524</p>

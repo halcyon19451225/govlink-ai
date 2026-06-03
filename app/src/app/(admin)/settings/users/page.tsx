@@ -27,7 +27,7 @@ const ROLE_MAP = Object.fromEntries(ROLE_OPTIONS.map((r) => [r.value, r]));
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 export default function UsersPage() {
   const [users, setUsers] = useState<UserRole[]>([]);
@@ -140,10 +140,10 @@ export default function UsersPage() {
           style={{ background: "rgba(0,0,0,0.7)" }}
         >
           <div
-            className="w-full max-w-lg rounded-2xl border shadow-2xl"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            className="w-full max-w-lg rounded-2xl border shadow-2xl neu-card"
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#2a2d3a" }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
               <h3 className="text-base font-bold text-slate-100">
                 {editUser ? "ユーザー情報を編集" : "ユーザーを追加"}
               </h3>
@@ -203,7 +203,7 @@ export default function UsersPage() {
                       className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-200"
                       style={{
                         background: role === r.value ? r.bg : "transparent",
-                        borderColor: role === r.value ? r.border : "#2a2d3a",
+                        borderColor: role === r.value ? r.border : "var(--border)",
                         color: role === r.value ? r.color : "#64748b",
                       }}>
                       <div className="w-2 h-2 rounded-full"
@@ -214,9 +214,9 @@ export default function UsersPage() {
                 </div>
               </div>
             </div>
-            <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: "#2a2d3a" }}>
+            <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: "var(--border)" }}>
               <button type="button" onClick={handleSubmit} disabled={submitting || !displayName.trim()}
-                className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+                className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 {submitting ? "保存中..." : editUser ? "更新する" : "追加する"}
               </button>
@@ -247,7 +247,7 @@ export default function UsersPage() {
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           ＋ ユーザーを追加
@@ -270,7 +270,7 @@ export default function UsersPage() {
       {loading ? (
         <div className="text-center py-12 text-slate-500 text-sm">読み込み中...</div>
       ) : users.length === 0 ? (
-        <div className="rounded-2xl border border-dashed p-12 text-center" style={{ borderColor: "#2a2d3a" }}>
+        <div className="rounded-2xl border border-dashed p-12 text-center" style={{ borderColor: "var(--border)" }}>
           <p className="text-sm text-slate-500 mb-4">ユーザーがまだ登録されていません</p>
           <button onClick={openCreate}
             className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors duration-200">
@@ -278,10 +278,10 @@ export default function UsersPage() {
           </button>
         </div>
       ) : (
-        <div className="rounded-2xl border overflow-hidden" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+        <div className="rounded-2xl border overflow-hidden" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b" style={{ background: "#161922", borderColor: "#2a2d3a" }}>
+              <tr className="border-b" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   ユーザー
                 </th>
@@ -294,7 +294,7 @@ export default function UsersPage() {
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y" style={{ borderColor: "#2a2d3a" }}>
+            <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
               {users.map((u) => {
                 const roleInfo = ROLE_MAP[u.role] ?? ROLE_MAP["viewer"]!;
                 return (
@@ -318,7 +318,7 @@ export default function UsersPage() {
                         }}
                       >
                         {ROLE_OPTIONS.map((r) => (
-                          <option key={r.value} value={r.value} style={{ background: "#1a1d27", color: "#e2e8f0" }}>
+                          <option key={r.value} value={r.value} style={{ background: "var(--bg-secondary)", color: "#e2e8f0" }}>
                             {r.label}
                           </option>
                         ))}

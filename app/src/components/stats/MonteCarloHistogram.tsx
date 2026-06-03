@@ -26,11 +26,11 @@ export default function MonteCarloHistogram({ result }: MonteCarloHistogramProps
           data={result.histogram}
           margin={{ top: 10, right: 20, left: 10, bottom: 30 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3a" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis
             dataKey="bin"
             tick={{ fill: "#94a3b8", fontSize: 10 }}
-            stroke="#2a2d3a"
+            stroke="var(--border)"
             angle={-45}
             textAnchor="end"
             interval={0}
@@ -38,12 +38,12 @@ export default function MonteCarloHistogram({ result }: MonteCarloHistogramProps
           />
           <YAxis
             tick={{ fill: "#94a3b8", fontSize: 11 }}
-            stroke="#2a2d3a"
+            stroke="var(--border)"
           />
           <Tooltip
             contentStyle={{
-              background: "#1a1d27",
-              border: "1px solid #2a2d3a",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
               borderRadius: 8,
               color: "#e2e8f0",
               fontSize: 12,

@@ -262,7 +262,7 @@ function LinkModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: "rgba(0,0,0,0.6)" }}>
-      <div className="glass-card rounded-2xl p-6 w-full max-w-lg mx-4 space-y-4"
+      <div className="glass-card rounded-2xl p-6 w-full max-w-lg mx-4 space-y-4 neu-card"
         style={{ maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
         <div className="flex items-center justify-between shrink-0">
           <h3 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>

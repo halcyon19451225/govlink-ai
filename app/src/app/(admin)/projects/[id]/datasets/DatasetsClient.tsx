@@ -38,10 +38,10 @@ interface ProjectDataset {
   metadata: unknown;
 }
 
-const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const cardStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#161922", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
 export default function DatasetsClient({
   project,
@@ -140,7 +140,7 @@ export default function DatasetsClient({
         </div>
         <div
           className="h-2.5 rounded-full overflow-hidden"
-          style={{ background: "#2a2d3a" }}
+          style={{ background: "var(--border)" }}
         >
           <div
             className="h-full rounded-full transition-all duration-500"
@@ -185,9 +185,9 @@ export default function DatasetsClient({
                 <span
                   className="text-xs px-2 py-0.5 rounded border whitespace-nowrap flex-shrink-0"
                   style={{
-                    borderColor: "#2a2d3a",
+                    borderColor: "var(--border)",
                     color: "#94a3b8",
-                    background: "#161922",
+                    background: "var(--bg-input)",
                   }}
                 >
                   {def.data_format.toUpperCase()}
@@ -201,7 +201,7 @@ export default function DatasetsClient({
                     <span
                       key={col}
                       className="text-xs px-1.5 py-0.5 rounded"
-                      style={{ background: "#2a2d3a", color: "#64748b" }}
+                      style={{ background: "var(--border)", color: "#64748b" }}
                     >
                       {col}
                     </span>
@@ -209,7 +209,7 @@ export default function DatasetsClient({
                   {def.required_columns.length > 5 && (
                     <span
                       className="text-xs px-1.5 py-0.5 rounded"
-                      style={{ background: "#2a2d3a", color: "#64748b" }}
+                      style={{ background: "var(--border)", color: "#64748b" }}
                     >
                       +{def.required_columns.length - 5}
                     </span>
@@ -219,7 +219,7 @@ export default function DatasetsClient({
 
               {/* アップロード済み / 未アップロード */}
               {existing ? (
-                <div className="flex items-center justify-between mt-auto pt-2 border-t" style={{ borderColor: "#2a2d3a" }}>
+                <div className="flex items-center justify-between mt-auto pt-2 border-t" style={{ borderColor: "var(--border)" }}>
                   <div className="min-w-0">
                     <p className="text-xs text-slate-300 truncate">
                       {existing.file_name}
@@ -242,12 +242,12 @@ export default function DatasetsClient({
                   </span>
                 </div>
               ) : (
-                <div className="mt-auto pt-2 border-t" style={{ borderColor: "#2a2d3a" }}>
+                <div className="mt-auto pt-2 border-t" style={{ borderColor: "var(--border)" }}>
                   <button
                     type="button"
                     onClick={() => openModal(def)}
                     className="w-full text-xs font-semibold px-3 py-2 rounded-lg border transition-colors duration-200 hover:border-indigo-500/40 hover:text-indigo-400 text-slate-400"
-                    style={{ borderColor: "#2a2d3a" }}
+                    style={{ borderColor: "var(--border)" }}
                   >
                     アップロード
                   </button>
@@ -265,7 +265,7 @@ export default function DatasetsClient({
           style={{ background: "rgba(0,0,0,0.7)" }}
         >
           <div
-            className="rounded-2xl border p-6 w-full max-w-md shadow-2xl"
+            className="rounded-2xl border p-6 w-full max-w-md shadow-2xl neu-card"
             style={cardStyle}
           >
             <h2 className="text-base font-bold text-slate-100 mb-1">
@@ -285,7 +285,7 @@ export default function DatasetsClient({
                   <span
                     key={col}
                     className="text-xs px-2 py-0.5 rounded font-mono"
-                    style={{ background: "#2a2d3a", color: "#94a3b8" }}
+                    style={{ background: "var(--border)", color: "#94a3b8" }}
                   >
                     {col}
                   </span>
@@ -333,7 +333,7 @@ export default function DatasetsClient({
                 onClick={closeModal}
                 disabled={uploading}
                 className="flex-1 text-sm font-medium px-4 py-2 rounded-xl border transition-colors duration-200 text-slate-400 hover:text-slate-300"
-                style={{ borderColor: "#2a2d3a" }}
+                style={{ borderColor: "var(--border)" }}
               >
                 キャンセル
               </button>
@@ -341,7 +341,7 @@ export default function DatasetsClient({
                 type="button"
                 onClick={() => void handleUpload()}
                 disabled={uploading || !file}
-                className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 disabled:opacity-50"
+                className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 disabled:opacity-50 neu-button-primary"
                 style={{
                   background: "linear-gradient(135deg, #6366f1, #06b6d4)",
                 }}

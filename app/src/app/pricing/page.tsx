@@ -212,7 +212,7 @@ export default function PricingPage() {
             </Link>
             <Link
               href="/register"
-              className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 hover:opacity-90"
+              className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 hover:opacity-90 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
             >
               無料で始める
@@ -289,7 +289,7 @@ export default function PricingPage() {
               <div className="flex justify-start">
                 <Link
                   href="/register"
-                  className="inline-block text-white font-bold px-8 py-3.5 rounded-xl text-sm transition-all duration-200 hover:opacity-90 hover:scale-105"
+                  className="inline-block text-white font-bold px-8 py-3.5 rounded-xl text-sm transition-all duration-200 hover:opacity-90 hover:scale-105 neu-button-primary"
                   style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
                 >
                   無料で始める →
@@ -420,7 +420,7 @@ export default function PricingPage() {
             >
               <button
                 onClick={() => setAnnual(false)}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 neu-button-primary"
                 style={
                   !annual
                     ? { background: "linear-gradient(135deg, #6366f1, #06b6d4)", color: "#fff" }
@@ -431,7 +431,7 @@ export default function PricingPage() {
               </button>
               <button
                 onClick={() => setAnnual(true)}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 neu-button-primary"
                 style={
                   annual
                     ? { background: "linear-gradient(135deg, #6366f1, #06b6d4)", color: "#fff" }
@@ -636,7 +636,7 @@ export default function PricingPage() {
             </p>
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-white px-6 py-3 rounded-xl transition-all duration-200 hover:opacity-90"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-white px-6 py-3 rounded-xl transition-all duration-200 hover:opacity-90 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
             >
               お問い合わせフォーム →

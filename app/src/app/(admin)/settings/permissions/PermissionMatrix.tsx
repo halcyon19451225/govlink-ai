@@ -448,7 +448,7 @@ export default function PermissionMatrix() {
                   type="button"
                   onClick={() => void handleSave()}
                   disabled={saving || !hasChanges}
-                  className="px-5 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 transition-opacity hover:opacity-90"
+                  className="px-5 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 transition-opacity hover:opacity-90 neu-button-primary"
                   style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
                 >
                   {saving ? "保存中..." : "保存"}

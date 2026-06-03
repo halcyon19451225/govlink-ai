@@ -28,7 +28,7 @@ type PostType = (typeof POST_TYPE_OPTIONS)[number]["value"];
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 export default function PostForm({ projectId, projectTitle, kpis }: Props) {
   const router = useRouter();
@@ -160,8 +160,8 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
         onSubmit={handleSubmit}
         className="rounded-2xl border p-6 space-y-5"
         style={{
-          background: "#1a1d27",
-          borderColor: "#2a2d3a",
+          background: "var(--bg-secondary)",
+          borderColor: "var(--border)",
           boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
         }}
       >
@@ -249,7 +249,7 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
             onChange={(e) => setAiSummary(e.target.value)}
             rows={3}
             className={inputClass}
-            style={{ background: "#12151f", borderColor: "#2a2d3a" }}
+            style={{ background: "#12151f", borderColor: "var(--border)" }}
             placeholder="「AIサマリーを生成」ボタンで自動生成、または手動で入力できます"
           />
         </div>
@@ -293,7 +293,7 @@ export default function PostForm({ projectId, projectTitle, kpis }: Props) {
           <button
             type="submit"
             disabled={submitting}
-            className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+            className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             {submitting ? "投稿中..." : "投稿する"}

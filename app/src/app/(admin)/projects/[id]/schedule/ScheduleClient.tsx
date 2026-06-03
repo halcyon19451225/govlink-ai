@@ -79,7 +79,7 @@ function GanttChart({ phases, tasks }: { phases: PhaseRow[]; tasks: TaskRow[] })
   return (
     <div
       className="rounded-2xl border p-5 overflow-x-auto"
-      style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
     >
       <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
         ガントチャート
@@ -188,7 +188,7 @@ export default function ScheduleClient({
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
 
-  const inputStyle = { background: "#12151f", borderColor: "#2a2d3a" };
+  const inputStyle = { background: "#12151f", borderColor: "var(--border)" };
   const inputClass =
     "rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
 
@@ -323,7 +323,7 @@ export default function ScheduleClient({
       {/* 生成フォーム */}
       <div
         className="rounded-2xl border p-5 space-y-4"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
           AIスケジュール生成
@@ -362,7 +362,7 @@ export default function ScheduleClient({
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+            className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             {generating ? (
@@ -385,9 +385,9 @@ export default function ScheduleClient({
           {/* タスク一覧テーブル */}
           <div
             className="rounded-2xl border overflow-hidden"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "#2a2d3a" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
               <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
                 タスク一覧
               </h3>
@@ -409,7 +409,7 @@ export default function ScheduleClient({
             </div>
 
             {exportMsg && (
-              <div className="px-5 py-2 text-xs text-slate-400" style={{ borderBottom: "1px solid #2a2d3a" }}>
+              <div className="px-5 py-2 text-xs text-slate-400" style={{ borderBottom: "1px solid var(--border)" }}>
                 {exportMsg}
               </div>
             )}
@@ -417,7 +417,7 @@ export default function ScheduleClient({
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[700px]">
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #2a2d3a" }}>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
                     {["フェーズ", "タスク名", "期限", "資料要否", "資料期限", "状態", ""].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500">
                         {h}
@@ -432,7 +432,7 @@ export default function ScheduleClient({
                     return phaseTasks.map((task, ti) => (
                       <tr
                         key={task.id}
-                        style={{ borderBottom: "1px solid #2a2d3a" }}
+                        style={{ borderBottom: "1px solid var(--border)" }}
                         className="hover:bg-white/2 transition-colors duration-150"
                       >
                         {ti === 0 ? (
@@ -491,7 +491,7 @@ export default function ScheduleClient({
                             onClick={() => handleToggleTask(task)}
                             disabled={updatingTaskId === task.id}
                             className="text-xs text-slate-500 hover:text-slate-200 border rounded px-2 py-0.5 transition-colors duration-200 disabled:opacity-40"
-                            style={{ borderColor: "#2a2d3a" }}
+                            style={{ borderColor: "var(--border)" }}
                           >
                             {updatingTaskId === task.id
                               ? "..."
@@ -511,7 +511,7 @@ export default function ScheduleClient({
           {/* フェーズステータス管理 */}
           <div
             className="rounded-2xl border p-5"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
             <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
               フェーズステータス
@@ -542,7 +542,7 @@ export default function ScheduleClient({
                           disabled={phase.status === s}
                           className="text-xs rounded px-2 py-0.5 border transition-colors duration-200 disabled:opacity-30"
                           style={{
-                            borderColor: phase.status === s ? meta.color : "#2a2d3a",
+                            borderColor: phase.status === s ? meta.color : "var(--border)",
                             color: phase.status === s ? meta.color : "#64748b",
                           }}
                         >

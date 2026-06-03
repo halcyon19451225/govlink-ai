@@ -22,8 +22,8 @@ export default function UpgradeModal({ message, onClose }: UpgradeModalProps) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl border p-6 shadow-2xl"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+        className="w-full max-w-sm rounded-2xl border p-6 shadow-2xl neu-card"
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 mb-4">
@@ -40,7 +40,7 @@ export default function UpgradeModal({ message, onClose }: UpgradeModalProps) {
         <div className="flex items-center gap-3">
           <Link
             href="/pricing"
-            className="flex-1 text-center text-sm font-semibold text-white px-4 py-2.5 rounded-xl transition-all duration-200"
+            className="flex-1 text-center text-sm font-semibold text-white px-4 py-2.5 rounded-xl transition-all duration-200 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
             onClick={onClose}
           >
@@ -49,7 +49,7 @@ export default function UpgradeModal({ message, onClose }: UpgradeModalProps) {
           <button
             onClick={onClose}
             className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2.5 rounded-xl border transition-colors duration-200"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             閉じる
           </button>

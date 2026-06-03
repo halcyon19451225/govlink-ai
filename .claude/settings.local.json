@@ -126,7 +126,13 @@
       "Bash(echo \"BUILD_EXIT: $?\")",
       "Bash(echo \"TSC_EXIT: $?\")",
       "Bash(echo \"TSC: $?\")",
-      "Bash(echo \"BUILD: $?\")"
+      "Bash(echo \"BUILD: $?\")",
+      "Bash(grep -v \":0$\")",
+      "Bash(sort -t: -k2 -rn)",
+      "Bash(grep -iE \"#[0-9a-f]{3,6}|backgroundColor|background:\")",
+      "Bash(echo \"=== TSC EXIT: $? ===\")",
+      "Bash(NODE_OPTIONS='--max-old-space-size=4096' npx next build)",
+      "Bash(echo \"BUILD EXIT: $?\")"
     ]
   }
 }

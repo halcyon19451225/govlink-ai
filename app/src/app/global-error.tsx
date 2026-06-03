@@ -15,7 +15,7 @@ export default function GlobalError({
 
   return (
     <html lang="ja">
-      <body style={{ background: "#0f1117", margin: 0, fontFamily: "sans-serif" }}>
+      <body style={{ background: "var(--bg-primary)", margin: 0, fontFamily: "sans-serif" }}>
         <div
           style={{
             minHeight: "100vh",
@@ -27,8 +27,8 @@ export default function GlobalError({
         >
           <div
             style={{
-              background: "#1a1d27",
-              border: "1px solid #2a2d3a",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
               borderRadius: "16px",
               padding: "40px",
               maxWidth: "400px",

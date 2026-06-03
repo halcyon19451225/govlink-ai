@@ -2,9 +2,9 @@ import Link from "next/link";
 
 export default function BillingSuccessPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "#0f1117" }}>
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "var(--bg-primary)" }}>
       <div className="w-full max-w-md rounded-2xl border p-10 text-center space-y-6"
-        style={{ background: "#1a1d27", borderColor: "#10b98130" }}>
+        style={{ background: "var(--bg-secondary)", borderColor: "#10b98130" }}>
         <div className="flex items-center justify-center w-16 h-16 rounded-full mx-auto"
           style={{ background: "#10b98120" }}>
           <svg width={32} height={32} fill="none" viewBox="0 0 24 24" stroke="#10b981" strokeWidth={2}>
@@ -18,7 +18,7 @@ export default function BillingSuccessPage() {
           </p>
         </div>
         <Link href="/dashboard"
-          className="block text-sm font-semibold text-white py-3 rounded-xl transition-all duration-200"
+          className="block text-sm font-semibold text-white py-3 rounded-xl transition-all duration-200 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
           ダッシュボードへ →
         </Link>

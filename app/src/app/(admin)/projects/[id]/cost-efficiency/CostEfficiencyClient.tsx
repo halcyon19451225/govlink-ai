@@ -58,10 +58,10 @@ interface Props {
 const TABS = ["評価一覧", "感度分析・モンテカルロ"] as const;
 type Tab = (typeof TABS)[number];
 
-const cardStyle: React.CSSProperties = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const cardStyle: React.CSSProperties = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle: React.CSSProperties = { background: "#161922", borderColor: "#2a2d3a" };
+const inputStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
 // ---- 計算ユーティリティ ----
 
@@ -362,7 +362,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
   return (
     <div>
       {/* タブ */}
-      <div className="flex gap-1 border-b mb-6" style={{ borderColor: "#2a2d3a" }}>
+      <div className="flex gap-1 border-b mb-6" style={{ borderColor: "var(--border)" }}>
         {TABS.map((tab) => (
           <button key={tab} type="button" onClick={() => setActiveTab(tab)}
             className="px-4 py-2 text-sm font-medium transition-colors duration-200 border-b-2 -mb-px"
@@ -397,12 +397,12 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
             </div>
           ) : (
             <div className="rounded-2xl border overflow-hidden" style={cardStyle}>
-              <div className="px-5 py-3 border-b" style={{ borderColor: "#2a2d3a" }}>
+              <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border)" }}>
                 <h3 className="text-sm font-semibold text-slate-200">保存済みレコード</h3>
               </div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #2a2d3a", background: "#161922" }}>
+                  <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-input)" }}>
                     <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">施策名</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">年度</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">区分</th>
@@ -418,7 +418,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                     return (
                       <tr
                         key={rec.id}
-                        style={{ borderBottom: "1px solid #2a2d3a", cursor: "pointer" }}
+                        style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}
                         className="hover:bg-white/[0.03] transition-colors"
                         onClick={() => handleEditRecord(rec)}
                       >
@@ -494,7 +494,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                 <p className="text-xs text-slate-500 mt-0.5">各パラメータを ±10% 変化させたときのコスト比率の変動を可視化します</p>
               </div>
               <button type="button" onClick={handleSensitivity} disabled={analysisCalc.total_investment === 0}
-                className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 shrink-0"
+                className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 shrink-0 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 感度分析を実行
               </button>
@@ -507,7 +507,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr style={{ borderBottom: "1px solid #2a2d3a" }}>
+                      <tr style={{ borderBottom: "1px solid var(--border)" }}>
                         <th className="text-left py-2 px-2 text-slate-500">パラメータ</th>
                         <th className="text-right py-2 px-2 text-slate-500">-20%</th>
                         <th className="text-right py-2 px-2 text-slate-500">-10%</th>
@@ -519,7 +519,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                     </thead>
                     <tbody>
                       {sensitivityResult.items.map((item) => (
-                        <tr key={item.param} style={{ borderBottom: "1px solid #2a2d3a22" }}>
+                        <tr key={item.param} style={{ borderBottom: "1px solid var(--border)" }}>
                           <td className="py-2 px-2 text-slate-300">{item.label}</td>
                           <td className="py-2 px-2 text-right font-mono text-red-400">{item.low20pct.toFixed(4)}</td>
                           <td className="py-2 px-2 text-right font-mono text-red-300">{item.low10pct.toFixed(4)}</td>
@@ -544,7 +544,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                 <p className="text-xs text-slate-500 mt-0.5">各パラメータにガウス分布（平均±10%の標準偏差）を仮定してシミュレーションします</p>
               </div>
               <button type="button" onClick={handleMonteCarlo} disabled={mcRunning || analysisCalc.total_investment === 0}
-                className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 shrink-0"
+                className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 shrink-0 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                 {mcRunning ? "実行中..." : "シミュレーション開始"}
               </button>
@@ -559,7 +559,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
             {mcError && <p className="text-xs text-red-400">エラー: {mcError}</p>}
             {mcResult && (
               <div className="space-y-4">
-                <div className="rounded-xl border p-4 grid grid-cols-2 md:grid-cols-4 gap-4" style={{ borderColor: "#2a2d3a", background: "#161922" }}>
+                <div className="rounded-xl border p-4 grid grid-cols-2 md:grid-cols-4 gap-4" style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>
                   {[{ label: "平均", value: mcResult.mean.toFixed(3) }, { label: "標準偏差", value: mcResult.stddev.toFixed(3) }, { label: "5パーセンタイル", value: mcResult.p5.toFixed(3) }, { label: "95パーセンタイル", value: mcResult.p95.toFixed(3) }].map(({ label, value }) => (
                     <div key={label}><p className="text-xs text-slate-500">{label}</p><p className="text-lg font-bold font-mono text-slate-100">{value}</p></div>
                   ))}
@@ -577,9 +577,9 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
       {/* ===== 新規評価作成モーダル ===== */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8" style={{ background: "#00000080" }}>
-          <div className="rounded-xl border w-full max-w-2xl mx-4" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+          <div className="rounded-xl border w-full max-w-2xl mx-4 neu-card" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
             {/* モーダルヘッダー */}
-            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#2a2d3a" }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
               <div>
                 <h2 className="text-base font-semibold text-slate-100">
                   {editingId ? "評価を編集" : "新規評価を作成"}
@@ -602,7 +602,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                 {(["ex_ante", "ex_post"] as const).map((t) => (
                   <button key={t} type="button" onClick={() => setEvalType(t)}
                     className="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200"
-                    style={{ background: evalType === t ? "#6366f120" : "transparent", color: evalType === t ? "#818cf8" : "#64748b", border: `1px solid ${evalType === t ? "#6366f140" : "#2a2d3a"}` }}>
+                    style={{ background: evalType === t ? "#6366f120" : "transparent", color: evalType === t ? "#818cf8" : "#64748b", border: `1px solid ${evalType === t ? "#6366f140" : "var(--border)"}` }}>
                     {t === "ex_ante" ? "事前評価" : "事後評価"}
                   </button>
                 ))}
@@ -633,7 +633,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                     <input type="number" value={form.operating_cost} onChange={(e) => setField("operating_cost", e.target.value)} className={inputClass} style={inputStyle} placeholder="0" />
                   </div>
                 </div>
-                <div className="rounded-lg border px-3 py-2 text-sm" style={{ background: "#161922", borderColor: "#2a2d3a" }}>
+                <div className="rounded-lg border px-3 py-2 text-sm" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
                   <span className="text-slate-500 text-xs">投資総額: </span>
                   <span className="text-slate-200 font-medium">{calc.total_investment.toLocaleString()} 万円</span>
                 </div>
@@ -656,7 +656,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                     <input type="number" value={form.unit_benefit} onChange={(e) => setField("unit_benefit", e.target.value)} className={inputClass} style={inputStyle} placeholder="例: 16.19" />
                   </div>
                 </div>
-                <div className="rounded-lg border px-3 py-2 text-xs text-slate-400" style={{ background: "#161922", borderColor: "#2a2d3a" }}>
+                <div className="rounded-lg border px-3 py-2 text-xs text-slate-400" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
                   削減A = {calc.reduction_a.toLocaleString(undefined, { maximumFractionDigits: 2 })} 万円
                 </div>
               </div>
@@ -674,7 +674,7 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                     <input type="number" value={form.delta_recep_rate} onChange={(e) => setField("delta_recep_rate", e.target.value)} className={inputClass} style={inputStyle} placeholder="例: 0.5" />
                   </div>
                 </div>
-                <div className="rounded-lg border px-3 py-2 text-xs text-slate-400" style={{ background: "#161922", borderColor: "#2a2d3a" }}>
+                <div className="rounded-lg border px-3 py-2 text-xs text-slate-400" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
                   削減B = {calc.reduction_b.toLocaleString(undefined, { maximumFractionDigits: 2 })} 万円
                 </div>
               </div>
@@ -686,18 +686,18 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
                   <label className="text-xs text-slate-500 mb-1 block">単位給付費改善幅（万円）</label>
                   <input type="number" value={form.delta_unit_benefit} onChange={(e) => setField("delta_unit_benefit", e.target.value)} className={inputClass} style={inputStyle} placeholder="0" />
                 </div>
-                <div className="rounded-lg border px-3 py-2 text-xs text-slate-400" style={{ background: "#161922", borderColor: "#2a2d3a" }}>
+                <div className="rounded-lg border px-3 py-2 text-xs text-slate-400" style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}>
                   削減C = {calc.reduction_c.toLocaleString(undefined, { maximumFractionDigits: 2 })} 万円
                 </div>
               </div>
 
               {/* 合計・コスト比率プレビュー */}
-              <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: "#2a2d3a", background: "#161922" }}>
+              <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-slate-400">合計削減額</span>
                   <span className="text-base font-bold text-slate-100">{calc.total_reduction.toLocaleString(undefined, { maximumFractionDigits: 2 })} 万円</span>
                 </div>
-                <div className="flex justify-between items-center border-t pt-2" style={{ borderColor: "#2a2d3a" }}>
+                <div className="flex justify-between items-center border-t pt-2" style={{ borderColor: "var(--border)" }}>
                   <span className="text-sm font-medium text-slate-300">コスト比率（試算）</span>
                   <div className="flex items-center gap-2">
                     <span className="text-xl font-bold font-mono text-slate-100">{calc.cost_ratio > 0 ? calc.cost_ratio.toFixed(2) : "—"}</span>
@@ -726,13 +726,13 @@ export default function CostEfficiencyClient({ project, records: initialRecords 
             </div>
 
             {/* モーダルフッター */}
-            <div className="flex gap-3 justify-end px-6 py-4 border-t" style={{ borderColor: "#2a2d3a" }}>
+            <div className="flex gap-3 justify-end px-6 py-4 border-t" style={{ borderColor: "var(--border)" }}>
               <button type="button" onClick={handleCloseModal} className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-200 transition-colors">
                 キャンセル
               </button>
               <PermissionGate module="cost_efficiency" level="edit" projectId={project.id}>
                 <button type="button" onClick={() => void handleSave()} disabled={submitting}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                   style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
                   {submitting ? "保存中..." : editingId ? "更新" : "保存"}
                 </button>

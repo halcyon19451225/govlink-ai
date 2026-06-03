@@ -119,7 +119,7 @@ export default function CheckpointWorkClient({
       {/* ヘッダー */}
       <div
         className="rounded-2xl border p-6 space-y-4"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <div className="flex items-start gap-3 flex-wrap">
           <span
@@ -135,7 +135,7 @@ export default function CheckpointWorkClient({
           {checkpoint.qc_step && (
             <span
               className="inline-flex items-center px-2 py-0.5 rounded text-xs border"
-              style={{ background: "#1a1d27", color: "#94a3b8", borderColor: "#2a2d3a" }}
+              style={{ background: "var(--bg-secondary)", color: "#94a3b8", borderColor: "var(--border)" }}
             >
               QCステップ: {checkpoint.qc_step}
             </span>
@@ -151,7 +151,7 @@ export default function CheckpointWorkClient({
         {checkpoint.instructions && (
           <div
             className="rounded-lg p-3 text-sm text-slate-300 border"
-            style={{ background: "#0f1117", borderColor: "#2a2d3a" }}
+            style={{ background: "var(--bg-primary)", borderColor: "var(--border)" }}
           >
             {checkpoint.instructions}
           </div>
@@ -196,9 +196,9 @@ export default function CheckpointWorkClient({
       {/* モジュールタブ */}
       <div
         className="rounded-2xl border overflow-hidden"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
-        <div className="border-b" style={{ borderColor: "#2a2d3a" }}>
+        <div className="border-b" style={{ borderColor: "var(--border)" }}>
           <div className="flex overflow-x-auto">
             {checkpoint.modules_involved.length === 0 ? (
               <span className="px-4 py-3 text-sm text-slate-500">
@@ -260,7 +260,7 @@ export default function CheckpointWorkClient({
       {/* 完了メモ */}
       <div
         className="rounded-2xl border p-5 space-y-3"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <h3 className="text-sm font-semibold text-slate-300">完了メモ</h3>
         <textarea
@@ -270,8 +270,8 @@ export default function CheckpointWorkClient({
           placeholder="作業の記録・気づき・次回への引き継ぎ事項などを入力..."
           className="w-full rounded-lg px-3 py-2 text-sm resize-none outline-none focus:ring-1"
           style={{
-            background: "#0f1117",
-            border: "1px solid #2a2d3a",
+            background: "var(--bg-primary)",
+            border: "1px solid var(--border)",
             color: "#e2e8f0",
           }}
         />

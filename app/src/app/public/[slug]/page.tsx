@@ -86,7 +86,7 @@ export default async function PublicProjectPage({
   ]);
 
   return (
-    <div className="min-h-screen" style={{ background: "#0f1117" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
       {/* グラデーションヘッダー */}
       <header
         className="px-4 py-10 text-white"
@@ -123,8 +123,8 @@ export default async function PublicProjectPage({
             <div
               className="rounded-2xl border p-5 space-y-4"
               style={{
-                background: "#1a1d27",
-                borderColor: "#2a2d3a",
+                background: "var(--bg-secondary)",
+                borderColor: "var(--border)",
                 boxShadow: "0 2px 16px rgba(0,0,0,0.3)",
               }}
             >
@@ -145,7 +145,7 @@ export default async function PublicProjectPage({
                     </div>
                     <div
                       className="h-2.5 rounded-full overflow-hidden"
-                      style={{ background: "#2a2d3a" }}
+                      style={{ background: "var(--border)" }}
                     >
                       <div
                         className="h-full rounded-full transition-all duration-700"
@@ -170,7 +170,7 @@ export default async function PublicProjectPage({
           {posts.length === 0 ? (
             <div
               className="rounded-2xl border border-dashed p-8 text-center"
-              style={{ borderColor: "#2a2d3a" }}
+              style={{ borderColor: "var(--border)" }}
             >
               <p className="text-sm text-slate-500">まだ投稿がありません</p>
             </div>
@@ -187,8 +187,8 @@ export default async function PublicProjectPage({
                     key={post.id}
                     className="relative rounded-xl border p-5"
                     style={{
-                      background: "#1a1d27",
-                      borderColor: "#2a2d3a",
+                      background: "var(--bg-secondary)",
+                      borderColor: "var(--border)",
                       boxShadow: "0 2px 12px rgba(0,0,0,0.2)",
                     }}
                   >
@@ -197,7 +197,7 @@ export default async function PublicProjectPage({
                       className="absolute -left-[26px] top-5 w-2.5 h-2.5 rounded-full border-2"
                       style={{
                         background: "#06b6d4",
-                        borderColor: "#0f1117",
+                        borderColor: "var(--bg-primary)",
                         boxShadow: "0 0 8px #06b6d480",
                       }}
                     />
@@ -239,7 +239,7 @@ export default async function PublicProjectPage({
       {/* フッター */}
       <footer
         className="mt-12 border-t py-6 text-center"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <p
           className="text-sm font-semibold bg-clip-text text-transparent"

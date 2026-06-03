@@ -13,7 +13,7 @@ const INQUIRY_TYPES = [
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 export default function ContactPage() {
   const [inquiryType, setInquiryType] = useState("");
@@ -56,10 +56,10 @@ export default function ContactPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: "#0f1117" }}>
-        <header className="border-b" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+      <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-primary)" }}>
+        <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
           <div className="max-w-4xl mx-auto px-6 py-4">
-            <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent"
+            <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
               style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
               Sinap-sys
             </Link>
@@ -67,7 +67,7 @@ export default function ContactPage() {
         </header>
         <div className="flex-1 flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-2xl border p-10 text-center space-y-6"
-            style={{ background: "#1a1d27", borderColor: "#10b98130" }}>
+            style={{ background: "var(--bg-secondary)", borderColor: "#10b98130" }}>
             <div className="flex items-center justify-center w-16 h-16 rounded-full mx-auto"
               style={{ background: "#10b98120" }}>
               <svg width={32} height={32} fill="none" viewBox="0 0 24 24" stroke="#10b981" strokeWidth={2}>
@@ -100,10 +100,10 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#0f1117" }}>
-      <header className="border-b" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-primary)" }}>
+      <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent"
+          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
             style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             Sinap-sys
           </Link>
@@ -229,14 +229,14 @@ export default function ContactPage() {
           <button
             type="submit"
             disabled={submitting || !agreed}
-            className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+            className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             {submitting ? "送信中..." : "送信する"}
           </button>
         </form>
 
-        <div className="mt-10 rounded-xl border p-4 text-xs text-slate-500 space-y-1" style={{ borderColor: "#2a2d3a" }}>
+        <div className="mt-10 rounded-xl border p-4 text-xs text-slate-500 space-y-1" style={{ borderColor: "var(--border)" }}>
           <p className="font-medium text-slate-400">株式会社 Ordo</p>
           <p>熊本県上益城郡御船町上野1652番地1</p>
           <p>※ 電話番号・メールアドレスは非公開です。お問い合わせはフォームよりお願いします。</p>

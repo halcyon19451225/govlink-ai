@@ -112,7 +112,7 @@ export default function ModuleGraphClient({ projectModules, allModules, projectI
         style: {
           width: NODE_W,
           height: NODE_H,
-          background: isEnabled ? "#1e2035" : "#0f1117",
+          background: isEnabled ? "#1e2035" : "var(--bg-primary)",
           color: isEnabled ? "#e2e8f0" : "#475569",
           border: isEnabled ? "1px solid #6366f1" : "1px solid #1e293b",
           borderRadius: 8,
@@ -167,7 +167,7 @@ export default function ModuleGraphClient({ projectModules, allModules, projectI
     return (
       <div
         className="rounded-xl border border-dashed p-8 text-center text-sm"
-        style={{ borderColor: "#2a2d3a", color: "#64748b" }}
+        style={{ borderColor: "var(--border)", color: "#64748b" }}
       >
         モジュールが見つかりません
       </div>
@@ -225,8 +225,8 @@ export default function ModuleGraphClient({ projectModules, allModules, projectI
               disabled={isLoading}
               className="rounded-xl border p-4 text-left transition-all duration-200 w-full"
               style={{
-                background: enabled ? "#6366f108" : "#1a1d27",
-                borderColor: enabled ? "#6366f160" : "#2a2d3a",
+                background: enabled ? "#6366f108" : "var(--bg-secondary)",
+                borderColor: enabled ? "#6366f160" : "var(--border)",
                 cursor: isLoading ? "wait" : "pointer",
                 opacity: isLoading ? 0.7 : 1,
               }}
@@ -263,7 +263,7 @@ export default function ModuleGraphClient({ projectModules, allModules, projectI
       {/* 依存グラフ */}
       <div
         className="rounded-xl border overflow-hidden"
-        style={{ height: 400, background: "#0f1117", borderColor: "#2a2d3a" }}
+        style={{ height: 400, background: "var(--bg-primary)", borderColor: "var(--border)" }}
       >
         <ReactFlow
           nodes={nodes}
@@ -277,7 +277,7 @@ export default function ModuleGraphClient({ projectModules, allModules, projectI
           <Background color="#1e2a3a" gap={20} />
           <Controls />
           <MiniMap
-            style={{ background: "#0f1117" }}
+            style={{ background: "var(--bg-primary)" }}
             nodeColor={(n) => {
               const node = n as Node;
               return enabledSet.has(node.id) ? "#6366f1" : "#1e293b";

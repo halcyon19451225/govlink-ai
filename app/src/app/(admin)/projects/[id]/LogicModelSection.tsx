@@ -78,13 +78,13 @@ function LogicModelDiagram({ model }: { model: LogicModel }) {
               {/* アイテムリスト */}
               <div
                 className="border-x border-b rounded-b-lg p-2 space-y-1.5 min-h-[80px]"
-                style={{ background: "#12151f", borderColor: "#2a2d3a" }}
+                style={{ background: "#12151f", borderColor: "var(--border)" }}
               >
                 {model[col.key].map((item, i) => (
                   <div
                     key={i}
                     className="text-xs text-slate-300 rounded px-2 py-1.5 leading-snug"
-                    style={{ background: "#1a1d27" }}
+                    style={{ background: "var(--bg-secondary)" }}
                   >
                     {item}
                   </div>
@@ -187,7 +187,7 @@ export default function LogicModelSection({
         <button
           onClick={handleGenerate}
           disabled={generating}
-          className="text-white text-sm font-semibold px-4 py-2 rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-lg shadow-indigo-500/20"
+          className="text-white text-sm font-semibold px-4 py-2 rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           {generating ? (
@@ -216,8 +216,8 @@ export default function LogicModelSection({
         <div
           className="rounded-2xl border p-5"
           style={{
-            background: "#1a1d27",
-            borderColor: "#2a2d3a",
+            background: "var(--bg-secondary)",
+            borderColor: "var(--border)",
             boxShadow: "0 2px 16px rgba(0,0,0,0.25)",
           }}
         >
@@ -226,7 +226,7 @@ export default function LogicModelSection({
       ) : !generating ? (
         <div
           className="rounded-2xl border border-dashed p-8 text-center"
-          style={{ borderColor: "#2a2d3a" }}
+          style={{ borderColor: "var(--border)" }}
         >
           <p className="text-sm text-slate-500">
             「AIロジックモデルを生成」ボタンを押すと、政策情報をもとにロジックモデルを自動生成します。

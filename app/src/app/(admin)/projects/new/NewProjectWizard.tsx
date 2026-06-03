@@ -28,8 +28,8 @@ const PLAN_TYPE_LABELS: Record<string, string> = {
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#161922", borderColor: "#2a2d3a" };
-const cardStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-input)", borderColor: "var(--border)" };
+const cardStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 // ─── 日付計算 ─────────────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ function StepIndicator({ current }: { current: number }) {
                     ? "linear-gradient(135deg, #6366f1, #06b6d4)"
                     : isDone
                     ? "#10b981"
-                    : "#2a2d3a",
+                    : "var(--border)",
                   color: isActive || isDone ? "#fff" : "#64748b",
                 }}
               >
@@ -73,7 +73,7 @@ function StepIndicator({ current }: { current: number }) {
               </span>
             </div>
             {idx < STEP_LABELS.length - 1 && (
-              <div className="w-6 h-px mx-1" style={{ background: isDone ? "#10b981" : "#2a2d3a" }} />
+              <div className="w-6 h-px mx-1" style={{ background: isDone ? "#10b981" : "var(--border)" }} />
             )}
           </div>
         );
@@ -116,8 +116,8 @@ function Step1({
               onClick={() => onSelect(isSelected ? null : t)}
               className="rounded-xl border p-4 text-left transition-all duration-200 hover:border-indigo-500/50"
               style={{
-                background: isSelected ? "#6366f115" : "#1a1d27",
-                borderColor: isSelected ? "#6366f160" : "#2a2d3a",
+                background: isSelected ? "#6366f115" : "var(--bg-secondary)",
+                borderColor: isSelected ? "#6366f160" : "var(--border)",
                 boxShadow: isSelected ? "0 0 0 1px #6366f140" : "none",
               }}
             >
@@ -163,8 +163,8 @@ function Step1({
           onClick={() => onSelect(null)}
           className="rounded-xl border p-4 text-left transition-all duration-200 hover:border-slate-600"
           style={{
-            background: selected === null ? "#6366f108" : "#1a1d27",
-            borderColor: selected === null ? "#6366f130" : "#2a2d3a",
+            background: selected === null ? "#6366f108" : "var(--bg-secondary)",
+            borderColor: selected === null ? "#6366f130" : "var(--border)",
             borderStyle: "dashed",
           }}
         >
@@ -177,7 +177,7 @@ function Step1({
         <button
           type="button"
           onClick={onNext}
-          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           次へ →
@@ -269,7 +269,7 @@ function Step2({
           type="button"
           onClick={onBack}
           className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
-          style={{ borderColor: "#2a2d3a" }}
+          style={{ borderColor: "var(--border)" }}
         >
           ← 戻る
         </button>
@@ -277,7 +277,7 @@ function Step2({
           type="button"
           onClick={onNext}
           disabled={!canNext}
-          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           次へ →
@@ -331,8 +331,8 @@ function Step3({
               className="rounded-xl border p-4 transition-all duration-200 cursor-pointer"
               style={{
                 ...cardStyle,
-                borderColor: enabled ? "#6366f160" : "#2a2d3a",
-                background: enabled ? "#6366f108" : "#1a1d27",
+                borderColor: enabled ? "#6366f160" : "var(--border)",
+                background: enabled ? "#6366f108" : "var(--bg-secondary)",
               }}
               onClick={() => toggle(mod.id)}
             >
@@ -348,7 +348,7 @@ function Step3({
                     width: 36,
                     height: 20,
                     borderRadius: 10,
-                    background: enabled ? "#6366f1" : "#2a2d3a",
+                    background: enabled ? "#6366f1" : "var(--border)",
                     position: "relative",
                     flexShrink: 0,
                     transition: "background 200ms",
@@ -378,14 +378,14 @@ function Step3({
           type="button"
           onClick={onBack}
           className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
-          style={{ borderColor: "#2a2d3a" }}
+          style={{ borderColor: "var(--border)" }}
         >
           ← 戻る
         </button>
         <button
           type="button"
           onClick={onNext}
-          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200"
+          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           次へ →
@@ -458,10 +458,10 @@ function Step4({
       )}
 
       {checkpointRows.length > 0 ? (
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#2a2d3a" }}>
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
           <table className="w-full">
             <thead>
-              <tr style={{ background: "#0f1117", borderBottom: "1px solid #2a2d3a" }}>
+              <tr style={{ background: "var(--bg-primary)", borderBottom: "1px solid var(--border)" }}>
                 <th className="text-left text-xs font-semibold text-slate-500 px-4 py-2">チェックポイント</th>
                 <th className="text-left text-xs font-semibold text-slate-500 px-4 py-2">サイクル</th>
                 <th className="text-left text-xs font-semibold text-slate-500 px-4 py-2">予定日</th>
@@ -476,7 +476,7 @@ function Step4({
                     key={cp.id}
                     style={{
                       borderBottom: idx < checkpointRows.length - 1 ? "1px solid #1e2130" : "none",
-                      background: idx % 2 === 0 ? "#1a1d27" : "#161922",
+                      background: idx % 2 === 0 ? "var(--bg-secondary)" : "var(--bg-input)",
                     }}
                   >
                     <td className="px-4 py-2.5">
@@ -521,7 +521,7 @@ function Step4({
       ) : (
         <div
           className="rounded-xl border p-8 text-center text-sm text-slate-500"
-          style={{ borderColor: "#2a2d3a", borderStyle: "dashed" }}
+          style={{ borderColor: "var(--border)", borderStyle: "dashed" }}
         >
           {!planStartDate
             ? "計画開始日が設定されていないため、スケジュールは生成されません。"
@@ -534,7 +534,7 @@ function Step4({
           type="button"
           onClick={onBack}
           className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
-          style={{ borderColor: "#2a2d3a" }}
+          style={{ borderColor: "var(--border)" }}
         >
           ← 戻る
         </button>
@@ -542,7 +542,7 @@ function Step4({
           type="button"
           onClick={onSubmit}
           disabled={submitting}
-          className="text-white px-8 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-8 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           {submitting ? "作成中..." : "プロジェクトを作成"}
@@ -646,7 +646,7 @@ export default function NewProjectWizard({
 
       <div
         className="rounded-2xl border p-6"
-        style={{ background: "#1a1d27", borderColor: "#2a2d3a", boxShadow: "0 4px 24px rgba(0,0,0,0.3)" }}
+        style={{ background: "var(--bg-secondary)", borderColor: "var(--border)", boxShadow: "0 4px 24px rgba(0,0,0,0.3)" }}
       >
         <StepIndicator current={step} />
 

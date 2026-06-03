@@ -69,10 +69,10 @@ const RATING_COLORS: Record<string, string> = {
   ongoing: "#f59e0b",
 };
 
-const cardStyle: React.CSSProperties = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const cardStyle: React.CSSProperties = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle: React.CSSProperties = { background: "#161922", borderColor: "#2a2d3a" };
+const inputStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 const textareaClass = `${inputClass} resize-vertical`;
 
 const FISCAL_YEAR_COUNT = 3;
@@ -220,7 +220,7 @@ function EntryForm({ projectId, sheetId, fiscalYear, periodType, existing, onSav
               style={{
                 background: form.rating === r ? `${RATING_COLORS[r]}20` : "transparent",
                 color: form.rating === r ? RATING_COLORS[r] : "#64748b",
-                borderColor: form.rating === r ? `${RATING_COLORS[r]}50` : "#2a2d3a",
+                borderColor: form.rating === r ? `${RATING_COLORS[r]}50` : "var(--border)",
               }}
             >
               {RATING_LABELS[r]}
@@ -297,7 +297,7 @@ function EntryForm({ projectId, sheetId, fiscalYear, periodType, existing, onSav
             type="button"
             onClick={() => void handleSave()}
             disabled={saving}
-            className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
+            className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             {saving ? "保存中..." : "保存"}
@@ -450,12 +450,12 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
         className="w-72 shrink-0 rounded-2xl border flex flex-col"
         style={cardStyle}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#2a2d3a" }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
           <h3 className="text-sm font-semibold text-slate-200">シート一覧</h3>
           <button
             type="button"
             onClick={() => setNewSheetModalOpen(true)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white"
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             新規作成
@@ -472,7 +472,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                 onClick={() => setSelectedSheetId(sheet.id)}
                 className="w-full text-left px-4 py-3 border-b transition-colors duration-200"
                 style={{
-                  borderColor: "#2a2d3a",
+                  borderColor: "var(--border)",
                   background:
                     selectedSheetId === sheet.id ? "rgba(99,102,241,0.08)" : "transparent",
                 }}
@@ -497,7 +497,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
         {!selectedSheet ? (
           <div
             className="rounded-2xl border border-dashed p-12 text-center h-full flex items-center justify-center"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             <p className="text-sm text-slate-500">左からシートを選択、または新規作成してください</p>
           </div>
@@ -532,7 +532,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                       }
                       className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors duration-200"
                       style={{
-                        borderColor: "#2a2d3a",
+                        borderColor: "var(--border)",
                         color: "#94a3b8",
                       }}
                     >
@@ -544,7 +544,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                       type="button"
                       onClick={() => void handleSheetSave(selectedSheet)}
                       disabled={sheetSaving[selectedSheet.id]}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50 neu-button-primary"
                       style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
                     >
                       {sheetSaving[selectedSheet.id] ? "保存中..." : "保存"}
@@ -594,7 +594,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                   <div key={year} className="rounded-2xl border" style={cardStyle}>
                     <div
                       className="px-5 py-3 border-b flex items-center justify-between"
-                      style={{ borderColor: "#2a2d3a" }}
+                      style={{ borderColor: "var(--border)" }}
                     >
                       <h4 className="text-sm font-semibold text-slate-200">{year}年度</h4>
                       {selectedSheet.has_interim_review && (
@@ -613,7 +613,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                               style={{
                                 background: periodType === pt ? "#6366f120" : "transparent",
                                 color: periodType === pt ? "#818cf8" : "#64748b",
-                                border: `1px solid ${periodType === pt ? "#6366f140" : "#2a2d3a"}`,
+                                border: `1px solid ${periodType === pt ? "#6366f140" : "var(--border)"}`,
                               }}
                             >
                               {pt === "interim" ? "中間評価" : "最終評価"}
@@ -626,7 +626,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                       {entry && (
                         <div
                           className="mb-4 rounded-xl border px-3 py-2"
-                          style={{ borderColor: "#2a2d3a", background: "#161922" }}
+                          style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}
                         >
                           <span className="text-xs text-slate-400">現在の評価: </span>
                           {entry.rating ? (
@@ -668,7 +668,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
           }}
         >
           <div
-            className="rounded-2xl border w-full max-w-md p-6 space-y-4"
+            className="rounded-2xl border w-full max-w-md p-6 space-y-4 neu-card"
             style={cardStyle}
           >
             <h3 className="text-base font-semibold text-slate-100">新規自己評価シート</h3>
@@ -729,7 +729,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                   setCreateError(null);
                 }}
                 className="text-sm px-4 py-2 rounded-xl border text-slate-400 hover:text-slate-300 transition-colors"
-                style={{ borderColor: "#2a2d3a" }}
+                style={{ borderColor: "var(--border)" }}
               >
                 キャンセル
               </button>
@@ -737,7 +737,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                 type="button"
                 onClick={() => void handleCreateSheet()}
                 disabled={creatingSheet || !newTitle.trim()}
-                className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
+                className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {creatingSheet ? "作成中..." : "作成"}

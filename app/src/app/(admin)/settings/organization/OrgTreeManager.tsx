@@ -258,7 +258,7 @@ export default function OrgTreeManager() {
         <button
           type="button"
           onClick={() => { setAddParent(selected); setShowAddUnit(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-opacity hover:opacity-90"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-opacity hover:opacity-90 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           ＋ 組織を追加
@@ -321,7 +321,7 @@ export default function OrgTreeManager() {
                   <button
                     type="button"
                     onClick={openAddRole}
-                    className="text-xs px-3 py-1.5 rounded-lg font-medium text-white"
+                    className="text-xs px-3 py-1.5 rounded-lg font-medium text-white neu-button-primary"
                     style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
                   >
                     ＋ 役職追加
@@ -379,7 +379,7 @@ export default function OrgTreeManager() {
       {/* 組織追加モーダル */}
       {showAddUnit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 space-y-4 neu-card">
             <h2 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>組織を追加</h2>
             <div>
               <label className="text-xs mb-1 block" style={{ color: "var(--text-secondary)" }}>名称 *</label>
@@ -411,7 +411,7 @@ export default function OrgTreeManager() {
                 type="button"
                 onClick={() => void handleAddUnit()}
                 disabled={addSaving || !addName.trim()}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {addSaving ? "保存中..." : "追加"}
@@ -424,7 +424,7 @@ export default function OrgTreeManager() {
       {/* 役職追加/編集モーダル */}
       {showAddRole && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 space-y-4 neu-card">
             <h2 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>
               {roleEditId ? "役職を編集" : "役職を追加"}
             </h2>
@@ -461,7 +461,7 @@ export default function OrgTreeManager() {
                 type="button"
                 onClick={() => void handleSaveRole()}
                 disabled={roleSaving || !roleName.trim()}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {roleSaving ? "保存中..." : "保存"}

@@ -175,7 +175,7 @@ export default function MemberManager() {
         <button
           type="button"
           onClick={() => { setShowInvite(true); setInviteError(null); setInviteSuccess(null); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-opacity hover:opacity-90"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-opacity hover:opacity-90 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           ＋ 役職を割り当て
@@ -304,7 +304,7 @@ export default function MemberManager() {
       {/* 招待（役職割り当て）モーダル */}
       {showInvite && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 space-y-4 neu-card">
             <h2 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>役職を割り当て</h2>
             <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
               登録済みユーザーのメールアドレスを入力して役職を割り当てます。
@@ -362,7 +362,7 @@ export default function MemberManager() {
                 type="button"
                 onClick={() => void handleInvite()}
                 disabled={inviteSaving || !inviteEmail.trim() || !inviteRoleId}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {inviteSaving ? "処理中..." : "割り当て"}
@@ -375,7 +375,7 @@ export default function MemberManager() {
       {/* 役職変更モーダル */}
       {roleTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 space-y-4 neu-card">
             <h2 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>役職を変更</h2>
             <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
               {roleTarget.display_name} の役職を追加/変更します
@@ -408,7 +408,7 @@ export default function MemberManager() {
                 type="button"
                 onClick={() => void handleRoleChange()}
                 disabled={roleSaving || !roleNewId}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {roleSaving ? "保存中..." : "変更"}

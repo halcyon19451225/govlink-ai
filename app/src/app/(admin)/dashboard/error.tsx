@@ -18,7 +18,7 @@ export default function DashboardError({
     <div
       className="rounded-2xl border p-10 flex flex-col items-center gap-6 text-center max-w-md mx-auto mt-12"
       style={{
-        background: "#1a1d27",
+        background: "var(--bg-secondary)",
         borderColor: "#ef444430",
         boxShadow: "0 4px 24px rgba(239,68,68,0.08)",
       }}
@@ -35,7 +35,7 @@ export default function DashboardError({
       <div className="flex gap-3">
         <button
           onClick={reset}
-          className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20"
+          className="text-white px-5 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
           style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
         >
           再試行
@@ -43,7 +43,7 @@ export default function DashboardError({
         <Link
           href="/dashboard"
           className="text-sm font-medium px-5 py-2 rounded-xl border hover:border-indigo-500/40 hover:text-indigo-400 transition-all duration-200 text-slate-400"
-          style={{ borderColor: "#2a2d3a" }}
+          style={{ borderColor: "var(--border)" }}
         >
           ページを再読み込み
         </Link>

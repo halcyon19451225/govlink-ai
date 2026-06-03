@@ -104,7 +104,7 @@ function buildFlowNodes(
       position: { x: col * 180, y: level * 100 },
       data: { label: node.label },
       style: {
-        background: "#1a1d27",
+        background: "var(--bg-secondary)",
         border: "1px solid #6366f1",
         color: "#fff",
         width: 160,
@@ -142,7 +142,7 @@ function CustomNode({ data }: { data: { label: string } }) {
   return (
     <div
       style={{
-        background: "#1a1d27",
+        background: "var(--bg-secondary)",
         border: "1px solid #6366f1",
         color: "#fff",
         width: 160,
@@ -436,12 +436,12 @@ export default function IssueHypothesisClient({
   const inputClass =
     "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors";
   const inputStyle: React.CSSProperties = {
-    background: "#161922",
-    borderColor: "#2a2d3a",
+    background: "var(--bg-input)",
+    borderColor: "var(--border)",
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "#0f1117" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* ヘッダー */}
         <div className="flex items-center gap-4 mb-6">
@@ -455,7 +455,7 @@ export default function IssueHypothesisClient({
         {/* タブ */}
         <div
           className="flex gap-1 mb-6 rounded-lg p-1"
-          style={{ background: "#1a1d27", border: "1px solid #2a2d3a", width: "fit-content" }}
+          style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", width: "fit-content" }}
         >
           {(["list", "tree"] as const).map((t) => (
             <button
@@ -480,7 +480,7 @@ export default function IssueHypothesisClient({
             {topGaps.length > 0 && (
               <div
                 className="rounded-xl border p-5 mb-6"
-                style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
               >
                 <h2 className="text-sm font-semibold text-slate-300 mb-3">
                   ギャップ分析 — 優先度上位
@@ -496,7 +496,7 @@ export default function IssueHypothesisClient({
                       </span>
                       <div
                         className="flex-1 rounded-full overflow-hidden"
-                        style={{ background: "#2a2d3a", height: 8 }}
+                        style={{ background: "var(--border)", height: 8 }}
                       >
                         <div
                           className="h-full rounded-full transition-all"
@@ -569,7 +569,7 @@ export default function IssueHypothesisClient({
             {hypotheses.length === 0 ? (
               <div
                 className="rounded-xl border p-12 text-center"
-                style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+                style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
               >
                 <p className="text-slate-500 text-sm">課題仮説がありません</p>
               </div>
@@ -579,7 +579,7 @@ export default function IssueHypothesisClient({
                   <div
                     key={hyp.id}
                     className="rounded-xl border p-5"
-                    style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+                    style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
                   >
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -684,7 +684,7 @@ export default function IssueHypothesisClient({
             {/* 左: 仮説選択 */}
             <div
               className="rounded-xl border p-4"
-              style={{ background: "#1a1d27", borderColor: "#2a2d3a", width: 260, flexShrink: 0 }}
+              style={{ background: "var(--bg-secondary)", borderColor: "var(--border)", width: 260, flexShrink: 0 }}
             >
               <h2 className="text-sm font-semibold text-slate-300 mb-3">仮説を選択</h2>
               <select
@@ -726,7 +726,7 @@ export default function IssueHypothesisClient({
             {/* 右: reactflow */}
             <div
               className="rounded-xl border flex-1 overflow-hidden"
-              style={{ background: "#1a1d27", borderColor: "#2a2d3a", height: 500 }}
+              style={{ background: "var(--bg-secondary)", borderColor: "var(--border)", height: 500 }}
             >
               {!selectedHyp ? (
                 <div className="flex items-center justify-center h-full text-slate-500 text-sm">
@@ -742,9 +742,9 @@ export default function IssueHypothesisClient({
                   edges={flowEdges}
                   nodeTypes={nodeTypes}
                   fitView
-                  style={{ background: "#0f1117" }}
+                  style={{ background: "var(--bg-primary)" }}
                 >
-                  <Background color="#2a2d3a" gap={16} />
+                  <Background color="#cbd5e1" gap={16} />
                   <Controls />
                 </ReactFlow>
               )}
@@ -760,8 +760,8 @@ export default function IssueHypothesisClient({
           style={{ background: "#00000080" }}
         >
           <div
-            className="rounded-xl border w-full max-w-sm mx-4 p-6"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            className="rounded-xl border w-full max-w-sm mx-4 p-6 neu-card"
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
             <h2 className="text-base font-semibold text-slate-100 mb-1">
               ✨ AIで課題仮説を生成
@@ -773,7 +773,7 @@ export default function IssueHypothesisClient({
               value={aiSelectGapId}
               onChange={(e) => setAiSelectGapId(e.target.value)}
               className="w-full rounded-lg border px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors"
-              style={{ background: "#161922", borderColor: "#2a2d3a" }}
+              style={{ background: "var(--bg-input)", borderColor: "var(--border)" }}
             >
               {gaps.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -808,8 +808,8 @@ export default function IssueHypothesisClient({
           style={{ background: "#00000080" }}
         >
           <div
-            className="rounded-xl border w-full max-w-lg mx-4 p-6"
-            style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}
+            className="rounded-xl border w-full max-w-lg mx-4 p-6 neu-card"
+            style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
           >
             <h2 className="text-base font-semibold text-slate-100 mb-1">
               課題仮説を追加

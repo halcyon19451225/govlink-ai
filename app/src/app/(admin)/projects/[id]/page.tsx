@@ -169,8 +169,8 @@ export default async function AdminProjectDetailPage({
     : null;
 
   const cardStyle = {
-    background: "#1a1d27",
-    borderColor: "#2a2d3a",
+    background: "var(--bg-secondary)",
+    borderColor: "var(--border)",
     boxShadow: "0 2px 16px rgba(0,0,0,0.25)",
   };
 
@@ -205,7 +205,7 @@ export default async function AdminProjectDetailPage({
         <div className="mt-5 flex gap-3 flex-wrap">
           <Link
             href={`/projects/${project.id}/post`}
-            className="text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20"
+            className="text-white text-sm font-semibold px-5 py-2 rounded-xl hover:opacity-90 transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
           >
             進捗を報告する
@@ -213,28 +213,28 @@ export default async function AdminProjectDetailPage({
           <Link
             href={`/projects/${project.id}/schedule`}
             className="text-sm font-medium px-5 py-2 rounded-xl border hover:border-indigo-500/40 hover:text-indigo-400 transition-all duration-200 text-slate-400"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             スケジュールを管理
           </Link>
           <Link
             href={`/projects/${project.id}/documents`}
             className="text-sm font-medium px-5 py-2 rounded-xl border hover:border-indigo-500/40 hover:text-indigo-400 transition-all duration-200 text-slate-400"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             ドキュメント管理
           </Link>
           <Link
             href={`/projects/${project.id}/evidences`}
             className="text-sm font-medium px-5 py-2 rounded-xl border hover:border-indigo-500/40 hover:text-indigo-400 transition-all duration-200 text-slate-400"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             エビデンス管理
           </Link>
           <Link
             href={`/projects/${project.id}/ebpm`}
             className="text-sm font-semibold px-5 py-2 rounded-xl border hover:border-cyan-500/40 hover:text-cyan-400 transition-all duration-200 text-slate-400"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             EBPMダッシュボード
           </Link>
@@ -253,7 +253,7 @@ export default async function AdminProjectDetailPage({
           <Link
             href={`/public/${project.slug}`}
             className="text-sm font-medium px-5 py-2 rounded-xl border hover:border-indigo-500/40 hover:text-indigo-400 transition-all duration-200 text-slate-400"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -314,7 +314,7 @@ export default async function AdminProjectDetailPage({
                 </span>
                 <span className="text-slate-500 text-sm">/ {schedSummary.total_tasks} 件</span>
               </div>
-              <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "#2a2d3a" }}>
+              <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{
@@ -384,7 +384,7 @@ export default async function AdminProjectDetailPage({
                   </div>
                   <div
                     className="h-2 rounded-full overflow-hidden"
-                    style={{ background: "#2a2d3a" }}
+                    style={{ background: "var(--border)" }}
                   >
                     <div
                       className="h-full rounded-full transition-all duration-500"
@@ -415,7 +415,7 @@ export default async function AdminProjectDetailPage({
         {posts.length === 0 ? (
           <div
             className="rounded-2xl border border-dashed p-8 text-center"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             <p className="text-sm text-slate-500">まだ投稿がありません</p>
           </div>
@@ -441,7 +441,7 @@ export default async function AdminProjectDetailPage({
                     className="absolute -left-[26px] top-5 w-2.5 h-2.5 rounded-full border-2"
                     style={{
                       background: "#6366f1",
-                      borderColor: "#0f1117",
+                      borderColor: "var(--bg-primary)",
                       boxShadow: "0 0 8px #6366f180",
                     }}
                   />
@@ -459,7 +459,7 @@ export default async function AdminProjectDetailPage({
                     ) : (
                       <span
                         className="text-xs text-slate-500 px-2 py-0.5 rounded-full border"
-                        style={{ borderColor: "#2a2d3a" }}
+                        style={{ borderColor: "var(--border)" }}
                       >
                         下書き
                       </span>

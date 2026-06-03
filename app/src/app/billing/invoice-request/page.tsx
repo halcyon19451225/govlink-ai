@@ -12,7 +12,7 @@ const PLAN_INFO = {
 
 const inputClass =
   "w-full rounded-lg border px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const inputStyle = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 
 function InvoiceRequestForm() {
   const searchParams = useSearchParams();
@@ -73,9 +73,9 @@ function InvoiceRequestForm() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "#0f1117" }}>
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "var(--bg-primary)" }}>
         <div className="w-full max-w-md rounded-2xl border p-10 text-center space-y-6"
-          style={{ background: "#1a1d27", borderColor: "#10b98130" }}>
+          style={{ background: "var(--bg-secondary)", borderColor: "#10b98130" }}>
           <div className="flex items-center justify-center w-16 h-16 rounded-full mx-auto"
             style={{ background: "#10b98120" }}>
             <svg width={32} height={32} fill="none" viewBox="0 0 24 24" stroke="#10b981" strokeWidth={2}>
@@ -86,7 +86,7 @@ function InvoiceRequestForm() {
             <h2 className="text-xl font-bold text-slate-100 mb-2">申込を受け付けました</h2>
             <p className="text-sm text-slate-500">3営業日以内に担当者よりご連絡いたします。</p>
           </div>
-          <div className="rounded-xl border p-4 text-left space-y-2" style={{ borderColor: "#2a2d3a" }}>
+          <div className="rounded-xl border p-4 text-left space-y-2" style={{ borderColor: "var(--border)" }}>
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">プラン</span>
               <span className="text-slate-200 font-medium">{planInfo.name}</span>
@@ -106,10 +106,10 @@ function InvoiceRequestForm() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: "#0f1117" }}>
-      <header className="border-b" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
+      <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent"
+          <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
             style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             Sinap-sys
           </Link>
@@ -145,8 +145,8 @@ function InvoiceRequestForm() {
                   <button key={p} type="button" onClick={() => setPlan(p)}
                     className="p-4 rounded-xl border text-left transition-all duration-200"
                     style={{
-                      borderColor: plan === p ? "#6366f160" : "#2a2d3a",
-                      background: plan === p ? "#6366f115" : "#1a1d27",
+                      borderColor: plan === p ? "#6366f160" : "var(--border)",
+                      background: plan === p ? "#6366f115" : "var(--bg-secondary)",
                     }}>
                     <div className="font-semibold text-slate-200 mb-1">{PLAN_INFO[p].name}</div>
                     <div className="text-xs text-slate-500">¥{PLAN_INFO[p].total.toLocaleString()}/月（税込）</div>
@@ -236,7 +236,7 @@ function InvoiceRequestForm() {
             </div>
 
             <button type="submit" disabled={submitting}
-              className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20"
+              className="w-full text-white py-3 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/20 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
               {submitting ? "送信中..." : "申し込みを送信する"}
             </button>
@@ -244,14 +244,14 @@ function InvoiceRequestForm() {
 
           {/* Summary */}
           <div className="space-y-4">
-            <div className="rounded-xl border p-5 sticky top-6" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+            <div className="rounded-xl border p-5 sticky top-6" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
               <h3 className="text-sm font-semibold text-slate-300 mb-4">お申し込み内容</h3>
               <div className="space-y-3">
                 <div>
                   <p className="text-xs text-slate-500">プラン</p>
                   <p className="text-base font-bold text-slate-100">{planInfo.name}</p>
                 </div>
-                <div className="border-t pt-3 space-y-1.5" style={{ borderColor: "#2a2d3a" }}>
+                <div className="border-t pt-3 space-y-1.5" style={{ borderColor: "var(--border)" }}>
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">月額（税抜）</span>
                     <span className="text-slate-300">¥{planInfo.price.toLocaleString()}</span>
@@ -260,7 +260,7 @@ function InvoiceRequestForm() {
                     <span className="text-slate-500">消費税（10%）</span>
                     <span className="text-slate-300">¥{planInfo.tax.toLocaleString()}</span>
                   </div>
-                  <div className="flex justify-between text-sm font-bold border-t pt-2" style={{ borderColor: "#2a2d3a" }}>
+                  <div className="flex justify-between text-sm font-bold border-t pt-2" style={{ borderColor: "var(--border)" }}>
                     <span className="text-slate-200">月額合計</span>
                     <span className="text-slate-100">¥{planInfo.total.toLocaleString()}</span>
                   </div>
@@ -281,7 +281,7 @@ function InvoiceRequestForm() {
 
 export default function InvoiceRequestPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen" style={{ background: "#0f1117" }} />}>
+    <Suspense fallback={<div className="min-h-screen" style={{ background: "var(--bg-primary)" }} />}>
       <InvoiceRequestForm />
     </Suspense>
   );

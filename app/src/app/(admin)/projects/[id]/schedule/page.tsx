@@ -96,7 +96,7 @@ export default async function SchedulePage({
       </div>
 
       {pdcaCheckpoints.length > 0 && (
-        <div className="mb-6 rounded-xl border p-4" style={{ background: "#1a1d27", borderColor: "#2a2d3a" }}>
+        <div className="mb-6 rounded-xl border p-4" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
             PDCAチェックポイント
           </h3>

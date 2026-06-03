@@ -78,6 +78,13 @@ body {
   color: #9ca3af;
 }
 
+/* ライトテーマ: カード／モーダル内の既定テキスト色をダークに統一
+   （明示的に text-* 系クラスや色を指定した要素はそのまま優先される） */
+[data-theme="light"] .neu-card,
+[data-theme="light"] .glass-card {
+  color: var(--text-primary);
+}
+
 /* ═══════════════════════════════════════════════════════
    スクロールバー
    ═══════════════════════════════════════════════════════ */
@@ -144,6 +151,32 @@ body {
   box-shadow:
     inset  3px  3px 6px var(--neu-shadow-dark),
     inset -3px -3px 6px var(--neu-shadow-light);
+}
+
+/* 色付きプライマリボタン（グラデーション等の色は維持しつつニューモーフィズム影を付与） */
+.neu-button-primary {
+  border-radius: 12px;
+  border: none;
+  box-shadow:
+    4px 4px 8px rgba(163, 163, 163, 0.6),
+    -4px -4px 8px rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+.neu-button-primary:active {
+  box-shadow:
+    inset 3px 3px 6px rgba(0, 0, 0, 0.2),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.1);
+}
+[data-theme="dark"] .neu-button-primary {
+  box-shadow:
+    4px 4px 8px rgba(0, 0, 0, 0.4),
+    -4px -4px 8px rgba(40, 40, 60, 0.6);
+}
+[data-theme="dark"] .neu-button-primary:active {
+  box-shadow:
+    inset 3px 3px 6px rgba(0, 0, 0, 0.4),
+    inset -3px -3px 6px rgba(40, 40, 60, 0.3);
 }
 
 /* 入力フィールド（凹型） */

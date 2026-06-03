@@ -35,8 +35,8 @@ interface Props {
   projectId: string;
 }
 
-const cardStyle: React.CSSProperties = { background: "#1a1d27", borderColor: "#2a2d3a" };
-const subCardStyle: React.CSSProperties = { background: "#161922", borderColor: "#2a2d3a" };
+const cardStyle: React.CSSProperties = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
+const subCardStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
 
@@ -256,7 +256,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
         <div className="rounded-2xl border overflow-hidden" style={cardStyle}>
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ borderBottom: "1px solid #2a2d3a", background: "#161922" }}>
+              <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-input)" }}>
                 <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">施策名</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">年度</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-500">投資額</th>
@@ -268,7 +268,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
               {records.map((rec) => {
                 const d = rec.efficiency_detail;
                 return (
-                  <tr key={rec.id} style={{ borderBottom: "1px solid #2a2d3a" }}>
+                  <tr key={rec.id} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td className="px-4 py-3 text-slate-300 max-w-xs">
                       <p className="truncate">{d?.major_policy_name ?? rec.result ?? "—"}</p>
                     </td>
@@ -311,7 +311,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
               type="button"
               onClick={handleSensitivity}
               disabled={calc.total_investment === 0}
-              className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40"
+              className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
             >
               感度分析
@@ -320,7 +320,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
               type="button"
               onClick={handleMonteCarlo}
               disabled={mcRunning || calc.total_investment === 0}
-              className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40"
+              className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
             >
               {mcRunning ? "実行中..." : "モンテカルロ"}
@@ -364,8 +364,8 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
       {/* ===== 新規効率性評価モーダル ===== */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8" style={{ background: "#00000080" }}>
-          <div className="rounded-xl border w-full max-w-2xl mx-4" style={cardStyle}>
-            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#2a2d3a" }}>
+          <div className="rounded-xl border w-full max-w-2xl mx-4 neu-card" style={cardStyle}>
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
               <h2 className="text-base font-semibold text-slate-100">新規効率性評価を作成</h2>
               <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-200 text-lg leading-none">×</button>
             </div>
@@ -382,7 +382,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
                     style={{
                       background: form.evaluation_type === t ? "#6366f120" : "transparent",
                       color: form.evaluation_type === t ? "#818cf8" : "#64748b",
-                      border: `1px solid ${form.evaluation_type === t ? "#6366f140" : "#2a2d3a"}`,
+                      border: `1px solid ${form.evaluation_type === t ? "#6366f140" : "var(--border)"}`,
                     }}
                   >
                     {t === "ex_ante" ? "事前評価" : "事後評価"}
@@ -473,7 +473,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
                   <span className="text-xs text-slate-400">合計削減額</span>
                   <span className="text-base font-bold text-slate-100">{calc.total_reduction.toLocaleString(undefined, { maximumFractionDigits: 2 })} 万円</span>
                 </div>
-                <div className="flex justify-between items-center border-t pt-2" style={{ borderColor: "#2a2d3a" }}>
+                <div className="flex justify-between items-center border-t pt-2" style={{ borderColor: "var(--border)" }}>
                   <span className="text-sm font-medium text-slate-300">コスト比率（試算）</span>
                   <div className="flex items-center gap-2">
                     <span className="text-xl font-bold font-mono text-slate-100">{calc.cost_ratio > 0 ? calc.cost_ratio.toFixed(2) : "—"}</span>
@@ -500,7 +500,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
               {formError && <p className="text-xs text-red-400">{formError}</p>}
             </div>
 
-            <div className="flex gap-3 justify-end px-6 py-4 border-t" style={{ borderColor: "#2a2d3a" }}>
+            <div className="flex gap-3 justify-end px-6 py-4 border-t" style={{ borderColor: "var(--border)" }}>
               <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-200">
                 キャンセル
               </button>
@@ -509,7 +509,7 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
                   type="button"
                   onClick={() => void handleSave()}
                   disabled={submitting}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 neu-button-primary"
                   style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
                 >
                   {submitting ? "保存中..." : "保存"}

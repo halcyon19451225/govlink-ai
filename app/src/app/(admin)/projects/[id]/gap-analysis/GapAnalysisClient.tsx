@@ -75,10 +75,10 @@ const DATA_SOURCE_TABS = [
   { key: "その他", label: "その他" },
 ];
 
-const cardStyle: React.CSSProperties = { background: "#1a1d27", borderColor: "#2a2d3a" };
+const cardStyle: React.CSSProperties = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors duration-200";
-const inputStyle: React.CSSProperties = { background: "#161922", borderColor: "#2a2d3a" };
+const inputStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
 const defaultForm = {
   indicator_name: "",
@@ -295,7 +295,7 @@ export default function GapAnalysisClient({
             <button
               type="button"
               onClick={() => setShowAddForm((v) => !v)}
-              className="text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200"
+              className="text-sm font-semibold px-4 py-2 rounded-xl text-white transition-all duration-200 neu-button-primary"
               style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
             >
               + ギャップを追加
@@ -445,7 +445,7 @@ export default function GapAnalysisClient({
                 type="button"
                 onClick={() => setShowAddForm(false)}
                 className="flex-1 text-sm px-4 py-2 rounded-xl border text-slate-400"
-                style={{ borderColor: "#2a2d3a" }}
+                style={{ borderColor: "var(--border)" }}
               >
                 キャンセル
               </button>
@@ -453,7 +453,7 @@ export default function GapAnalysisClient({
                 type="button"
                 onClick={() => void handleAdd()}
                 disabled={submitting}
-                className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50"
+                className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-50 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
               >
                 {submitting ? "追加中..." : "追加"}
@@ -463,7 +463,7 @@ export default function GapAnalysisClient({
         )}
 
         {/* タブ */}
-        <div className="flex gap-1 border-b" style={{ borderColor: "#2a2d3a" }}>
+        <div className="flex gap-1 border-b" style={{ borderColor: "var(--border)" }}>
           {DATA_SOURCE_TABS.map((tab) => {
             const count =
               tab.key === "その他"
@@ -484,7 +484,7 @@ export default function GapAnalysisClient({
                 {count > 0 && (
                   <span
                     className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full"
-                    style={{ background: "#2a2d3a", color: "#94a3b8" }}
+                    style={{ background: "var(--border)", color: "#94a3b8" }}
                   >
                     {count}
                   </span>
@@ -498,7 +498,7 @@ export default function GapAnalysisClient({
         {tabGaps.length === 0 ? (
           <div
             className="rounded-2xl border border-dashed p-10 text-center"
-            style={{ borderColor: "#2a2d3a" }}
+            style={{ borderColor: "var(--border)" }}
           >
             <p className="text-sm text-slate-500">このカテゴリにギャップがありません</p>
           </div>
@@ -506,7 +506,7 @@ export default function GapAnalysisClient({
           <div className="rounded-2xl border overflow-hidden" style={cardStyle}>
             <table className="w-full text-sm">
               <thead>
-                <tr style={{ borderBottom: "1px solid #2a2d3a", background: "#161922" }}>
+                <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-input)" }}>
                   <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">指標名</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">現状値</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">目標値</th>
@@ -537,7 +537,7 @@ export default function GapAnalysisClient({
                     <>
                       <tr
                         key={gap.id}
-                        style={{ borderBottom: "1px solid #2a2d3a" }}
+                        style={{ borderBottom: "1px solid var(--border)" }}
                         className="hover:bg-white/2 transition-colors"
                       >
                         <td className="px-4 py-3">
@@ -609,7 +609,7 @@ export default function GapAnalysisClient({
                               onClick={() => void handleTrendAnalysis(gap)}
                               disabled={analyzingTrend === gap.id}
                               className="text-xs px-2 py-1 rounded border transition-colors duration-200 hover:border-indigo-500/40 hover:text-indigo-400 text-slate-400 disabled:opacity-50"
-                              style={{ borderColor: "#2a2d3a" }}
+                              style={{ borderColor: "var(--border)" }}
                             >
                               {analyzingTrend === gap.id ? "分析中..." : "統計分析"}
                             </button>
@@ -619,7 +619,7 @@ export default function GapAnalysisClient({
                                 onClick={() => void handleAiAnalysis(gap)}
                                 disabled={analyzingAi === gap.id}
                                 className="text-xs px-2 py-1 rounded border transition-colors duration-200 hover:border-cyan-500/40 hover:text-cyan-400 text-slate-400 disabled:opacity-50"
-                                style={{ borderColor: "#2a2d3a" }}
+                                style={{ borderColor: "var(--border)" }}
                               >
                                 {analyzingAi === gap.id ? "分析中..." : "AI分析"}
                               </button>
@@ -629,7 +629,7 @@ export default function GapAnalysisClient({
                               onClick={() => void handleDelete(gap.id)}
                               disabled={deletingId === gap.id}
                               className="text-xs px-2 py-1 rounded border transition-colors duration-200 hover:border-red-500/40 hover:text-red-400 text-slate-500 disabled:opacity-50"
-                              style={{ borderColor: "#2a2d3a" }}
+                              style={{ borderColor: "var(--border)" }}
                             >
                               削除
                             </button>
@@ -639,7 +639,7 @@ export default function GapAnalysisClient({
 
                       {/* AI分析結果 */}
                       {gap.ai_analysis && (
-                        <tr key={`${gap.id}-ai`} style={{ borderBottom: "1px solid #2a2d3a" }}>
+                        <tr key={`${gap.id}-ai`} style={{ borderBottom: "1px solid var(--border)" }}>
                           <td colSpan={7} className="px-4 py-3">
                             <div
                               className="rounded-lg px-3 py-2 border-l-2 text-xs text-slate-300 leading-relaxed"
@@ -654,7 +654,7 @@ export default function GapAnalysisClient({
 
                       {/* 統計分析結果 */}
                       {trendResult && (
-                        <tr key={`${gap.id}-trend`} style={{ borderBottom: "1px solid #2a2d3a" }}>
+                        <tr key={`${gap.id}-trend`} style={{ borderBottom: "1px solid var(--border)" }}>
                           <td colSpan={7} className="px-4 py-4">
                             <div className="space-y-3">
                               <div className="flex items-center gap-4 text-xs text-slate-400">
@@ -674,20 +674,20 @@ export default function GapAnalysisClient({
                               <div style={{ height: 160 }}>
                                 <ResponsiveContainer width="100%" height="100%">
                                   <LineChart data={chartData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3a" />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                                     <XAxis
                                       dataKey="year"
                                       tick={{ fill: "#64748b", fontSize: 11 }}
-                                      stroke="#2a2d3a"
+                                      stroke="var(--border)"
                                     />
                                     <YAxis
                                       tick={{ fill: "#64748b", fontSize: 11 }}
-                                      stroke="#2a2d3a"
+                                      stroke="var(--border)"
                                     />
                                     <Tooltip
                                       contentStyle={{
-                                        background: "#1a1d27",
-                                        border: "1px solid #2a2d3a",
+                                        background: "var(--bg-secondary)",
+                                        border: "1px solid var(--border)",
                                         borderRadius: 8,
                                         color: "#e2e8f0",
                                         fontSize: 12,
@@ -748,7 +748,7 @@ export default function GapAnalysisClient({
               <div
                 key={ds.id}
                 className="rounded-lg border p-3"
-                style={{ borderColor: "#2a2d3a", background: "#161922" }}
+                style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}
               >
                 <p className="text-xs font-medium text-slate-200 truncate">
                   {ds.file_name}

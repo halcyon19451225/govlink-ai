@@ -29,7 +29,7 @@ interface Props {
   defaultOpen?: boolean;
 }
 
-const cardStyle: React.CSSProperties = { background: "#161922", borderColor: "#2a2d3a" };
+const cardStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 
 const TIER_DESC: Record<LogicModelTier, string> = {
   process: "プロセス評価は、ロジックモデルの「活動」「産出」が計画どおり実施されたかを評価します。",
@@ -157,7 +157,7 @@ export default function LogicModelContext({ projectId, logicModelId, tier, defau
       </button>
 
       {open && (
-        <div className="px-5 pb-5 pt-1 space-y-4 border-t" style={{ borderColor: "#2a2d3a" }}>
+        <div className="px-5 pb-5 pt-1 space-y-4 border-t" style={{ borderColor: "var(--border)" }}>
           <p className="text-xs text-slate-500 pt-3">{TIER_DESC[tier]}</p>
           {noLogicModel ? (
             <div
