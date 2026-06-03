@@ -4,8 +4,6 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import BackButton from "@/components/BackButton";
-import PdcaNav from "@/components/PdcaNav";
 
 interface ProjectRow { id: string; title: string }
 
@@ -54,10 +52,6 @@ export default async function EvaluationsPage({ params }: { params: { id: string
 
   return (
     <div className="max-w-4xl">
-      <PdcaNav currentStage="C" currentStep="プロセス評価" projectId={project.id} />
-      <div className="mb-4">
-        <BackButton />
-      </div>
       <div className="mb-6">
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">評価管理</h2>

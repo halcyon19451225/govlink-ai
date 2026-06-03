@@ -4,9 +4,6 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { query } from "@/lib/db";
 import LogicModelSection, { type LogicModel } from "./LogicModelSection";
-import BackButton from "@/components/BackButton";
-import PdcaNav from "@/components/PdcaNav";
-import ProjectModuleNav from "@/components/ProjectModuleNav";
 import KnowledgePanelButton from "@/components/KnowledgePanelButton";
 
 interface ProjectRow {
@@ -176,11 +173,6 @@ export default async function AdminProjectDetailPage({
 
   return (
     <div className="max-w-3xl space-y-8">
-      <PdcaNav currentStage="P" currentStep="セオリー評価" projectId={project.id} />
-      <div className="mb-2">
-        <BackButton />
-      </div>
-      <ProjectModuleNav projectId={project.id} />
       {/* ヘッダーカード */}
       <div className="rounded-2xl border p-6" style={cardStyle}>
         <div className="flex items-start justify-between gap-4 flex-wrap">

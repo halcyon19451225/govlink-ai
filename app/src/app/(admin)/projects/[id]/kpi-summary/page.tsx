@@ -1,7 +1,5 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
-import BackButton from "@/components/BackButton";
-import PdcaNav from "@/components/PdcaNav";
 import KpiSummaryClient from "./KpiSummaryClient";
 
 interface ProjectRow { id: string; title: string }
@@ -58,10 +56,6 @@ export default async function KpiSummaryPage({ params }: { params: { id: string 
 
   return (
     <div className="max-w-4xl space-y-8">
-      <PdcaNav currentStage="D" currentStep="進捗・KPI管理" projectId={project.id} />
-      <div className="mb-4">
-        <BackButton />
-      </div>
       <div>
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">KPI報告取りまとめ</h2>

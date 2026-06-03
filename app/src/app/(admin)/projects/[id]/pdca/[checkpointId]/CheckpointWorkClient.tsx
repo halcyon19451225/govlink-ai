@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import BackButton from "@/components/BackButton";
 import type { PdcaCheckpoint } from "../page";
 
 const PHASE_COLORS: Record<string, string> = {
@@ -113,7 +112,6 @@ export default function CheckpointWorkClient({
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <BackButton />
       </div>
 
       {/* ヘッダー */}

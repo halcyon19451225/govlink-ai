@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
-import BackButton from "@/components/BackButton";
 import EvidencesClient from "./EvidencesClient";
 
 interface ProjectRow {
@@ -39,9 +38,6 @@ export default async function EvidencesPage({ params }: { params: { id: string }
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-4">
-        <BackButton />
-      </div>
       <div className="mb-6">
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">エビデンス管理</h2>

@@ -4,8 +4,6 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
-import BackButton from "@/components/BackButton";
-import ProjectModuleNav from "@/components/ProjectModuleNav";
 import SelfEvaluationClient from "./SelfEvaluationClient";
 
 interface EntryRow {
@@ -105,10 +103,6 @@ export default async function SelfEvaluationPage({
 
   return (
     <div className="max-w-6xl">
-      <div className="mb-4">
-        <BackButton />
-      </div>
-      <ProjectModuleNav projectId={params.id} activeModule="self_evaluation" />
       <div className="mb-6">
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">自己評価シート</h2>

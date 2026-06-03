@@ -28,12 +28,12 @@ function AvatarButton({
   return (
     <div
       className="neu-button-wrap shrink-0"
-      style={{ borderRadius: "50%", padding: 3 }}
+      style={{ borderRadius: "50%", padding: 0, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}
     >
       <button
         onClick={onClick}
-        className="flex items-center justify-center rounded-full overflow-hidden hover:ring-2 hover:ring-cyan-500 transition-all duration-200 neu-button-primary"
-        style={{ width: 36, height: 36, borderRadius: "50%" }}
+        className="flex items-center justify-center overflow-hidden hover:ring-2 hover:ring-cyan-500 transition-all duration-200 neu-button-primary"
+        style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0 }}
         aria-label="アカウントメニュー"
       >
         {image ? (

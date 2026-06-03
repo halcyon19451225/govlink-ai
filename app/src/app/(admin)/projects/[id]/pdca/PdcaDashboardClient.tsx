@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { differenceInDays, parseISO } from "date-fns";
-import BackButton from "@/components/BackButton";
 import type { PdcaCheckpoint } from "./page";
 
 interface Project {
@@ -366,9 +365,6 @@ function Timeline({
 export default function PdcaDashboardClient({ project, checkpoints, projectId }: Props) {
   return (
     <div className="max-w-5xl space-y-8">
-      <div className="mb-4">
-        <BackButton />
-      </div>
       <div>
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">PDCAダッシュボード</h2>

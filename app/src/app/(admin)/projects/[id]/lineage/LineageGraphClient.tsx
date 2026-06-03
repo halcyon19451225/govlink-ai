@@ -11,7 +11,6 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import BackButton from "@/components/BackButton";
 import type { LineageNode, LineageEdge } from "@/app/api/admin/projects/[id]/lineage/route";
 
 // ─── モジュール設定（色・ラベルのみ。X座標は自動計算） ───────────────────
@@ -252,7 +251,6 @@ export default function LineageGraphClient({ project, projectId }: Props) {
       <div className="max-w-full mx-auto px-4 py-8">
         {/* ヘッダー */}
         <div className="flex items-center gap-4 mb-4">
-          <BackButton />
           <div>
             <p className="text-xs text-slate-500">{project.title}</p>
             <h1 className="text-xl font-bold text-slate-100">成果物リネージグラフ</h1>

@@ -12,7 +12,6 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import BackButton from "@/components/BackButton";
 
 interface IssueHypothesis {
   id: string;
@@ -445,7 +444,6 @@ export default function IssueHypothesisClient({
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* ヘッダー */}
         <div className="flex items-center gap-4 mb-6">
-          <BackButton />
           <div>
             <p className="text-xs text-slate-500">{project.title}</p>
             <h1 className="text-xl font-bold text-slate-100">課題仮説設定</h1>

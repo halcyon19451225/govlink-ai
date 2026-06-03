@@ -5,7 +5,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
 import Link from "next/link";
-import BackButton from "@/components/BackButton";
 import CostEfficiencyClient from "./CostEfficiencyClient";
 
 interface CostEffRecord {
@@ -72,9 +71,6 @@ export default async function CostEfficiencyPage({
 
   return (
     <div className="max-w-5xl">
-      <div className="mb-4">
-        <BackButton />
-      </div>
       <div className="mb-6">
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">コスト効率分析</h2>

@@ -1,8 +1,6 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import KpiReportForm from "./KpiReportForm";
-import BackButton from "@/components/BackButton";
-import PdcaNav from "@/components/PdcaNav";
 
 interface KpiRow {
   id: string;
@@ -30,10 +28,6 @@ export default async function KpiReportPage({ params }: { params: { id: string }
 
   return (
     <div className="max-w-2xl space-y-6">
-      <PdcaNav currentStage="D" currentStep="進捗・KPI管理" projectId={project.id} />
-      <div className="mb-4">
-        <BackButton />
-      </div>
       <div>
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">KPI実績を報告</h2>

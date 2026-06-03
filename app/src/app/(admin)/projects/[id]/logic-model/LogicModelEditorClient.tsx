@@ -12,7 +12,6 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import BackButton from "@/components/BackButton";
 
 interface LogicModelRow {
   id: string;
@@ -380,7 +379,6 @@ export default function LogicModelEditorClient({
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <BackButton />
             <div>
               <p className="text-xs text-slate-500">{project.title}</p>
               <h1 className="text-xl font-bold text-slate-100">ロジックモデル</h1>
