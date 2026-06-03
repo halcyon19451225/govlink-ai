@@ -39,6 +39,9 @@ const bodySchema = z.object({
   plan_start_date: z.string().optional().nullable(),
   plan_end_date: z.string().optional().nullable(),
   is_composite: z.boolean().default(false),
+  purpose: z.string().optional().nullable(),
+  major_policy: z.string().optional().nullable(),
+  department_name: z.string().optional().nullable(),
   module_overrides: z.record(z.string(), z.object({ enabled: z.boolean() })).optional(),
   goals: z.array(goalSchema).default([]),
   kpis: z.array(kpiSchema).max(20, "KPI は最大 20 件まで登録できます").default([]),
@@ -72,6 +75,7 @@ export async function POST(req: NextRequest) {
   const {
     title, description, department, status,
     template_id, plan_start_date, plan_end_date, is_composite,
+    purpose, major_policy, department_name,
     goals, kpis,
   } = parsed.data;
 
@@ -113,8 +117,9 @@ export async function POST(req: NextRequest) {
       const projectResult = await client.query<{ id: string }>(
         `INSERT INTO projects
            (municipality_id, title, description, status,
-            template_id, plan_start_date, plan_end_date, is_composite)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            template_id, plan_start_date, plan_end_date, is_composite,
+            department_name, purpose, major_policy)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id`,
         [
           municipalityId, title, description, status,
@@ -122,6 +127,9 @@ export async function POST(req: NextRequest) {
           plan_start_date ? plan_start_date : null,
           plan_end_date ? plan_end_date : null,
           is_composite,
+          department_name ?? department ?? null,
+          purpose ?? null,
+          major_policy ?? null,
         ],
       );
       if (!projectResult.rows[0]) throw new Error("project の作成に失敗しました");

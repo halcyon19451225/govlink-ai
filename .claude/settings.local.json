@@ -133,7 +133,8 @@
       "Bash(echo \"=== TSC EXIT: $? ===\")",
       "Bash(NODE_OPTIONS='--max-old-space-size=4096' npx next build)",
       "Bash(echo \"BUILD EXIT: $?\")",
-      "Bash(echo \"TSC EXIT: $?\")"
+      "Bash(echo \"TSC EXIT: $?\")",
+      "Bash(cd /Users/halcy/Documents/govlink-ai/app *)"
     ]
   }
 }

@@ -4,7 +4,6 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
-import BackButton from "@/components/BackButton";
 import type { TemplateWithCycles, PdcaCheckpointDef } from "@/lib/templates";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -40,7 +39,7 @@ function calcCheckpointDate(planStartDate: Date, planYear: number, monthStart: n
 
 // ─── StepIndicator ───────────────────────────────────────────────────────────
 
-const STEP_LABELS = ["テンプレート選択", "基本情報", "モジュール確認", "スケジュール確認"];
+const STEP_LABELS = ["テンプレート選択", "基本情報", "目的・目標", "モジュール確認", "スケジュール確認"];
 
 function StepIndicator({ current }: { current: number }) {
   return (
@@ -197,7 +196,7 @@ function Step2({
   onNext,
   onBack,
 }: {
-  values: { title: string; description: string; department: string; planStartDate: string };
+  values: { title: string; description: string; department: string; planStartDate: string; planEndDate: string };
   onChange: (k: string, v: string) => void;
   onNext: () => void;
   onBack: () => void;
@@ -208,7 +207,7 @@ function Step2({
     <div className="space-y-5">
       <div>
         <h3 className="text-lg font-bold text-slate-100 mb-1">基本情報を入力</h3>
-        <p className="text-sm text-slate-500">計画の名称・担当課・開始日を設定します。</p>
+        <p className="text-sm text-slate-500">計画の名称・担当課・計画期間を設定します。</p>
       </div>
 
       <div>
@@ -250,20 +249,37 @@ function Step2({
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">計画開始日</label>
-        <input
-          type="date"
-          value={values.planStartDate}
-          onChange={(e) => onChange("planStartDate", e.target.value)}
-          className={inputClass}
-          style={{ ...inputStyle, width: 200 }}
-        />
-        {values.planStartDate && (
-          <p className="text-xs text-slate-500 mt-1">
-            {format(new Date(values.planStartDate), "yyyy年M月d日", { locale: ja })}
-          </p>
-        )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">計画開始日</label>
+          <input
+            type="date"
+            value={values.planStartDate}
+            onChange={(e) => onChange("planStartDate", e.target.value)}
+            className={inputClass}
+            style={inputStyle}
+          />
+          {values.planStartDate && (
+            <p className="text-xs text-slate-500 mt-1">
+              {format(new Date(values.planStartDate), "yyyy年M月d日", { locale: ja })}
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-1.5">計画終了日</label>
+          <input
+            type="date"
+            value={values.planEndDate}
+            onChange={(e) => onChange("planEndDate", e.target.value)}
+            className={inputClass}
+            style={inputStyle}
+          />
+          {values.planEndDate && (
+            <p className="text-xs text-slate-500 mt-1">
+              {format(new Date(values.planEndDate), "yyyy年M月d日", { locale: ja })}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-3 pt-2">
@@ -277,14 +293,120 @@ function Step2({
         </button>
         <div className="neu-button-wrap">
           <button
+            type="button"
+            onClick={onNext}
+            disabled={!canNext}
+            className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 neu-button-primary"
+            style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+          >
+            次へ →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 2.5: 目的・目標設定（スキップ可）────────────────────────────────
+
+function Step2_5({
+  values,
+  onChange,
+  onGoalChange,
+  onNext,
+  onSkip,
+  onBack,
+}: {
+  values: { purpose: string; goals: string[]; majorPolicy: string };
+  onChange: (k: "purpose" | "majorPolicy", v: string) => void;
+  onGoalChange: (idx: number, v: string) => void;
+  onNext: () => void;
+  onSkip: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-lg font-bold text-slate-100 mb-1">目的・目標を設定</h3>
+        <p className="text-sm text-slate-500">
+          後から編集できます。入力せずにスキップすることもできます。
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">計画の目的</label>
+        <textarea
+          value={values.purpose}
+          onChange={(e) => onChange("purpose", e.target.value)}
+          rows={3}
+          className={inputClass}
+          style={inputStyle}
+          placeholder="この計画が解決しようとする課題や達成すべき目的を記入してください"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-2">
+          基本目標
+          <span className="text-xs text-slate-500 ml-2">（最大3つ）</span>
+        </label>
+        <div className="space-y-2">
+          {values.goals.map((g, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-xs font-bold text-indigo-400 w-5 shrink-0">#{i + 1}</span>
+              <input
+                type="text"
+                value={g}
+                onChange={(e) => onGoalChange(i, e.target.value)}
+                className={inputClass}
+                style={inputStyle}
+                placeholder={`基本目標 ${i + 1}`}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-300 mb-1.5">重点施策の方向性</label>
+        <textarea
+          value={values.majorPolicy}
+          onChange={(e) => onChange("majorPolicy", e.target.value)}
+          rows={3}
+          className={inputClass}
+          style={inputStyle}
+          placeholder="計画期間中の重点施策・取り組みの方向性を記入してください"
+        />
+      </div>
+
+      <div className="flex gap-3 pt-2 justify-between">
+        <button
           type="button"
-          onClick={onNext}
-          disabled={!canNext}
-          className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 neu-button-primary"
-          style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+          onClick={onBack}
+          className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
+          style={{ borderColor: "var(--border)" }}
         >
-          次へ →
+          ← 戻る
         </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-sm text-slate-500 hover:text-slate-300 px-4 py-2 border rounded-xl transition-colors duration-200"
+            style={{ borderColor: "var(--border)" }}
+          >
+            スキップ →
+          </button>
+          <div className="neu-button-wrap">
+            <button
+              type="button"
+              onClick={onNext}
+              className="text-white px-6 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-all duration-200 neu-button-primary"
+              style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+            >
+              次へ →
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -570,20 +692,28 @@ export default function NewProjectWizard({
   modules: PlanModule[];
 }) {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Step 1
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateWithCycles | null>(null);
 
-  // Step 2
+  // Step 2: 基本情報
   const [basicInfo, setBasicInfo] = useState({
     title: "",
     description: "",
     department: "",
     planStartDate: "",
+    planEndDate: "",
   });
 
-  // Step 3: moduleConfig — テンプレート選択時はテンプレートのもの、なしは全ON
+  // Step 2.5: 目的・目標
+  const [goalsInfo, setGoalsInfo] = useState({
+    purpose: "",
+    goals: ["", "", ""],
+    majorPolicy: "",
+  });
+
+  // Step 4 (旧3): moduleConfig
   const [moduleConfig, setModuleConfig] = useState<Record<string, { enabled: boolean }>>({});
 
   const [submitting, setSubmitting] = useState(false);
@@ -594,7 +724,6 @@ export default function NewProjectWizard({
     if (t) {
       setModuleConfig(t.module_config ?? {});
     } else {
-      // テンプレートなし: 利用可能なモジュールをすべてON
       const allOn: Record<string, { enabled: boolean }> = {};
       if (modules.length > 0) {
         for (const m of modules) allOn[m.id] = { enabled: true };
@@ -606,11 +735,25 @@ export default function NewProjectWizard({
   const updateBasicInfo = (k: string, v: string) =>
     setBasicInfo((prev) => ({ ...prev, [k]: v }));
 
+  const updateGoalsInfo = (k: "purpose" | "majorPolicy", v: string) =>
+    setGoalsInfo((prev) => ({ ...prev, [k]: v }));
+
+  const updateGoal = (idx: number, v: string) =>
+    setGoalsInfo((prev) => {
+      const next = [...prev.goals];
+      next[idx] = v;
+      return { ...prev, goals: next };
+    });
+
   const handleSubmit = async () => {
     setSubmitting(true);
     setSubmitError(null);
 
     try {
+      const goalsPayload = goalsInfo.goals
+        .map((t, i) => ({ goal_number: i + 1, title: t, description: "", sort_order: i }))
+        .filter((g) => g.title.trim().length > 0);
+
       const payload = {
         title: basicInfo.title,
         description: basicInfo.description,
@@ -618,7 +761,11 @@ export default function NewProjectWizard({
         status: "draft",
         template_id: selectedTemplate?.id ?? null,
         plan_start_date: basicInfo.planStartDate || null,
+        plan_end_date: basicInfo.planEndDate || null,
+        purpose: goalsInfo.purpose || null,
+        major_policy: goalsInfo.majorPolicy || null,
         module_overrides: moduleConfig,
+        goals: goalsPayload,
       };
 
       const res = await fetch("/api/admin/projects", {
@@ -642,9 +789,6 @@ export default function NewProjectWizard({
 
   return (
     <div className="max-w-2xl">
-      <div className="mb-4">
-        <BackButton />
-      </div>
       <h2
         className="text-2xl font-bold tracking-tight mb-6 bg-clip-text text-transparent"
         style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
@@ -675,19 +819,29 @@ export default function NewProjectWizard({
           />
         )}
         {step === 3 && (
-          <Step3
-            modules={modules}
-            moduleConfig={moduleConfig}
-            onModuleConfigChange={setModuleConfig}
+          <Step2_5
+            values={goalsInfo}
+            onChange={updateGoalsInfo}
+            onGoalChange={updateGoal}
             onNext={() => setStep(4)}
+            onSkip={() => setStep(4)}
             onBack={() => setStep(2)}
           />
         )}
         {step === 4 && (
+          <Step3
+            modules={modules}
+            moduleConfig={moduleConfig}
+            onModuleConfigChange={setModuleConfig}
+            onNext={() => setStep(5)}
+            onBack={() => setStep(3)}
+          />
+        )}
+        {step === 5 && (
           <Step4
             template={selectedTemplate}
             planStartDate={basicInfo.planStartDate}
-            onBack={() => setStep(3)}
+            onBack={() => setStep(4)}
             onSubmit={handleSubmit}
             submitting={submitting}
             error={submitError}
