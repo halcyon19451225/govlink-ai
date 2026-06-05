@@ -9,33 +9,28 @@ interface ProjectRow {
   title: string;
 }
 
-interface GapAnalysis {
+interface KpiRow {
   id: string;
-  project_id: string;
-  checkpoint_id: string | null;
-  indicator_name: string;
-  indicator_unit: string | null;
-  data_source: string;
-  current_value: number;
-  current_year: number;
-  target_value: number;
-  target_basis: string;
-  gap_value: number;
-  affected_population: number | null;
-  trend: "improving" | "worsening" | "stable" | "unknown";
-  priority_score: number | null;
-  notes: string | null;
-  ai_analysis: string | null;
-  created_at: string;
-  updated_at: string;
+  label: string;
+  target: number;
+  unit: string;
+  achievement_condition: "lte" | "lt" | "gte" | "gt" | "eq" | null;
+  target_deadline: string | null;
+  goal_id: string | null;
+  goal_title: string | null;
 }
 
-interface DatasetRow {
+interface GapRow {
   id: string;
-  dataset_def_id: string;
-  file_name: string;
-  uploaded_at: string;
-  survey_year: number | null;
+  kpi_id: string | null;
+  indicator_name: string;
+  current_value: number | null;
+  target_value: number;
+  gap_value: number | null;
+  data_source: string;
+  priority_score: number | null;
+  ai_analysis: string | null;
+  updated_at: string;
 }
 
 export default async function GapAnalysisPage({
@@ -49,28 +44,38 @@ export default async function GapAnalysisPage({
   );
   if (!project) notFound();
 
-  const gaps = await query<GapAnalysis>(
-    `SELECT *,
-            gap_value::float,
-            current_value::float,
-            target_value::float,
-            affected_population::float
-     FROM gap_analyses
-     WHERE project_id = $1
-     ORDER BY created_at`,
-    [params.id],
-  );
-
-  const datasets = await query<DatasetRow>(
-    "SELECT id, dataset_def_id, file_name, uploaded_at::text, survey_year FROM project_datasets WHERE project_id = $1",
-    [params.id],
-  );
+  const [kpis, gaps] = await Promise.all([
+    query<KpiRow>(
+      `SELECT k.id, k.label, k.target::float, k.unit,
+              k.achievement_condition,
+              to_char(k.target_deadline, 'YYYY-MM-DD') AS target_deadline,
+              k.goal_id,
+              g.title AS goal_title
+       FROM kpis k
+       LEFT JOIN project_goals g ON g.id = k.goal_id
+       WHERE k.project_id = $1
+       ORDER BY k.created_at`,
+      [params.id],
+    ),
+    query<GapRow>(
+      `SELECT id, kpi_id, indicator_name,
+              current_value::float,
+              target_value::float,
+              gap_value::float,
+              data_source, priority_score, ai_analysis,
+              updated_at::text
+       FROM gap_analyses
+       WHERE project_id = $1
+       ORDER BY updated_at DESC`,
+      [params.id],
+    ),
+  ]);
 
   return (
     <GapAnalysisClient
       project={project}
-      gaps={gaps}
-      datasets={datasets}
+      kpis={kpis}
+      initialGaps={gaps}
       projectId={params.id}
     />
   );

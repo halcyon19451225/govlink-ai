@@ -136,7 +136,9 @@
       "Bash(echo \"TSC EXIT: $?\")",
       "Bash(cd /Users/halcy/Documents/govlink-ai/app *)",
       "Bash(grep -n \"showGoalsModal\\\\|</div>$\" /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/ProjectOverviewClient.tsx)",
-      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/\\\\[id\\\\]/goals/\\\\[goalId\\\\])"
+      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/\\\\[id\\\\]/goals/\\\\[goalId\\\\])",
+      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/\\\\[id\\\\]/gap-analysis/analyze)",
+      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/\\\\[id\\\\]/gap-analysis/suggest-values)"
     ]
   }
 }
