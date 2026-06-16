@@ -7,6 +7,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const nextConfig = {
   output: 'standalone',
   transpilePackages: ['three'],
+  serverExternalPackages: ['pdf-parse', 'mammoth', 'pdfjs-dist'],
   images: {
     remotePatterns: [
       {

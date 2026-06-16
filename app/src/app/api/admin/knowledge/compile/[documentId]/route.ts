@@ -89,7 +89,7 @@ JSON形式のみで回答:
 {"document_category":"law|guideline|research|plan|policy|ordinance|other","section_id":"snake_case_id","section_title":"タイトル","is_new_section":true,"summary":"要約300字","key_points":["ポイント"],"planning_implications":["留意点"],"new_terms":{"用語":"定義"},"diff_from_existing":"差分説明"}`;
 
     const msg = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
     });

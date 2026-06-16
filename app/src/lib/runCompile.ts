@@ -5,89 +5,98 @@ export interface CompileState {
   chunkIndex?: number | undefined;
   done: boolean;
   error?: string | undefined;
+  stalled?: boolean | undefined;
 }
 
 export type OnProgress = (state: CompileState) => void;
 
-interface StepResponse {
-  ok: boolean;
-  currentStep: string;
-  progress: number;
-  nextStep: string | null;
-  nextChunkIndex?: number;
-  totalChunks?: number;
-  done?: boolean;
-  error?: string;
+interface StatusResponse {
+  status: string;
+  processing_step: string | null;
+  processing_progress: number | null;
+  processed_chunks: number | null;
+  total_chunks: number | null;
+  error_message: string | null;
+  stalled?: boolean;
 }
 
-async function callStep(
-  documentId: string,
-  step: string,
-  chunkIndex?: number,
-): Promise<StepResponse> {
-  const res = await fetch(
-    `/api/ordo-admin/knowledge/compile/${documentId}/step`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step, chunkIndex }),
-    },
-  );
-  return res.json() as Promise<StepResponse>;
-}
+const POLL_INTERVAL_MS = 2000;
 
+/**
+ * /start を1回叩いてチェーンを起動し、
+ * 以後ポーリングで進捗を onProgress に渡す。
+ */
 export async function runCompile(
   documentId: string,
   onProgress: OnProgress,
 ): Promise<void> {
-  let currentStep = "extract";
-  let currentChunkIndex: number | undefined = undefined;
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  // チェーン起動
+  const startRes = await fetch(
+    `/api/ordo-admin/knowledge/compile/${documentId}/start`,
+    { method: "POST" },
+  );
+  const startJson = await startRes.json() as { ok: boolean; error?: string };
+  if (!startJson.ok) {
     onProgress({
-      step: currentStep,
+      step: "extract",
       progress: 0,
-      chunkIndex: currentChunkIndex,
       done: false,
+      error: startJson.error ?? "起動に失敗しました",
     });
-
-    const res = await callStep(documentId, currentStep, currentChunkIndex);
-
-    if (!res.ok || res.error) {
-      onProgress({
-        step: currentStep,
-        progress: res.progress ?? 0,
-        done: false,
-        error: res.error ?? "不明なエラーが発生しました",
-      });
-      return;
-    }
-
-    onProgress({
-      step: res.currentStep,
-      progress: res.progress,
-      totalChunks: res.totalChunks,
-      chunkIndex: currentChunkIndex,
-      done: res.done ?? false,
-    });
-
-    if (res.done) return;
-
-    // 次のステップへ
-    if (!res.nextStep) return;
-    currentStep = res.nextStep;
-    currentChunkIndex = res.nextChunkIndex;
+    return;
   }
+
+  // ポーリング開始
+  await pollStatus(documentId, onProgress);
 }
 
-/** status をリセットして再コンパイル */
+/** 再試行: /start を叩き直してポーリング */
 export async function retryCompile(
   documentId: string,
   onProgress: OnProgress,
 ): Promise<void> {
-  await fetch(`/api/ordo-admin/knowledge/compile/${documentId}/reset`, {
-    method: "POST",
-  });
   return runCompile(documentId, onProgress);
+}
+
+async function pollStatus(
+  documentId: string,
+  onProgress: OnProgress,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const tick = async () => {
+      try {
+        const res = await fetch(
+          `/api/ordo-admin/knowledge/documents/${documentId}/status`,
+        );
+        const json = await res.json() as { data: StatusResponse | null };
+        const data = json.data;
+
+        if (!data) {
+          onProgress({ step: "unknown", progress: 0, done: false, error: "ステータス取得に失敗しました" });
+          resolve();
+          return;
+        }
+
+        onProgress({
+          step: data.processing_step ?? "extract",
+          progress: data.processing_progress ?? 0,
+          totalChunks: data.total_chunks ?? undefined,
+          done: data.status === "compiled",
+          error: data.status === "error" ? (data.error_message ?? "エラーが発生しました") : undefined,
+          stalled: data.stalled,
+        });
+
+        if (data.status === "compiled" || data.status === "error") {
+          resolve();
+          return;
+        }
+      } catch (e) {
+        console.error("[pollStatus] error:", e);
+      }
+
+      setTimeout(() => { void tick(); }, POLL_INTERVAL_MS);
+    };
+
+    void tick();
+  });
 }

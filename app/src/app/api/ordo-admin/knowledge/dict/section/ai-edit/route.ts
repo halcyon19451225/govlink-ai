@@ -8,7 +8,7 @@ import { query } from "@/lib/db";
 import Anthropic from "@anthropic-ai/sdk";
 
 const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6";
 
 interface DictSection {
   section_id?: string;

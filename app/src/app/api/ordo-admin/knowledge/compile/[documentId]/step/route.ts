@@ -8,16 +8,19 @@ import { query } from "@/lib/db";
 import { downloadFromStorage } from "@/lib/supabase-storage";
 import { extractText, chunkText } from "@/lib/knowledge-extract";
 import { setProgress, appendLog } from "@/lib/knowledge-progress";
+import { triggerNextStep } from "@/lib/chain-fetch";
 import Anthropic from "@anthropic-ai/sdk";
 
 const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6";
 
 type StepName = "extract" | "chunk" | "compile" | "merge";
 
 interface StepBody {
   step: StepName;
   chunkIndex?: number;
+  chainToken?: string;
+  background?: boolean;
 }
 
 interface DocRow {
@@ -31,6 +34,7 @@ interface DocRow {
   document_category: string | null;
   category_id: string | null;
   status: string;
+  chain_token: string | null;
 }
 
 interface TagRow {
@@ -62,23 +66,34 @@ function stepProgress(step: StepName, chunkIndex: number, totalChunks: number): 
   return 0;
 }
 
+async function pingChain(documentId: string): Promise<void> {
+  await query(
+    `UPDATE knowledge_documents SET last_chain_ping_at = NOW() WHERE id = $1`,
+    [documentId],
+  );
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { documentId: string } },
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
-    return NextResponse.json({ ok: false, error: "権限がありません" }, { status: 403 });
-  }
-
   const { documentId } = params;
   const body = await req.json() as StepBody;
-  const { step, chunkIndex = 0 } = body;
+  const { step, chunkIndex = 0, chainToken, background = false } = body;
+
+  // background リクエストはセッション不要（自己fetch）
+  // フロント起動リクエストはセッション必須
+  if (!background) {
+    const session = await getServerSession(authOptions);
+    if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+      return NextResponse.json({ ok: false, error: "権限がありません" }, { status: 403 });
+    }
+  }
 
   // ドキュメント取得
   const rows = await query<DocRow>(
     `SELECT id, s3_key, file_type, extracted_text, total_chunks, processed_chunks,
-            compiled_draft, document_category, category_id, status
+            compiled_draft, document_category, category_id, status, chain_token
      FROM knowledge_documents WHERE id = $1`,
     [documentId],
   );
@@ -87,7 +102,17 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "ドキュメントが見つかりません" }, { status: 404 });
   }
 
+  // 多重起動防止ガード（backgroundリクエストのみ）
+  if (background && chainToken) {
+    if (doc.chain_token !== chainToken) {
+      // 古い系列 or 重複起動 → 黙って終了
+      return NextResponse.json({ ok: true, skipped: true });
+    }
+  }
+
   try {
+    await pingChain(documentId);
+
     // ─── extract ──────────────────────────────────────────────
     if (step === "extract") {
       await setProgress(documentId, {
@@ -113,12 +138,18 @@ export async function POST(
 
       const msg = `テキスト抽出完了（${text.length.toLocaleString()}文字${truncated ? "・上限でカット" : ""}）`;
       await setProgress(documentId, { step: "extract", progress: 10 }, msg);
+      await pingChain(documentId);
+
+      if (chainToken) {
+        await triggerNextStep(documentId, "chunk", undefined, chainToken);
+      }
 
       return NextResponse.json({
         ok: true,
         currentStep: "extract",
         progress: 10,
         nextStep: "chunk",
+        done: false,
       });
     }
 
@@ -133,6 +164,11 @@ export async function POST(
         { step: "chunk", progress: 20, totalChunks: total, processedChunks: 0 },
         `${total}個のチャンクに分割`,
       );
+      await pingChain(documentId);
+
+      if (chainToken) {
+        await triggerNextStep(documentId, "compile", 0, chainToken);
+      }
 
       return NextResponse.json({
         ok: true,
@@ -141,6 +177,7 @@ export async function POST(
         nextStep: "compile",
         nextChunkIndex: 0,
         totalChunks: total,
+        done: false,
       });
     }
 
@@ -152,10 +189,9 @@ export async function POST(
       const chunk = chunks[chunkIndex];
 
       if (!chunk) {
-        return NextResponse.json({ ok: false, error: `チャンク${chunkIndex}が存在しません` }, { status: 400 });
+        throw new Error(`チャンク${chunkIndex}が存在しません`);
       }
 
-      // このドキュメントに付与されたタグを取得
       const tags = await query<TagRow>(
         `SELECT t.id, t.name, t.slug, t.pdca_phase
          FROM knowledge_document_tags dt
@@ -197,7 +233,6 @@ ${chunk}
       const raw = message.content[0]?.type === "text" ? message.content[0].text : "";
       let parsed: ClaudeOutput = { items: [] };
       try {
-        // JSONブロック抽出
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (jsonMatch) parsed = JSON.parse(jsonMatch[0]) as ClaudeOutput;
       } catch {
@@ -214,8 +249,6 @@ ${chunk}
       }));
 
       const detectedCategory = parsed.document_category ?? null;
-
-      // 既存 compiled_draft に追記
       const existingDraft = Array.isArray(doc.compiled_draft) ? doc.compiled_draft : [];
       const updatedDraft = [...existingDraft, ...newItems];
 
@@ -239,14 +272,22 @@ ${chunk}
       );
 
       await appendLog(documentId, "compile", `チャンク ${chunkIndex + 1}/${total} を編纂`);
+      await pingChain(documentId);
 
       const isLast = newProcessed >= total;
+      const nextStep = isLast ? "merge" : "compile";
+      const nextChunkIndex = isLast ? undefined : chunkIndex + 1;
+
+      if (chainToken) {
+        await triggerNextStep(documentId, nextStep, nextChunkIndex, chainToken);
+      }
+
       return NextResponse.json({
         ok: true,
         currentStep: "compile",
         progress: newProgress,
-        nextStep: isLast ? "merge" : "compile",
-        nextChunkIndex: isLast ? undefined : chunkIndex + 1,
+        nextStep,
+        nextChunkIndex,
         totalChunks: total,
         done: false,
       });
@@ -256,7 +297,6 @@ ${chunk}
     if (step === "merge") {
       const draft = Array.isArray(doc.compiled_draft) ? (doc.compiled_draft as DraftItem[]) : [];
 
-      // カテゴリに紐づく辞書を取得（なければ作成）
       const categoryId = doc.category_id;
       let dictRows = await query<{ id: string; dict_data: Record<string, unknown>; version: number }>(
         `SELECT id, dict_data, version FROM knowledge_dicts
@@ -301,10 +341,7 @@ ${chunk}
       const docCategory = doc.document_category ?? "other";
 
       for (const item of draft) {
-        // 同タイトル近似でマージ
-        const existing = existingSections.find(
-          (s) => s.title === item.title,
-        );
+        const existing = existingSections.find((s) => s.title === item.title);
         if (existing) {
           existing.key_points = Array.from(new Set([...existing.key_points, ...item.key_points]));
           existing.planning_implications = Array.from(
@@ -330,7 +367,6 @@ ${chunk}
             last_updated: new Date().toISOString(),
           });
         }
-
         Object.assign(globalTerms, item.terms);
       }
 
@@ -349,10 +385,11 @@ ${chunk}
         [JSON.stringify(newDictData), newVersion, dictRow.id],
       );
 
+      // 完了: chain_token をクリア
       await query(
         `UPDATE knowledge_documents
          SET status = 'compiled', processing_step = 'done', processing_progress = 100,
-             compiled_at = NOW(), updated_at = NOW()
+             compiled_at = NOW(), chain_token = NULL, updated_at = NOW()
          WHERE id = $1`,
         [documentId],
       );
@@ -372,10 +409,15 @@ ${chunk}
 
   } catch (e) {
     const msg = e instanceof Error ? e.message : "不明なエラーが発生しました";
+    // エラー時: chain_token をクリアしてチェーン停止
     await setProgress(
       documentId,
       { status: "error", step: step, errorMessage: msg },
       msg,
+    );
+    await query(
+      `UPDATE knowledge_documents SET chain_token = NULL WHERE id = $1`,
+      [documentId],
     );
     return NextResponse.json({ ok: false, currentStep: step, error: msg, progress: 0 });
   }

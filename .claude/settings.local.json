@@ -138,7 +138,17 @@
       "Bash(grep -n \"showGoalsModal\\\\|</div>$\" /Users/halcy/Documents/govlink-ai/app/src/app/\\\\\\(admin\\\\\\)/projects/\\\\[id\\\\]/ProjectOverviewClient.tsx)",
       "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/\\\\[id\\\\]/goals/\\\\[goalId\\\\])",
       "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/\\\\[id\\\\]/gap-analysis/analyze)",
-      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/\\\\[id\\\\]/gap-analysis/suggest-values)"
+      "Bash(mkdir -p /Users/halcy/Documents/govlink-ai/app/src/app/api/admin/projects/\\\\[id\\\\]/gap-analysis/suggest-values)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(echo \"PID=$!\")",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(mkdir -p \"/Users/halcy/Documents/govlink-ai/app/src/app/api/ordo-admin/knowledge/categories/[id]\")",
+      "Bash(npm run dev > /tmp/nextdev2.log 2>&1 & *)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(kill 90991)"
     ]
   }
 }

@@ -14,12 +14,18 @@ export async function extractText(
 
   try {
     if (fileType === "pdf") {
+      // pdfjs-dist は Next.js バンドル内で動作しないため子プロセスで実行
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
-      const result = await pdfParse(buffer);
-      text = result.text;
+      const { spawnSync } = require("child_process") as typeof import("child_process");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const workerScript: string = require("path").join(process.cwd(), "src/lib/pdf-extract-worker.mjs");
+      const result = spawnSync("node", [workerScript], { input: buffer, maxBuffer: 50 * 1024 * 1024 });
+      if (result.status !== 0) {
+        throw new Error(result.stderr?.toString() || "不明なエラー");
+      }
+      text = result.stdout?.toString() ?? "";
       if (!text || text.trim().length === 0) {
-        throw new Error("テキストが空です");
+        throw new Error("テキストが空です（画像PDFの可能性があります）");
       }
     } else if (fileType === "docx") {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -71,7 +77,7 @@ export function chunkText(text: string): string[] {
       break;
     }
 
-    let end = pos + CHUNK_CHAR_SIZE;
+    const end = pos + CHUNK_CHAR_SIZE;
     // 改行・句点・読点・全角スペースで区切れる場所を後ろから探す
     const searchStart = Math.max(pos + Math.floor(CHUNK_CHAR_SIZE * 0.7), pos + 1);
     const candidates = ["\n", "。", "、", "．", "，", " ", "　"];

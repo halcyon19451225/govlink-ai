@@ -1058,6 +1058,7 @@ function CompileTimeline({
     processing_progress: number;
     processing_step: string | null;
     status: string;
+    stalled?: boolean;
   } | null>(null);
 
   const fetchStatus = useCallback(async () => {
@@ -1079,6 +1080,7 @@ function CompileTimeline({
   const currentStep = compileState?.step ?? statusData?.processing_step ?? "upload";
   const logs = statusData?.processing_log ?? [];
   const error = compileState?.error ?? statusData?.error_message;
+  const stalled = compileState?.stalled ?? statusData?.stalled ?? false;
 
   const estSecs = doc.file_size_bytes ? estimateProcessingSeconds(doc.file_size_bytes) : null;
   const estMins = estSecs ? Math.ceil(estSecs / 60) : null;
@@ -1142,6 +1144,25 @@ function CompileTimeline({
         />
       </div>
       <p className="text-xs text-right -mt-2" style={{ color: "var(--text-secondary)" }}>{progress}%</p>
+
+      {/* ストール警告 */}
+      {stalled && !error && (
+        <div
+          className="rounded-xl px-4 py-3 space-y-2"
+          style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)" }}
+        >
+          <p className="text-sm" style={{ color: "#f59e0b" }}>
+            処理が停止した可能性があります。再試行してください。
+          </p>
+          <button
+            onClick={onRetry}
+            className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+            style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}
+          >
+            再試行
+          </button>
+        </div>
+      )}
 
       {/* エラー表示 */}
       {(doc.status === "error" || error) && (
