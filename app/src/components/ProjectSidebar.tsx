@@ -16,6 +16,7 @@ const NAV_ITEMS = [
       { id: "overview",        label: "計画概要",          icon: "📋", path: "" },
       { id: "datasets",        label: "データセット管理",    icon: "🗄️", path: "datasets" },
       { id: "gap-analysis",    label: "ギャップ分析",        icon: "📊", path: "gap-analysis" },
+      { id: "asis-analysis",   label: "現状整理(As-Is)",     icon: "🧭", path: "asis-analysis" },
       { id: "issue-hypothesis",label: "課題仮説設定",        icon: "💡", path: "issue-hypothesis" },
       { id: "logic-model",     label: "ロジックモデル",      icon: "🗺️", path: "logic-model" },
       { id: "evidences",       label: "エビデンス管理",      icon: "🔍", path: "evidences" },

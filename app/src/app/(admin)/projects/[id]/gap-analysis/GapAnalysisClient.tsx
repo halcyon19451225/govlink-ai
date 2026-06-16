@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
@@ -106,6 +106,40 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
     }
     return m;
   });
+
+  // 現状整理（As-Is）のKPIごとのステータス（kpi_id → 状態）
+  const [asisStatus, setAsisStatus] = useState<
+    Record<string, { asis_id: string; status: string; current_step: string }>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/projects/${projectId}/asis-analysis?byKpi=true`,
+        );
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          data: {
+            statuses: { kpi_id: string; asis_id: string; status: string; current_step: string }[];
+          } | null;
+          error: string | null;
+        };
+        if (cancelled || !json.data) return;
+        const map: Record<string, { asis_id: string; status: string; current_step: string }> = {};
+        for (const s of json.data.statuses) {
+          map[s.kpi_id] = { asis_id: s.asis_id, status: s.status, current_step: s.current_step };
+        }
+        setAsisStatus(map);
+      } catch {
+        /* 取得失敗時はボタン未実施扱い */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -333,7 +367,7 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
         <table className="w-full min-w-[700px]">
           <thead>
             <tr className="border-b" style={{ borderColor: "var(--border)" }}>
-              {["指標名", "目標値", "現状値", "ギャップ", "達成率", "優先度", ""].map((h) => (
+              {["指標名", "目標値", "現状値", "ギャップ", "達成率", "優先度", "現状整理", ""].map((h) => (
                 <th key={h} className="text-left text-xs font-semibold px-4 py-3"
                   style={{ color: "var(--text-secondary)" }}>
                   {h}
@@ -461,6 +495,45 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
                     ) : (
                       <span className="text-xs" style={{ color: "var(--text-secondary)" }}>—</span>
                     )}
+                  </td>
+
+                  {/* 現状整理（As-Is）導線 */}
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const asis = asisStatus[kpi.id];
+                      const href = `/projects/${projectId}/asis-analysis?kpiId=${kpi.id}`;
+                      if (!asis) {
+                        return (
+                          <Link
+                            href={href}
+                            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors hover:border-indigo-400 hover:text-indigo-400"
+                            style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                          >
+                            📝 現状整理
+                          </Link>
+                        );
+                      }
+                      if (asis.status === "completed") {
+                        return (
+                          <Link
+                            href={href}
+                            className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full transition-colors"
+                            style={{ color: "#10b981", background: "#10b98120", border: "1px solid #10b98140" }}
+                          >
+                            ✓ 整理済み
+                          </Link>
+                        );
+                      }
+                      return (
+                        <Link
+                          href={href}
+                          className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full transition-colors"
+                          style={{ color: "#f59e0b", background: "#f59e0b20", border: "1px solid #f59e0b40" }}
+                        >
+                          ⏳ 整理中
+                        </Link>
+                      );
+                    })()}
                   </td>
 
                   {/* 個別分析ボタン */}
