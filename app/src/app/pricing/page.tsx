@@ -12,25 +12,6 @@ const HeroParticles = dynamic(() => import("@/components/HeroParticles"), {
 
 const PLANS = [
   {
-    key: "free",
-    name: "Free",
-    subtitle: "まずは試してみる",
-    monthlyPrice: 0,
-    color: "#64748b",
-    gradient: "linear-gradient(135deg, #475569, #64748b)",
-    features: [
-      "計画 1件",
-      "ユーザー 3名",
-      "AI生成 10回/月",
-      "基本ダッシュボード",
-      "ロジックモデル生成",
-      "PDF帳票出力",
-    ],
-    limitations: ["テンプレート共有不可", "請求書払い不可"],
-    cta: { label: "無料で試す", href: "/register", type: "link" as const },
-    badge: null,
-  },
-  {
     key: "light",
     name: "Light",
     subtitle: "小規模自治体・部署単位で",
@@ -97,7 +78,7 @@ const PLANS = [
 const FAQS = [
   {
     q: "試用期間はありますか？",
-    a: "Freeプランは30日間無料でお試しいただけます。クレジットカードの登録不要です。",
+    a: "アカウント登録後、30日間無料でお試しいただけます。クレジットカードの登録不要です。",
   },
   {
     q: "途中でプランを変更できますか？",
@@ -401,7 +382,7 @@ export default function PricingPage() {
           </div>
 
           {/* 3つの特徴カード */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid sm:grid-cols-3 gap-6">
             {FEATURES.map((f) => (
               <div
                 key={f.title}
@@ -517,11 +498,6 @@ export default function PricingPage() {
                         /{annual ? "年" : "月"} (税抜)
                       </span>
                     )}
-                    {plan.monthlyPrice === 0 && (
-                      <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                        / 30日間
-                      </span>
-                    )}
                   </div>
                   {annual && plan.monthlyPrice > 0 && (
                     <p className="text-xs text-emerald-400 mt-1">
@@ -580,15 +556,6 @@ export default function PricingPage() {
                 </ul>
 
                 <div className="space-y-2">
-                  {plan.key === "free" && (
-                    <Link
-                      href="/register"
-                      className="block text-center text-sm font-semibold py-3 rounded-xl text-white transition-all duration-200 hover:opacity-90"
-                      style={{ background: plan.gradient }}
-                    >
-                      無料で試す
-                    </Link>
-                  )}
                   {(plan.key === "light" || plan.key === "standard" || plan.key === "premium") && (
                     <>
                       <button

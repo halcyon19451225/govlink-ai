@@ -10,6 +10,11 @@ cpSync(standaloneDir, `${hostingDir}/compute/default`, { recursive: true })
 
 cpSync('.next/static', `${hostingDir}/static/_next/static`, { recursive: true })
 
+// public/ の静的ファイル（ロゴ等）を standalone サーバーに同梱する
+if (existsSync('public')) {
+  cpSync('public', `${hostingDir}/compute/default/public`, { recursive: true })
+}
+
 const manifest = {
   version: 1,
   routes: [
