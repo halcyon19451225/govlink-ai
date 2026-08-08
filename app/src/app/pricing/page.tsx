@@ -31,10 +31,30 @@ const PLANS = [
     badge: null,
   },
   {
+    key: "light",
+    name: "Light",
+    subtitle: "小規模自治体・部署単位で",
+    monthlyPrice: 50000,
+    color: "#06b6d4",
+    gradient: "linear-gradient(135deg, #06b6d4, #22d3ee)",
+    features: [
+      "計画 3件",
+      "ユーザー 5名",
+      "AI生成 50回/月",
+      "基本ダッシュボード",
+      "ロジックモデル生成",
+      "PDF帳票出力",
+      "請求書払い対応",
+    ],
+    limitations: ["テンプレート共有不可"],
+    cta: null,
+    badge: null,
+  },
+  {
     key: "standard",
     name: "Standard",
     subtitle: "中規模自治体向け",
-    monthlyPrice: 30000,
+    monthlyPrice: 100000,
     color: "#6366f1",
     gradient: "linear-gradient(135deg, #6366f1, #06b6d4)",
     features: [
@@ -55,7 +75,7 @@ const PLANS = [
     key: "premium",
     name: "Premium",
     subtitle: "大規模・複数部署向け",
-    monthlyPrice: 80000,
+    monthlyPrice: 200000,
     color: "#f59e0b",
     gradient: "linear-gradient(135deg, #f59e0b, #fbbf24)",
     features: [
@@ -131,7 +151,7 @@ export default function PricingPage() {
     return `¥${price.toLocaleString()}`;
   };
 
-  const handleStripeCheckout = async (plan: "standard" | "premium") => {
+  const handleStripeCheckout = async (plan: "light" | "standard" | "premium") => {
     setLoadingPlan(plan);
     try {
       const res = await fetch("/api/billing/stripe/checkout", {
@@ -381,7 +401,7 @@ export default function PricingPage() {
           </div>
 
           {/* 3つの特徴カード */}
-          <div className="grid sm:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {FEATURES.map((f) => (
               <div
                 key={f.title}
@@ -569,11 +589,11 @@ export default function PricingPage() {
                       無料で試す
                     </Link>
                   )}
-                  {(plan.key === "standard" || plan.key === "premium") && (
+                  {(plan.key === "light" || plan.key === "standard" || plan.key === "premium") && (
                     <>
                       <button
                         onClick={() =>
-                          void handleStripeCheckout(plan.key as "standard" | "premium")
+                          void handleStripeCheckout(plan.key as "light" | "standard" | "premium")
                         }
                         disabled={loadingPlan !== null}
                         className="w-full text-sm font-semibold py-3 rounded-xl text-white transition-all duration-200 disabled:opacity-50 hover:opacity-90"

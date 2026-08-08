@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { downloadFromStorage } from "@/lib/supabase-storage";
+import { downloadFromStorage } from "@/lib/storage";
 import { extractText, chunkText } from "@/lib/knowledge-extract";
 import { setProgress, appendLog } from "@/lib/knowledge-progress";
 import { triggerNextStep } from "@/lib/chain-fetch";
@@ -66,6 +66,32 @@ function stepProgress(step: StepName, chunkIndex: number, totalChunks: number): 
   return 0;
 }
 
+/**
+ * 重複判定用の正規化: 前後空白除去・連続空白を1つに・末尾の句読点除去・小文字化。
+ * 表記揺れ（空白や末尾「。」の有無など）による重複を吸収する。
+ */
+function normalizeText(s: string): string {
+  return s
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[。、．，.,;；:：・\s]+$/g, "")
+    .toLowerCase();
+}
+
+/** base に無い incoming のみを正規化比較で追加する（元の表記は保持）。 */
+function mergeUniqueStrings(base: string[], incoming: string[]): string[] {
+  const seen = new Set(base.map(normalizeText).filter(Boolean));
+  const out = [...base];
+  for (const item of incoming) {
+    const n = normalizeText(item);
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
 async function pingChain(documentId: string): Promise<void> {
   await query(
     `UPDATE knowledge_documents SET last_chain_ping_at = NOW() WHERE id = $1`,
@@ -78,7 +104,13 @@ export async function POST(
   { params }: { params: { documentId: string } },
 ) {
   const { documentId } = params;
-  const body = await req.json() as StepBody;
+  let body: StepBody;
+  try {
+    body = await req.json() as StepBody;
+  } catch {
+    console.error("[step] request.json() parse failed — body was truncated or empty");
+    return NextResponse.json({ ok: false, error: "invalid request body" }, { status: 400 });
+  }
   const { step, chunkIndex = 0, chainToken, background = false } = body;
 
   // background リクエストはセッション不要（自己fetch）
@@ -141,7 +173,7 @@ export async function POST(
       await pingChain(documentId);
 
       if (chainToken) {
-        await triggerNextStep(documentId, "chunk", undefined, chainToken);
+        triggerNextStep(documentId, "chunk", undefined, chainToken);
       }
 
       return NextResponse.json({
@@ -167,7 +199,7 @@ export async function POST(
       await pingChain(documentId);
 
       if (chainToken) {
-        await triggerNextStep(documentId, "compile", 0, chainToken);
+        triggerNextStep(documentId, "compile", 0, chainToken);
       }
 
       return NextResponse.json({
@@ -209,6 +241,11 @@ ${JSON.stringify(tags.map((t) => ({ slug: t.slug, name: t.name })))}
 【チャンク本文】
 ${chunk}
 
+【重要・重複の取捨選択】
+- 同じ趣旨のキーポイントや留意点は1つに統合し、言い回しだけ異なる重複・冗長な再掲は出力しない。
+- 定型的な前置き・章見出しのみの内容や、計画策定の知見として価値の薄い記述は items に含めない。
+- 同一トピックは1つの item にまとめ、title は内容を端的に表す安定した見出しにする（後段で既存辞書と突き合わせて統合するため）。
+
 以下のJSON形式のみで回答（前置きやバッククォート不要）:
 {
   "document_category": "law|guideline|research|plan|policy|ordinance|other",
@@ -226,17 +263,31 @@ ${chunk}
 
       const message = await client.messages.create({
         model: MODEL,
-        max_tokens: 2048,
+        // 2048 だと日本語の構造化JSONが途中で打ち切られ（stop_reason=max_tokens）、
+        // パース失敗→items:[] でチャンクのデータが丸ごと消失するため十分に確保する。
+        max_tokens: 8192,
         messages: [{ role: "user", content: prompt }],
       });
 
       const raw = message.content[0]?.type === "text" ? message.content[0].text : "";
       let parsed: ClaudeOutput = { items: [] };
+      let parseFailed = false;
       try {
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (jsonMatch) parsed = JSON.parse(jsonMatch[0]) as ClaudeOutput;
+        else parseFailed = true;
       } catch {
+        parseFailed = true;
         parsed = { items: [] };
+      }
+
+      // 出力打ち切り・パース失敗をサイレントに握りつぶさず記録する
+      if (message.stop_reason === "max_tokens" || parseFailed) {
+        const reason = message.stop_reason === "max_tokens"
+          ? "AI出力がトークン上限で打ち切られました"
+          : "AI出力のJSON解析に失敗しました";
+        console.error(`[compile] chunk ${chunkIndex}: ${reason} (stop_reason=${message.stop_reason})`);
+        await appendLog(documentId, "compile", `チャンク ${chunkIndex + 1}: ${reason}（このチャンクはスキップ）`);
       }
 
       const newItems: DraftItem[] = (parsed.items ?? []).map((item) => ({
@@ -279,7 +330,7 @@ ${chunk}
       const nextChunkIndex = isLast ? undefined : chunkIndex + 1;
 
       if (chainToken) {
-        await triggerNextStep(documentId, nextStep, nextChunkIndex, chainToken);
+        triggerNextStep(documentId, nextStep, nextChunkIndex, chainToken);
       }
 
       return NextResponse.json({
@@ -341,11 +392,15 @@ ${chunk}
       const docCategory = doc.document_category ?? "other";
 
       for (const item of draft) {
-        const existing = existingSections.find((s) => s.title === item.title);
+        // タイトルは正規化比較でマッチ（表記揺れ・チャンク間/文書間の重複を吸収）。
+        // existingSections には本ループ内で追加したものも含むため、ドラフト内の重複も統合される。
+        const itemTitleNorm = normalizeText(item.title);
+        const existing = existingSections.find((s) => normalizeText(s.title) === itemTitleNorm);
         if (existing) {
-          existing.key_points = Array.from(new Set([...existing.key_points, ...item.key_points]));
-          existing.planning_implications = Array.from(
-            new Set([...existing.planning_implications, ...item.planning_implications]),
+          existing.key_points = mergeUniqueStrings(existing.key_points, item.key_points);
+          existing.planning_implications = mergeUniqueStrings(
+            existing.planning_implications,
+            item.planning_implications,
           );
           existing.terms = { ...existing.terms, ...item.terms };
           existing.pdca_tags = Array.from(new Set([...(existing.pdca_tags ?? []), ...item.tag_slugs]));

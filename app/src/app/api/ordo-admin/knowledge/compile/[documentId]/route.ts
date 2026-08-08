@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
-import { downloadFromStorage } from "@/lib/supabase-storage";
+import { downloadFromStorage } from "@/lib/storage";
 
 const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 const MAX_TEXT_CHARS = 80_000;

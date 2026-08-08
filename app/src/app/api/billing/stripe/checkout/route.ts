@@ -8,7 +8,7 @@ import { query } from "@/lib/db";
 import { getStripe, STRIPE_PRICE_IDS } from "@/lib/stripe";
 
 const bodySchema = z.object({
-  plan: z.enum(["standard", "premium"]),
+  plan: z.enum(["light", "standard", "premium"]),
 });
 
 export async function POST(req: NextRequest) {

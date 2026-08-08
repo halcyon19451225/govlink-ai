@@ -76,6 +76,10 @@ export default function OrdoKnowledgePage() {
   // docId → コンパイル進捗（タイムライン表示用）
   const [compileStates, setCompileStates] = useState<Record<string, CompileState>>({});
   const [timelineDocId, setTimelineDocId] = useState<string | null>(null);
+  // 編纂完了時にインクリメントし、辞書ビューアの再取得をトリガーする
+  const [dictRefreshKey, setDictRefreshKey] = useState(0);
+  // ドキュメント一覧: 直近5件のみ表示し、残りは折りたたむ
+  const [showAllDocs, setShowAllDocs] = useState(false);
 
   const fetchCategories = useCallback(async () => {
     const res = await fetch("/api/ordo-admin/knowledge/categories");
@@ -119,6 +123,8 @@ export default function OrdoKnowledgePage() {
       if (state.done || state.error) {
         setProcessing((s) => { const n = new Set(s); n.delete(docId); return n; });
         void fetchDocs();
+        // 編纂成功時は辞書ビューアを再取得させる
+        if (state.done) setDictRefreshKey((k) => k + 1);
       }
     };
 
@@ -197,14 +203,16 @@ export default function OrdoKnowledgePage() {
                 {docs.length}件
               </span>
             </h2>
-            <button
-              onClick={() => setUploadModal(true)}
-              disabled={!selectedCategoryId}
-              className="px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-40"
-              style={{ background: "var(--accent)", color: "#fff" }}
-            >
-              ＋ ドキュメントをアップロード
-            </button>
+            <div className="neu-button-wrap">
+              <button
+                onClick={() => setUploadModal(true)}
+                disabled={!selectedCategoryId}
+                className="neu-button-primary px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)" }}
+              >
+                ＋ ドキュメントをアップロード
+              </button>
+            </div>
           </div>
 
           <div className="glass-card rounded-2xl overflow-hidden">
@@ -213,8 +221,9 @@ export default function OrdoKnowledgePage() {
                 このカテゴリーにドキュメントがありません
               </div>
             ) : (
+              <div className={showAllDocs ? "max-h-[440px] overflow-y-auto" : ""}>
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10" style={{ background: "var(--bg-primary)" }}>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
                     {["タイトル", "タグ", "ステータス", "日付", "操作"].map((h) => (
                       <th key={h} className="px-3 py-3 text-left text-xs font-semibold"
@@ -223,7 +232,7 @@ export default function OrdoKnowledgePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {docs.map((doc) => {
+                  {(showAllDocs ? docs : docs.slice(0, 5)).map((doc) => {
                     const badge = (STATUS_BADGE[doc.status] ?? STATUS_BADGE["pending"])!;
                     return (
                       <tr key={doc.id} className="hover:bg-white/3 transition-colors"
@@ -287,6 +296,17 @@ export default function OrdoKnowledgePage() {
                                 再試行
                               </button>
                             )}
+                            {doc.status === "processing" && (
+                              <button
+                                onClick={async () => {
+                                  await fetch(`/api/ordo-admin/knowledge/documents/${doc.id}/reset`, { method: "POST" });
+                                  void fetchDocs();
+                                }}
+                                className="text-xs px-2 py-1 rounded-lg transition-colors"
+                                style={{ background: "rgba(245,158,11,0.12)", color: "#f59e0b" }}>
+                                リセット
+                              </button>
+                            )}
                             <button
                               onClick={() => setTimelineDocId(timelineDocId === doc.id ? null : doc.id)}
                               className="text-xs px-2 py-1 rounded-lg transition-colors"
@@ -300,8 +320,20 @@ export default function OrdoKnowledgePage() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
+
+          {/* 6件以上ある場合の折りたたみトグル */}
+          {docs.length > 5 && (
+            <button
+              onClick={() => setShowAllDocs((v) => !v)}
+              className="w-full text-xs py-2 rounded-xl transition-colors"
+              style={{ background: "rgba(99,102,241,0.08)", color: "var(--accent)", border: "1px solid rgba(99,102,241,0.15)" }}
+            >
+              {showAllDocs ? "折りたたむ（直近5件のみ表示）" : `他 ${docs.length - 5} 件を表示`}
+            </button>
+          )}
 
           {/* タイムラインパネル */}
           {timelineDocId && (() => {
@@ -322,6 +354,7 @@ export default function OrdoKnowledgePage() {
         <KnowledgeDictViewer
           categoryId={selectedCategoryId}
           categoryName={selectedCategory?.name ?? null}
+          refreshKey={dictRefreshKey}
         />
       </div>
 
@@ -529,9 +562,11 @@ const CAT_COLOR: Record<string, string> = {
 function KnowledgeDictViewer({
   categoryId,
   categoryName,
+  refreshKey,
 }: {
   categoryId: string | null;
   categoryName: string | null;
+  refreshKey?: number;
 }) {
   const [dict, setDict] = useState<{ id: string | null; dict_data: DictData; version: number } | null>(null);
   const [allTags, setAllTags] = useState<KnowledgeTag[]>([]);
@@ -562,6 +597,12 @@ function KnowledgeDictViewer({
     void fetchDict();
     void fetchTags();
   }, [categoryId, fetchDict, fetchTags]);
+
+  // 編纂完了（refreshKey 変化）時に辞書を再取得（カテゴリ切替時の重複呼び出しは避ける）
+  useEffect(() => {
+    if (refreshKey === undefined || refreshKey === 0) return;
+    void fetchDict();
+  }, [refreshKey, fetchDict]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -1060,22 +1101,49 @@ function CompileTimeline({
     status: string;
     stalled?: boolean;
   } | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     const res = await fetch(`/api/ordo-admin/knowledge/documents/${doc.id}/status`);
+    // 404 や 5xx など非200はポーリング停止
+    if (!res.ok) {
+      stopPolling();
+      return;
+    }
     const json = await res.json() as { data: typeof statusData | null };
-    if (json.data) setStatusData(json.data);
-  }, [doc.id]);
+    if (json.data) {
+      setStatusData(json.data);
+      // processing 以外（pending/compiled/error）またはストール検知で停止。
+      // 「processing の間だけ続行」にすることで、リセット後の pending でも止まる。
+      if (json.data.status !== "processing" || json.data.stalled) {
+        stopPolling();
+      }
+    }
+  }, [doc.id, stopPolling]);
 
   useEffect(() => {
     void fetchStatus();
-    // 処理中ならポーリング
-    const interval = setInterval(() => {
-      if (doc.status === "processing") void fetchStatus();
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [doc.status, fetchStatus]);
+    intervalRef.current = setInterval(() => { void fetchStatus(); }, 2000);
+    return () => stopPolling();
+  }, [fetchStatus, stopPolling]);
 
+  // compileState が終端になったタイミングでも停止
+  useEffect(() => {
+    if (compileState?.done || compileState?.error) {
+      stopPolling();
+    }
+  }, [compileState?.done, compileState?.error, stopPolling]);
+
+  const isCompiled = doc.status === "compiled" || compileState?.done === true || statusData?.status === "compiled";
+  const isError = doc.status === "error" || !!compileState?.error || statusData?.status === "error";
   const progress = compileState?.progress ?? statusData?.processing_progress ?? 0;
   const currentStep = compileState?.step ?? statusData?.processing_step ?? "upload";
   const logs = statusData?.processing_log ?? [];
@@ -1085,68 +1153,137 @@ function CompileTimeline({
   const estSecs = doc.file_size_bytes ? estimateProcessingSeconds(doc.file_size_bytes) : null;
   const estMins = estSecs ? Math.ceil(estSecs / 60) : null;
 
+  // 横型ステップバー用のインデックス
+  const stepIdx = isCompiled
+    ? STEP_ORDER.length
+    : STEP_ORDER.indexOf(currentStep);
+
   return (
     <div
       className="glass-card rounded-2xl p-5 space-y-4"
       style={{ border: "1px solid var(--border)" }}
     >
+      {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
             {doc.title} — 編纂タイムライン
           </p>
-          {estMins && doc.status === "processing" && (
+          {estMins && !isCompiled && !isError && (
             <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
               処理目安: 約{estMins}分
             </p>
           )}
         </div>
-        <button onClick={onClose} style={{ color: "var(--text-secondary)" }}>✕</button>
+        <button onClick={onClose} className="text-lg leading-none" style={{ color: "var(--text-secondary)" }}>✕</button>
       </div>
 
-      {/* ステップ進行バー */}
-      <div className="flex items-center gap-1">
-        {STEP_ORDER.map((s, i) => {
-          const stepIdx = STEP_ORDER.indexOf(currentStep);
-          const isDone = i < stepIdx || doc.status === "compiled";
-          const isCurrent = s === currentStep && doc.status !== "compiled";
-          return (
-            <div key={s} className="flex items-center gap-1 flex-1 min-w-0">
-              <div
-                className={`h-1.5 rounded-full flex-1 transition-all ${isCurrent ? "animate-pulse" : ""}`}
-                style={{
-                  background: isDone
-                    ? "#10b981"
-                    : isCurrent
-                    ? "var(--accent)"
-                    : "rgba(255,255,255,0.08)",
-                }}
-              />
-              <span
-                className="text-[9px] shrink-0 whitespace-nowrap"
-                style={{ color: isDone || isCurrent ? "var(--text-primary)" : "var(--text-secondary)" }}
-              >
-                {STEP_LABELS[s] ?? s}
-              </span>
-            </div>
-          );
-        })}
+      {/* ── 処理中インジケータ（辞書を生成しています + 波打つドット） ── */}
+      {!isCompiled && !isError && !stalled && (
+        <div
+          className="flex items-center justify-center gap-3 rounded-xl px-4 py-3"
+          style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)" }}
+        >
+          <span className="text-sm font-semibold" style={{ color: "#3b82f6" }}>
+            辞書を生成しています
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="wave-dot" style={{ animationDelay: "0s" }} />
+            <span className="wave-dot" style={{ animationDelay: "0.15s" }} />
+            <span className="wave-dot" style={{ animationDelay: "0.3s" }} />
+          </span>
+        </div>
+      )}
+
+      {/* ── 完了メッセージ ── */}
+      {isCompiled && (
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{ background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.3)" }}
+        >
+          <span style={{ fontSize: 20 }}>✅</span>
+          <p className="text-sm font-semibold" style={{ color: "#10b981" }}>
+            ナレッジの登録を完了しました。
+          </p>
+        </div>
+      )}
+
+      {/* ── 横型ステップバー ── */}
+      <div className="relative">
+        {/* 背景ライン */}
+        <div
+          className="absolute top-3 left-0 right-0 h-0.5 mx-4"
+          style={{ background: "rgba(255,255,255,0.1)" }}
+        />
+        {/* 完了ライン（進捗分だけ緑） */}
+        <div
+          className="absolute top-3 left-0 h-0.5 mx-4 transition-all duration-700"
+          style={{
+            width: stepIdx > 0
+              ? `calc(${((stepIdx - 1) / (STEP_ORDER.length - 1)) * 100}% * ${STEP_ORDER.length - 1} / ${STEP_ORDER.length - 1})`
+              : "0%",
+            background: isError ? "#ef4444" : "#10b981",
+            // left を考慮: flex 均等幅
+            left: `calc(4px + (100% - 8px) / ${STEP_ORDER.length - 1} * 0)`,
+            maxWidth: `calc(((100% - 8px) / ${STEP_ORDER.length - 1}) * ${Math.max(0, stepIdx - 1)})`,
+          }}
+        />
+        {/* ドット + ラベル */}
+        <div className="relative flex justify-between">
+          {STEP_ORDER.map((s, i) => {
+            const done = i < stepIdx;
+            const current = i === stepIdx && !isCompiled;
+            return (
+              <div key={s} className="flex flex-col items-center gap-1.5" style={{ minWidth: 0 }}>
+                {/* ドット */}
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-500 ${current ? "animate-pulse" : ""}`}
+                  style={{
+                    background: done
+                      ? isError && i === stepIdx - 1 ? "#ef4444" : "#10b981"
+                      : current
+                      ? isError ? "#ef4444" : "var(--accent)"
+                      : "rgba(255,255,255,0.1)",
+                    color: done || current ? "#fff" : "var(--text-secondary)",
+                    border: `2px solid ${done ? (isError && i === stepIdx - 1 ? "#ef4444" : "#10b981") : current ? (isError ? "#ef4444" : "var(--accent)") : "rgba(255,255,255,0.15)"}`,
+                    zIndex: 1,
+                  }}
+                >
+                  {done ? "✓" : i + 1}
+                </div>
+                {/* ラベル */}
+                <span
+                  className="text-[10px] text-center leading-tight"
+                  style={{
+                    color: done || current ? "var(--text-primary)" : "var(--text-secondary)",
+                    maxWidth: 52,
+                    wordBreak: "keep-all",
+                  }}
+                >
+                  {STEP_LABELS[s] ?? s}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* プログレスバー */}
-      <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${progress}%`,
-            background: doc.status === "error" ? "#ef4444" : doc.status === "compiled" ? "#10b981" : "var(--accent)",
-          }}
-        />
+      <div>
+        <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${progress}%`,
+              background: isError ? "#ef4444" : isCompiled ? "#10b981" : "var(--accent)",
+            }}
+          />
+        </div>
+        <p className="text-[11px] text-right mt-0.5" style={{ color: "var(--text-secondary)" }}>{progress}%</p>
       </div>
-      <p className="text-xs text-right -mt-2" style={{ color: "var(--text-secondary)" }}>{progress}%</p>
 
       {/* ストール警告 */}
-      {stalled && !error && (
+      {stalled && !error && !isCompiled && (
         <div
           className="rounded-xl px-4 py-3 space-y-2"
           style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)" }}
@@ -1165,7 +1302,7 @@ function CompileTimeline({
       )}
 
       {/* エラー表示 */}
-      {(doc.status === "error" || error) && (
+      {isError && (
         <div
           className="rounded-xl px-4 py-3 space-y-2"
           style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}
@@ -1181,30 +1318,41 @@ function CompileTimeline({
         </div>
       )}
 
-      {/* 処理ログ */}
+      {/* ── 処理ログ（折りたたみ） ── */}
       {logs.length > 0 && (
-        <div className="space-y-1 max-h-48 overflow-y-auto">
-          <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--text-secondary)" }}>処理ログ</p>
-          {logs.map((log, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <span
-                className="text-[10px] px-1.5 py-0.5 rounded shrink-0 mt-0.5"
-                style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}
-              >
-                {STEP_LABELS[log.step] ?? log.step}
-              </span>
-              <span className="text-xs flex-1" style={{ color: "var(--text-primary)" }}>{log.message}</span>
-              <span className="text-[10px] shrink-0" style={{ color: "var(--text-secondary)" }}>
-                {new Date(log.at).toLocaleTimeString("ja-JP")}
-              </span>
-            </div>
-          ))}
-          {doc.status === "compiled" && (
-            <div className="flex items-center gap-2 pt-1">
-              <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
-                完了
-              </span>
-              <span className="text-xs" style={{ color: "#10b981" }}>編纂が完了しました</span>
+        <div>
+          <button
+            type="button"
+            onClick={() => setLogsOpen((v) => !v)}
+            className="flex items-center gap-1.5 text-xs transition-colors"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            <span
+              className="inline-block transition-transform duration-200"
+              style={{ transform: logsOpen ? "rotate(90deg)" : "rotate(0deg)", fontSize: 10 }}
+            >
+              ▶
+            </span>
+            処理ログを{logsOpen ? "非表示" : "表示"}（{logs.length}件）
+          </button>
+
+          {logsOpen && (
+            <div className="mt-2 space-y-1 max-h-48 overflow-y-auto rounded-xl px-3 py-2"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)" }}>
+              {logs.map((log, i) => (
+                <div key={i} className="flex items-start gap-2 py-0.5">
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded shrink-0 mt-0.5"
+                    style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}
+                  >
+                    {STEP_LABELS[log.step] ?? log.step}
+                  </span>
+                  <span className="text-xs flex-1" style={{ color: "var(--text-primary)" }}>{log.message}</span>
+                  <span className="text-[10px] shrink-0" style={{ color: "var(--text-secondary)" }}>
+                    {new Date(log.at).toLocaleTimeString("ja-JP")}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1247,7 +1395,7 @@ function UploadModal({
       return "対応形式はPDF・Word・テキストのみです";
     }
     if (f.size > MAX_FILE_SIZE_BYTES) {
-      return `ファイルサイズが上限(20MB)を超えています（現在: ${formatBytes(f.size)}）`;
+      return `ファイルサイズが大きすぎます（現在: ${formatBytes(f.size)}）`;
     }
     return null;
   };
@@ -1290,138 +1438,191 @@ function UploadModal({
     }
   };
 
+  // 送信可能条件（未達ならボタンをグレーアウト）
+  const canSubmit =
+    !uploading &&
+    !fileError &&
+    !!file &&
+    !!title.trim() &&
+    !!categoryId &&
+    selectedTagIds.size > 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
-      <div className="glass-card rounded-2xl p-6 w-full max-w-lg mx-4 space-y-4 neu-card max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
+      {/* モーダル: flex-col で ヘッダー固定 / コンテンツスクロール / フッター固定
+          白いぼかし（neu-card の外側ライトシャドウ）は使わずソリッド背景にする */}
+      <div className="rounded-2xl w-full max-w-lg mx-4 flex flex-col"
+        style={{
+          maxHeight: "90vh",
+          background: "var(--bg-primary)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.45)",
+        }}>
+
+        {/* ── ヘッダー（固定） ── */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 flex-shrink-0"
+          style={{ borderBottom: "1px solid var(--border)" }}>
           <h3 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
             ドキュメントをアップロード
           </h3>
-          <button onClick={onClose} style={{ color: "var(--text-secondary)" }}>✕</button>
+          <button onClick={onClose} className="text-lg leading-none" style={{ color: "var(--text-secondary)" }}>✕</button>
         </div>
 
-        <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">
-          {/* タイトル */}
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
-              タイトル <span className="text-red-400">*</span>
-            </label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-xl px-3 py-2 text-sm outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
-              placeholder="例: 介護保険法（令和6年改正版）"
-            />
-          </div>
+        {/* ── スクロール可能なコンテンツ ── */}
+        <form onSubmit={(e) => { void handleSubmit(e); }} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
 
-          {/* 説明 */}
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>説明</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="w-full rounded-xl px-3 py-2 text-sm outline-none resize-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
-              placeholder="文書の概要（任意）"
-            />
-          </div>
+            {/* タイトル */}
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                タイトル <span className="text-red-400">*</span>
+              </label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                placeholder="例: 介護保険法（令和6年改正版）"
+              />
+            </div>
 
-          {/* ファイル選択 */}
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
-              ファイル <span className="text-red-400">*</span>
-            </label>
-            <div
-              onClick={() => fileRef.current?.click()}
-              className="rounded-xl px-3 py-4 text-sm text-center cursor-pointer hover:bg-white/5 transition-colors"
-              style={{
-                border: `1px dashed ${fileError ? "#ef4444" : "var(--border)"}`,
-                color: "var(--text-secondary)",
-              }}
-            >
-              {file ? (
-                <span style={{ color: "var(--text-primary)" }}>{file.name} ({formatBytes(file.size)})</span>
+            {/* 説明 */}
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>説明</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                className="w-full rounded-xl px-3 py-2 text-sm outline-none resize-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                placeholder="文書の概要（任意）"
+              />
+            </div>
+
+            {/* ファイル選択 */}
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
+                ファイル <span className="text-red-400">*</span>
+              </label>
+              <div
+                onClick={() => fileRef.current?.click()}
+                className="rounded-xl px-3 py-4 text-sm text-center cursor-pointer hover:bg-white/5 transition-colors"
+                style={{
+                  border: `1px dashed ${fileError ? "#ef4444" : "var(--border)"}`,
+                  color: "var(--text-secondary)",
+                }}
+              >
+                {file ? (
+                  <span style={{ color: "var(--text-primary)" }}>{file.name} ({formatBytes(file.size)})</span>
+                ) : (
+                  "PDF / Word / テキストファイルを選択"
+                )}
+              </div>
+              <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>
+                対応形式: PDF / Word / テキスト
+                {file && !fileError && (
+                  <span className="ml-2" style={{ color: "var(--accent)" }}>
+                    処理目安: 約{Math.ceil(estimateProcessingSeconds(file.size) / 60)}分
+                  </span>
+                )}
+              </p>
+              {fileError && <p className="text-xs text-red-400 mt-1">{fileError}</p>}
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                className="hidden"
+                onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+              />
+            </div>
+
+            {/* PDCA工程タグ */}
+            <div>
+              <label className="block text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>
+                PDCA工程タグ <span className="text-red-400">*</span>
+                <span className="ml-1 font-normal">（1つ以上選択）</span>
+              </label>
+              {!tagData ? (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>タグを読み込み中...</p>
               ) : (
-                "PDF / Word / テキストファイルを選択"
+                <div className="space-y-3">
+                  {PDCA_ORDER.filter((phase) => (tagData.grouped[phase]?.length ?? 0) > 0).map((phase) => (
+                    <div key={phase}>
+                      <p className="text-[11px] font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>
+                        {PDCA_LABEL[phase] ?? phase}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {(tagData.grouped[phase] ?? []).map((tag) => {
+                          const checked = selectedTagIds.has(tag.id);
+                          return (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              onClick={() => toggleTag(tag.id)}
+                              className="text-xs px-2.5 py-1 rounded-full transition-all"
+                              style={
+                                checked
+                                  ? { background: "var(--accent)", color: "#fff" }
+                                  : { background: "rgba(255,255,255,0.05)", color: "var(--text-secondary)", border: "1px solid var(--border)" }
+                              }
+                            >
+                              {tag.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>
-              対応形式: PDF / Word / テキスト　／　上限: 20MB
-              {file && !fileError && (
-                <span className="ml-2" style={{ color: "var(--accent)" }}>
-                  処理目安: 約{Math.ceil(estimateProcessingSeconds(file.size) / 60)}分
-                </span>
-              )}
-            </p>
-            {fileError && <p className="text-xs text-red-400 mt-1">{fileError}</p>}
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.docx,.txt"
-              className="hidden"
-              onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
-            />
+
+            {error && <p className="text-xs text-red-400">{error}</p>}
           </div>
 
-          {/* PDCA工程タグ */}
-          <div>
-            <label className="block text-xs font-medium mb-2" style={{ color: "var(--text-secondary)" }}>
-              PDCA工程タグ <span className="text-red-400">*</span>
-              <span className="ml-1 font-normal">（1つ以上選択）</span>
-            </label>
-            {!tagData ? (
-              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>タグを読み込み中...</p>
-            ) : (
-              <div className="space-y-3">
-                {PDCA_ORDER.filter((phase) => (tagData.grouped[phase]?.length ?? 0) > 0).map((phase) => (
-                  <div key={phase}>
-                    <p className="text-[11px] font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>
-                      {PDCA_LABEL[phase] ?? phase}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {(tagData.grouped[phase] ?? []).map((tag) => {
-                        const checked = selectedTagIds.has(tag.id);
-                        return (
-                          <button
-                            key={tag.id}
-                            type="button"
-                            onClick={() => toggleTag(tag.id)}
-                            className="text-xs px-2.5 py-1 rounded-full transition-all"
-                            style={
-                              checked
-                                ? { background: "var(--accent)", color: "#fff" }
-                                : { background: "rgba(255,255,255,0.05)", color: "var(--text-secondary)", border: "1px solid var(--border)" }
-                            }
-                          >
-                            {tag.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* ── フッター（常時表示） ── */}
+          <div className="px-6 py-4 flex-shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
+            {/* 未達要件のヒント */}
+            {!canSubmit && !uploading && (
+              <p className="text-[11px] mb-2 text-center" style={{ color: "var(--text-secondary)" }}>
+                {!title.trim()
+                  ? "タイトルを入力してください"
+                  : !file
+                    ? "ファイルを選択してください"
+                    : fileError
+                      ? "ファイルを確認してください"
+                      : selectedTagIds.size === 0
+                        ? "PDCA工程タグを1つ以上選択してください"
+                        : ""}
+              </p>
             )}
-          </div>
-
-          {error && <p className="text-xs text-red-400">{error}</p>}
-
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose}
-              className="flex-1 py-2 rounded-xl text-sm transition-colors"
-              style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-secondary)" }}>
-              キャンセル
-            </button>
-            <button
-              type="submit"
-              disabled={uploading || !!fileError}
-              className="flex-1 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
-              style={{ background: "var(--accent)", color: "#fff" }}
-            >
-              {uploading ? "アップロード中..." : "アップロード"}
-            </button>
+            <div className="flex gap-3 items-stretch">
+              <button type="button" onClick={onClose}
+                className="flex-1 py-2.5 rounded-xl text-sm transition-colors"
+                style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+                キャンセル
+              </button>
+              {canSubmit ? (
+                <div className="neu-button-wrap flex-1">
+                  <button
+                    type="submit"
+                    className="neu-button-primary w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90"
+                    style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)" }}
+                  >
+                    {uploading ? "アップロード中..." : "アップロード"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="submit"
+                  disabled
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold cursor-not-allowed"
+                  style={{ background: "var(--neu-bg)", color: "var(--text-secondary)", border: "1px solid var(--border)", opacity: 0.6 }}
+                >
+                  {uploading ? "アップロード中..." : "アップロード"}
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

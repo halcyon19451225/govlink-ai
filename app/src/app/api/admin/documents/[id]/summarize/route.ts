@@ -2,12 +2,13 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getS3 } from "@/lib/storage";
 import Anthropic from "@anthropic-ai/sdk";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 
-const s3 = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" });
+const s3 = getS3();
 
 const SYSTEM_PROMPT = `あなたは日本の地方自治体の政策担当者です。
 アップロードされた文書を以下の観点で要約してください:

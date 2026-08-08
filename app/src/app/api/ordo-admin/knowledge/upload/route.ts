@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { uploadToStorage } from "@/lib/supabase-storage";
+import { uploadToStorage } from "@/lib/storage";
 import {
   MAX_FILE_SIZE_BYTES,
   ALLOWED_FILE_TYPES,
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         data: null,
-        error: `ファイルサイズが上限(20MB)を超えています（現在: ${formatBytes(file.size)}）`,
+        error: `ファイルサイズが大きすぎます（現在: ${formatBytes(file.size)}）`,
       },
       { status: 400 },
     );

@@ -8,7 +8,7 @@ import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
 import { requireModulePermission } from "@/lib/permissions";
-import { downloadFromStorage } from "@/lib/supabase-storage";
+import { downloadFromStorage } from "@/lib/storage";
 
 type Params = { params: { id: string } };
 

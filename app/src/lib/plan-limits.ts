@@ -9,6 +9,14 @@ export const PLAN_LIMITS = {
     invoice_billing: false,
     trial_days: 30,
   },
+  light: {
+    projects: 3,
+    users: 5,
+    ai_calls_per_month: 50,
+    template_sharing: false,
+    invoice_billing: true,
+    trial_days: 0,
+  },
   standard: {
     projects: 10,
     users: 10,

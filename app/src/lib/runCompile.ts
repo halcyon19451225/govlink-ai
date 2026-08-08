@@ -68,11 +68,17 @@ async function pollStatus(
         const res = await fetch(
           `/api/ordo-admin/knowledge/documents/${documentId}/status`,
         );
+
+        // 非200（404など）は即終了
+        if (!res.ok) {
+          resolve();
+          return;
+        }
+
         const json = await res.json() as { data: StatusResponse | null };
         const data = json.data;
 
         if (!data) {
-          onProgress({ step: "unknown", progress: 0, done: false, error: "ステータス取得に失敗しました" });
           resolve();
           return;
         }
@@ -86,12 +92,17 @@ async function pollStatus(
           stalled: data.stalled,
         });
 
-        if (data.status === "compiled" || data.status === "error") {
+        // processing 以外（pending/compiled/error）またはストール検知で停止。
+        // 「processing の間だけ続行」とすることで、リセット後の pending でも
+        // 確実にループが止まる。
+        if (data.status !== "processing" || data.stalled) {
           resolve();
           return;
         }
       } catch (e) {
         console.error("[pollStatus] error:", e);
+        resolve(); // 例外でも無限ループを防ぐ
+        return;
       }
 
       setTimeout(() => { void tick(); }, POLL_INTERVAL_MS);

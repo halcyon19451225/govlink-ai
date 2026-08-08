@@ -6,8 +6,9 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 const PLAN_INFO = {
-  standard: { name: "Standard", price: 30000, tax: 3000, total: 33000 },
-  premium:  { name: "Premium",  price: 80000, tax: 8000, total: 88000 },
+  light:    { name: "Light",    price: 50000,  tax: 5000,  total: 55000 },
+  standard: { name: "Standard", price: 100000, tax: 10000, total: 110000 },
+  premium:  { name: "Premium",  price: 200000, tax: 20000, total: 220000 },
 };
 
 const inputClass =
@@ -16,9 +17,9 @@ const inputStyle = { background: "var(--bg-secondary)", borderColor: "var(--bord
 
 function InvoiceRequestForm() {
   const searchParams = useSearchParams();
-  const planParam = searchParams.get("plan") as "standard" | "premium" | null;
+  const planParam = searchParams.get("plan") as "light" | "standard" | "premium" | null;
 
-  const [plan, setPlan] = useState<"standard" | "premium">(planParam === "premium" ? "premium" : "standard");
+  const [plan, setPlan] = useState<"light" | "standard" | "premium">(planParam ?? "standard");
   const [municipalityName, setMunicipalityName] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -143,7 +144,7 @@ function InvoiceRequestForm() {
                 プラン選択 <span className="text-red-400">*</span>
               </label>
               <div className="grid grid-cols-2 gap-3">
-                {(["standard", "premium"] as const).map((p) => (
+                {(["light", "standard", "premium"] as const).map((p) => (
                   <button key={p} type="button" onClick={() => setPlan(p)}
                     className="p-4 rounded-xl border text-left transition-all duration-200"
                     style={{

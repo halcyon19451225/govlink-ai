@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { uploadToStorage, getPublicUrl } from "@/lib/supabase-storage";
+import { uploadToStorage, getPublicUrl } from "@/lib/storage";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB

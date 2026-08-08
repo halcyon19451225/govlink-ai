@@ -6,7 +6,7 @@ import { query } from "@/lib/db";
 import { sendMail } from "@/lib/mailer";
 
 const bodySchema = z.object({
-  plan: z.enum(["standard", "premium"]),
+  plan: z.enum(["light", "standard", "premium"]),
   municipalityName: z.string().min(1, "自治体名・法人名は必須です"),
   contactName: z.string().min(1, "担当者名は必須です"),
   contactEmail: z.string().email("メールアドレスの形式が正しくありません"),

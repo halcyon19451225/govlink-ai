@@ -13,6 +13,7 @@ export function getStripe(): Stripe {
 }
 
 export const STRIPE_PRICE_IDS: Record<string, string | undefined> = {
+  light: process.env.STRIPE_LIGHT_PRICE_ID,
   standard: process.env.STRIPE_STANDARD_PRICE_ID,
   premium: process.env.STRIPE_PREMIUM_PRICE_ID,
 };

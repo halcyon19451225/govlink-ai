@@ -41,15 +41,17 @@ export async function GET(
 
   const row = rows[0]!;
 
-  // ストール検知: processing 中かつ最終 ping が 3分以上前
+  // ストール検知: processing 中かつ最終 ping が 3分以上前、または一度もpingなし
   let stalled = false;
-  if (row.status === "processing" && row.last_chain_ping_at) {
-    const pingAge = Date.now() - new Date(row.last_chain_ping_at).getTime();
-    if (pingAge > STALL_THRESHOLD_MS) {
-      stalled = true;
+  if (row.status === "processing") {
+    if (!row.last_chain_ping_at) {
+      stalled = true; // 一度もpingなし = チェーンが起動していない
+    } else {
+      const pingAge = Date.now() - new Date(row.last_chain_ping_at).getTime();
+      if (pingAge > STALL_THRESHOLD_MS) stalled = true;
     }
   }
 
-  const { last_chain_ping_at: _, ...rest } = row;
+  const { last_chain_ping_at: _, ...rest } = row; // eslint-disable-line @typescript-eslint/no-unused-vars
   return NextResponse.json({ data: { ...rest, stalled }, error: null });
 }

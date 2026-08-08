@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { uploadToStorage } from "@/lib/supabase-storage";
+import { uploadToStorage } from "@/lib/storage";
 
 function getFileType(filename: string): string {
   const ext = filename.toLowerCase().split(".").pop() ?? "";

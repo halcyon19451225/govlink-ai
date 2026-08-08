@@ -3,12 +3,13 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getS3 } from "@/lib/storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 
-const s3 = new S3Client({ region: process.env.AWS_REGION ?? "ap-northeast-1" });
+const s3 = getS3();
 
 const bodySchema = z.object({
   projectId: z.string().uuid("project_id が不正です"),

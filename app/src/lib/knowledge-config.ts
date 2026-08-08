@@ -1,4 +1,4 @@
-export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+export const MAX_FILE_SIZE_BYTES = Number.MAX_SAFE_INTEGER; // 上限なし
 export const ALLOWED_FILE_TYPES = ["pdf", "docx", "txt"] as const;
 export const ALLOWED_MIME = [
   "application/pdf",

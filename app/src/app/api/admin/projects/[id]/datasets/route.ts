@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
-import { uploadToStorage } from "@/lib/supabase-storage";
+import { uploadToStorage } from "@/lib/storage";
 
 type Params = { params: { id: string } };
 

@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { downloadFromStorage } from "@/lib/supabase-storage";
+import { downloadFromStorage } from "@/lib/storage";
 import { requireModulePermission } from "@/lib/permissions";
 
 type Params = { params: { id: string } };

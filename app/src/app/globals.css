@@ -464,3 +464,17 @@ body {
   0%   { transform: translate(0px, 0px) scale(1); }
   100% { transform: translate(-40px, 50px) scale(1.05); }
 }
+
+/* 辞書生成中の波打つドットアニメーション */
+@keyframes wave-dot {
+  0%, 60%, 100% { transform: translateY(0);     opacity: 0.35; }
+  30%           { transform: translateY(-7px);  opacity: 1; }
+}
+.wave-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #3b82f6;
+  animation: wave-dot 1.2s ease-in-out infinite;
+}

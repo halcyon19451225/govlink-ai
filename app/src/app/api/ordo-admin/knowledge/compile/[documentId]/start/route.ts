@@ -50,7 +50,7 @@ export async function POST(
   );
 
   // 最初のステップ（extract）を fire-and-forget で起動
-  await triggerNextStep(documentId, "extract", undefined, chainToken);
+  triggerNextStep(documentId, "extract", undefined, chainToken);
 
   return NextResponse.json({
     ok: true,

@@ -9,6 +9,7 @@ import { type Plan } from "@/lib/plan-limits";
 
 const PLAN_LABELS: Record<Plan, string> = {
   free: "Free（試用）",
+  light: "Light",
   standard: "Standard",
   premium: "Premium",
 };
