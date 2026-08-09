@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import { getOrgPlan } from "@/lib/org-license";
 
 export const PLAN_LIMITS = {
   free: {
@@ -43,6 +44,8 @@ interface SubscriptionRow {
   trial_ends_at: string | null;
 }
 
+const PLAN_RANK: Record<Plan, number> = { free: 0, light: 1, standard: 2, premium: 3 };
+
 async function getActivePlan(municipalityId: string): Promise<Plan> {
   const rows = await query<SubscriptionRow>(
     `SELECT plan, status, trial_ends_at::text
@@ -50,15 +53,28 @@ async function getActivePlan(municipalityId: string): Promise<Plan> {
     [municipalityId],
   );
   const sub = rows[0];
-  if (!sub) return "free";
 
-  // trial期間切れはfreeと同等に扱う
-  if (sub.status === "trialing" && sub.trial_ends_at) {
-    if (new Date(sub.trial_ends_at) < new Date()) return "free";
+  let stripePlan: Plan = "free";
+  if (sub) {
+    const trialExpired =
+      sub.status === "trialing" &&
+      !!sub.trial_ends_at &&
+      new Date(sub.trial_ends_at) < new Date();
+    const inactive = sub.status === "canceled" || sub.status === "past_due";
+    if (!trialExpired && !inactive) {
+      stripePlan = (sub.plan as Plan) ?? "free";
+    }
   }
-  if (sub.status === "canceled" || sub.status === "past_due") return "free";
 
-  return (sub.plan as Plan) ?? "free";
+  // 組織コード契約（Ordo 台帳・請求書払い等）。Stripe 契約と強い方を採用する。
+  let orgPlan: Plan = "free";
+  try {
+    orgPlan = (await getOrgPlan(municipalityId)) ?? "free";
+  } catch {
+    /* Ordo 照会失敗時は Stripe 契約のみで判定 */
+  }
+
+  return PLAN_RANK[orgPlan] > PLAN_RANK[stripePlan] ? orgPlan : stripePlan;
 }
 
 export async function checkLimit(

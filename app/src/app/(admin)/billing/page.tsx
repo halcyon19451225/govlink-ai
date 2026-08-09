@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic"
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import BackButton from "../../../components/BackButton";
+import OrgCodeSection from "./OrgCodeSection";
 import { type Plan } from "@/lib/plan-limits";
 
 const PLAN_LABELS: Record<Plan, string> = {
@@ -210,6 +211,9 @@ export default function BillingPage() {
               </Link>
             </div>
           )}
+
+          {/* 組織コード連携（Ordo 契約） */}
+          <OrgCodeSection />
 
           {/* Invoice history */}
           <section>
