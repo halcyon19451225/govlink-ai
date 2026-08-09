@@ -111,9 +111,9 @@ function InvoiceRequestForm() {
       <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="neu-button-wrap">
-            <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
-            style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
-            Sinap-sys
+            <Link href="/" className="flex items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-coe.svg" alt="Coe" style={{ height: 44, width: "auto" }} />
           </Link>
           </div>
           <Link href="/pricing" className="text-sm text-slate-500 hover:text-slate-300 transition-colors duration-200">

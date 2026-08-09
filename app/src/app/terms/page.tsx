@@ -26,9 +26,9 @@ export default function TermsPage() {
       <header className="border-b" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="neu-button-wrap">
-            <Link href="/" className="text-xl font-bold tracking-tight bg-clip-text text-transparent neu-button-primary"
-            style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
-            Sinap-sys
+            <Link href="/" className="flex items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-coe.svg" alt="Coe" style={{ height: 44, width: "auto" }} />
           </Link>
           </div>
           <div className="flex gap-4 text-sm">
@@ -45,12 +45,12 @@ export default function TermsPage() {
         <div className="space-y-10 text-slate-300 leading-relaxed text-sm">
 
           <Section title="第1条（適用）">
-            <p>本利用規約（以下「本規約」）は、株式会社 Ordo（以下「当社」）が提供するAI政策管理SaaS「Sinap-sys」（以下「本サービス」）の利用に関する条件を定めるものです。利用者が本サービスに登録することをもって、本規約に同意したものとみなします。</p>
+            <p>本利用規約（以下「本規約」）は、株式会社 Ordo（以下「当社」）が提供するAI政策管理SaaS「Coe」（以下「本サービス」）の利用に関する条件を定めるものです。利用者が本サービスに登録することをもって、本規約に同意したものとみなします。</p>
           </Section>
 
           <Section title="第2条（定義）">
             <ul className="list-disc pl-5 space-y-1.5">
-              <li>「本サービス」とは、当社が提供するAI政策管理SaaS「Sinap-sys」をいいます。</li>
+              <li>「本サービス」とは、当社が提供するAI政策管理SaaS「Coe」をいいます。</li>
               <li>「利用者」とは、本サービスを利用するために登録した自治体・法人・個人をいいます。</li>
               <li>「コンテンツ」とは、利用者が本サービスに登録・入力したデータ、文書、KPI等の情報をいいます。</li>
               <li>「プラン」とは、Free・Standard・Premiumの各利用プランをいいます。</li>

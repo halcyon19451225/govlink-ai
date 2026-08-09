@@ -8,7 +8,7 @@ export default function Footer() {
     >
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="flex flex-wrap gap-6 items-center justify-between text-xs" style={{ color: "#94a3b8" }}>
-          <span className="font-medium">© 2025 株式会社 Ordo</span>
+          <span className="font-medium">© 2022 Ordo.Inc</span>
           <div className="flex flex-wrap gap-x-5 gap-y-2">
             <Link href="/terms" className="hover:text-slate-200 transition-colors duration-200">利用規約</Link>
             <Link href="/privacy" className="hover:text-slate-200 transition-colors duration-200">プライバシーポリシー</Link>
