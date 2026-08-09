@@ -46,7 +46,7 @@ interface SubscriptionRow {
 
 const PLAN_RANK: Record<Plan, number> = { free: 0, light: 1, standard: 2, premium: 3 };
 
-async function getActivePlan(municipalityId: string): Promise<Plan> {
+export async function getActivePlan(municipalityId: string): Promise<Plan> {
   const rows = await query<SubscriptionRow>(
     `SELECT plan, status, trial_ends_at::text
      FROM subscriptions WHERE municipality_id = $1`,

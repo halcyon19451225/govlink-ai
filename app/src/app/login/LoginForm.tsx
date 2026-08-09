@@ -330,6 +330,15 @@ export default function LoginForm({ providers }: Props) {
               ))}
             </div>
 
+            {/* 有償サービスの注記 */}
+            <p className="text-xs text-center" style={{ color: "var(--text-secondary)" }}>
+              Coe は有償サービスです。ご利用には有料プランの契約、または組織から発行された許諾コードが必要です（
+              <Link href="/pricing" className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200">
+                料金プラン
+              </Link>
+              ）。
+            </p>
+
             {/* 登録リンク */}
             <p className="text-xs text-center" style={{ color: "var(--text-secondary)" }}>
               アカウントをお持ちでない方は{" "}

@@ -102,13 +102,13 @@ export default function OrgCodeSection() {
         ) : (
           <>
             <p className="text-sm text-slate-400 mb-3">
-              組織契約（請求書払い等）をお持ちの場合は、担当者に配布された組織コードを入力すると契約プランが適用されます。
+              組織契約（請求書払い等）をお持ちの場合は、組織の担当者に発行された許諾コードを入力すると契約プランが適用されます。
             </p>
             <div className="flex gap-2 flex-wrap">
               <input
                 value={code}
                 maxLength={20}
-                placeholder="例: COE-XXXX-XXXX"
+                placeholder="例: COEM-XXXX-XXXX"
                 onChange={(e) => setCode(e.target.value)}
                 className="rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:border-cyan-500 transition-colors duration-200"
                 style={{ background: "var(--bg-input)", borderColor: "var(--border)", color: "var(--text-primary)" }}

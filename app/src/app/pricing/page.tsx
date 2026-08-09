@@ -78,7 +78,7 @@ const PLANS = [
 const FAQS = [
   {
     q: "試用期間はありますか？",
-    a: "アカウント登録後、30日間無料でお試しいただけます。クレジットカードの登録不要です。",
+    a: "無料プランはありません。導入前のデモ・トライアルをご希望の場合は、お問い合わせフォームからご相談ください。",
   },
   {
     q: "途中でプランを変更できますか？",
@@ -217,7 +217,7 @@ export default function PricingPage() {
                 className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 hover:opacity-90 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
               >
-                無料で始める
+                アカウント登録
               </Link>
             </div>
           </div>
@@ -296,7 +296,7 @@ export default function PricingPage() {
                     className="inline-block text-white font-bold px-8 py-3.5 rounded-xl text-sm transition-all duration-200 hover:opacity-90 hover:scale-105 neu-button-primary"
                     style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
                   >
-                    無料で始める →
+                    アカウント登録 →
                   </Link>
                 </div>
               </div>

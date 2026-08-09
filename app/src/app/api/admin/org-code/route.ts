@@ -88,12 +88,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: null, error: "この契約は現在有効ではありません。Ordo までお問い合わせください" }, { status: 400 });
   }
 
+  // 個人コードの失効・再発行が組織の紐づけに影響しないよう、親契約IDを保存する
+  const stored = lic.orgId ? `CUST:${lic.orgId}` : code;
   try {
     await query(
       `UPDATE municipalities
        SET org_code = $1, org_name = $2, org_linked_at = NOW()
        WHERE id = $3`,
-      [code, lic.orgName, ctx.municipalityId],
+      [stored, lic.orgName, ctx.municipalityId],
     );
   } catch (e) {
     if (isPgError(e) && e.code === PgErrorCode.UNIQUE_VIOLATION) {

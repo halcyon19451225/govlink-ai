@@ -152,7 +152,7 @@ export default function RegisterPage() {
             <Image src="/logo-coe.svg" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} />
           </Link>
           <p className="text-sm mt-2" style={{ color: "var(--text-secondary)" }}>
-            30日間無料でご利用いただけます
+            ご利用には有料プランの契約、または組織から発行された許諾コードが必要です
           </p>
         </div>
 
