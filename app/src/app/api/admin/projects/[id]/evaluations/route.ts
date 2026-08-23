@@ -8,6 +8,7 @@ import { query, queryOne } from "@/lib/db";
 import { recordArtifact, resolveArtifactIds } from "@/lib/modules/recordArtifact";
 import { ARTIFACT_TYPES } from "@/lib/modules/artifact-types";
 import { requireModulePermission } from "@/lib/permissions";
+import { aggregateRate, buildKpiSnapshot } from "@/lib/evaluation/snapshot";
 
 type Params = { params: { id: string } };
 
@@ -36,7 +37,15 @@ const efficiencyDetailSchema = z.object({
 });
 
 const bodySchema = z.object({
-  evaluation_tier: z.enum(["needs", "theory", "process", "outcome", "cost", "efficiency"]),
+  evaluation_tier: z.enum([
+    "needs", "theory", "process",
+    "outcome",                 // 後方互換
+    "outcome_initial",         // 短期アウトカム（概ね1年）
+    "outcome_intermediate",    // 中間アウトカム（2〜5年）
+    "outcome_long",            // 長期アウトカム（軌道の記録用）
+    "cost",                    // 後方互換
+    "efficiency",
+  ]),
   fiscal_year: z.number().int().optional().nullable(),
   status: z.enum(["draft", "in_review", "approved"]).default("draft"),
   result: z.string().optional().nullable(),
@@ -49,6 +58,10 @@ const bodySchema = z.object({
   flow_decision_path: z.any().optional().nullable(),
   kpi_ids: z.array(z.string().uuid()).optional().nullable(),
   logic_model_id: z.string().uuid().optional().nullable(),
+  // この評価が対象にした施策データセット（EBPM・E5）
+  measure_design_id: z.string().uuid().optional().nullable(),
+  // PDCAチェックポイント（029 で NULL 許容化。未指定は随時評価）
+  checkpoint_id: z.string().uuid().optional().nullable(),
   // efficiency tier の場合のみ参照（cost_efficiency_records へ連動）
   efficiency_detail: efficiencyDetailSchema.optional().nullable(),
 });
@@ -64,6 +77,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
             pe.achievement_rate::float, pe.findings, pe.success_factors, pe.barrier_factors,
             pe.improvement_actions, pe.next_steps, pe.flow_decision_path, pe.kpi_ids,
             pe.evaluated_by, pe.ai_commentary, pe.logic_model_id, pe.created_at::text,
+            pe.measure_design_id, md.title AS measure_title,
             json_build_object(
               'id', lm.id,
               'name', lm.name,
@@ -86,6 +100,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
             ) FILTER (WHERE cer.id IS NOT NULL) AS efficiency_detail
      FROM program_evaluations pe
      LEFT JOIN logic_models lm ON lm.id = pe.logic_model_id
+     LEFT JOIN measure_designs md ON md.id = pe.measure_design_id
      LEFT JOIN cost_efficiency_records cer ON cer.program_evaluation_id = pe.id
      WHERE pe.project_id = $1
      ORDER BY pe.fiscal_year, pe.created_at`,
@@ -118,13 +133,22 @@ export async function POST(req: NextRequest, { params }: Params) {
   const d = parsed.data;
   const kpiIds = d.kpi_ids && d.kpi_ids.length > 0 ? d.kpi_ids : null;
 
+  // 対象KPIの実績から到達度を自動算出する（C-2）。
+  // achievement_rate が明示されていればそれを尊重し、システム算定値は
+  // computed_achievement_rate に別途残す（どちらの数字かを後から区別できる）。
+  const kpiSnapshot = kpiIds ? await buildKpiSnapshot(params.id, kpiIds) : [];
+  const computedRate = aggregateRate(kpiSnapshot);
+  const effectiveRate = d.achievement_rate ?? (computedRate == null ? null : Math.max(0, Math.min(100, computedRate)));
+
   const row = await queryOne<{ id: string }>(
     `INSERT INTO program_evaluations
        (project_id, evaluation_tier, fiscal_year, status, result,
         achievement_rate, findings, success_factors, barrier_factors,
-        improvement_actions, next_steps, flow_decision_path, kpi_ids, logic_model_id)
+        improvement_actions, next_steps, flow_decision_path, kpi_ids, logic_model_id,
+        measure_design_id,
+        checkpoint_id, kpi_snapshot, computed_achievement_rate)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-             COALESCE($13::uuid[], '{}'::uuid[]), $14)
+             COALESCE($13::uuid[], '{}'::uuid[]), $14, $15, $16, $17::jsonb, $18)
      RETURNING id`,
     [
       params.id,
@@ -132,7 +156,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       d.fiscal_year ?? null,
       d.status,
       d.result ?? null,
-      d.achievement_rate ?? null,
+      effectiveRate,
       d.findings ?? null,
       d.success_factors ?? null,
       d.barrier_factors ?? null,
@@ -141,6 +165,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       d.flow_decision_path ?? null,
       kpiIds,
       d.logic_model_id ?? null,
+      d.measure_design_id ?? null,
+      d.checkpoint_id ?? null,
+      JSON.stringify(kpiSnapshot),
+      computedRate,
     ],
   );
 
@@ -216,6 +244,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       outcome_initial: ARTIFACT_TYPES.program_evaluation.initial_outcome_eval,
       outcome_intermediate: ARTIFACT_TYPES.program_evaluation.intermediate_outcome_eval,
       outcome: ARTIFACT_TYPES.program_evaluation.initial_outcome_eval,
+      outcome_long: ARTIFACT_TYPES.program_evaluation.intermediate_outcome_eval,
       efficiency: ARTIFACT_TYPES.program_evaluation.efficiency_eval,  // 第5階層（P5: 案B-2）
     };
     const artifactType =

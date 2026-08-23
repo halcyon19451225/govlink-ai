@@ -27,6 +27,8 @@ export default async function OrdoAdminDashboard() {
     { label: "ナレッジ管理（Tier 1）", href: "/ordo-admin/knowledge", icon: "📚", desc: "Tier1ナレッジ文書の管理・AI処理" },
     { label: "自治体管理", href: "/ordo-admin/municipalities", icon: "🏛", desc: "登録済み自治体の一覧・管理" },
     { label: "ユーザー管理", href: "/ordo-admin/users", icon: "👥", desc: "全ユーザーの管理" },
+    { label: "独自AI管理", href: "/ordo-admin/ai", icon: "🤖", desc: "AIゲートウェイのルーティング（段階移行のダイヤル）と利用状況" },
+    { label: "コーパス管理", href: "/ordo-admin/corpus", icon: "🌐", desc: "横断学習データの検収・ナレッジ抽出・自治体同意の管理" },
   ];
 
   return (

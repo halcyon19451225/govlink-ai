@@ -8,6 +8,10 @@ export const ARTIFACT_TYPES = {
     hypothesis_sheet: "hypothesis_sheet",
     logic_tree: "logic_tree",
   },
+  measure_design: {
+    // 施策データセット（EBPM）。1施策=1成果物
+    measure_dataset: "measure_dataset",
+  },
   logic_model: {
     // バージョン番号は呼び出し側で `logic_model_v${version}` として組み立てる
     prefix: "logic_model_v",
@@ -36,6 +40,7 @@ export type ArtifactType =
   | "priority_gap_list"
   | "hypothesis_sheet"
   | "logic_tree"
+  | "measure_dataset"
   | `logic_model_v${number}`
   | "process_eval"
   | "initial_outcome_eval"

@@ -50,6 +50,7 @@ const MODULES: { id: ModuleId; label: string }[] = [
   { id: "dataset_manager", label: "データ管理" },
   { id: "gap_analysis", label: "ギャップ分析" },
   { id: "issue_hypothesis", label: "課題仮説" },
+  { id: "measure_design", label: "施策構築" },
   { id: "logic_model", label: "ロジックモデル" },
   { id: "program_evaluation", label: "事業評価" },
   { id: "cost_efficiency", label: "費用対効果" },

@@ -37,7 +37,7 @@ const bodySchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  const deny = await requireModulePermission(session, params.id, "cost_efficiency", "view");
+  const deny = await requireModulePermission(session, params.id, "program_evaluation", "view");
   if (deny) return deny;
 
   // program_evaluations → logic_models を JOIN して上流コンテキストを返す（R1-4/R1-5）
@@ -78,7 +78,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  const deny = await requireModulePermission(session, params.id, "cost_efficiency", "edit");
+  const deny = await requireModulePermission(session, params.id, "program_evaluation", "edit");
   if (deny) return deny;
 
   let raw: unknown;

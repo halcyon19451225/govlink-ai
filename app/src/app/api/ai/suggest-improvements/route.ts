@@ -2,11 +2,12 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
 import { query } from "@/lib/db";
+import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
 const bodySchema = z.object({
   projectId: z.string().uuid("projectId が不正です"),
@@ -59,8 +60,7 @@ export async function POST(req: NextRequest) {
     await incrementAiUsage(munIdForLimit);
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ data: null, error: "ANTHROPIC_API_KEY が設定されていません" }, { status: 500 });
   }
 
@@ -85,8 +85,13 @@ export async function POST(req: NextRequest) {
       "SELECT title, description, status FROM projects WHERE id = $1",
       [projectId],
     ),
-    query<{ label: string; target: number; current: number; unit: string }>(
-      "SELECT label, target::float AS target, current::float AS current, unit FROM kpis WHERE project_id = $1",
+    query<{
+      label: string; target: number; current: number; unit: string;
+      baseline_value: number | null; achievement_condition: AchievementCondition | null;
+    }>(
+      `SELECT label, target::float AS target, current::float AS current, unit,
+              baseline_value::float AS baseline_value, achievement_condition
+       FROM kpis WHERE project_id = $1`,
       [projectId],
     ),
     query<{ title: string; evidence_type: string; strength: number; description: string | null }>(
@@ -118,7 +123,7 @@ export async function POST(req: NextRequest) {
 ステータス: ${project.status}
 
 【KPI一覧】
-${kpis.map((k) => `- ${k.label}: 目標${k.target}${k.unit} / 現在${k.current}${k.unit} (達成率 ${k.target > 0 ? Math.round((k.current / k.target) * 100) : 0}%)`).join("\n") || "KPIなし"}
+${kpis.map((k) => `- ${k.label}: 目標${k.target}${k.unit} / 現在${k.current}${k.unit} (到達度 ${calcAchievement({ current: k.current, target: k.target, baseline: k.baseline_value, condition: k.achievement_condition }).clamped}%)`).join("\n") || "KPIなし"}
 
 【エビデンス一覧】
 ${evidences.map((e) => `- [${e.evidence_type}★${e.strength}] ${e.title}: ${e.description ?? ""}`).join("\n") || "エビデンスなし"}
@@ -129,12 +134,11 @@ ${evidences.map((e) => `- [${e.evidence_type}★${e.strength}] ${e.title}: ${e.d
 ${schedTaskRows.map((t) => `- ${t.title} (期限: ${t.due_date ?? "未設定"}) ${t.completed_at ? "✓完了" : "未完"}`).join("\n") || "タスクなし"}
 `.trim();
 
-  const anthropic = new Anthropic({ apiKey });
 
   // Streaming不要: JSON形式のレスポンスを通常のAPI呼び出しで取得
   let fullText: string;
   try {
-    const message = await anthropic.messages.create({
+    const message = await aiCreateMessage({ taskType: "proposal.improvements" }, {
       model: "claude-sonnet-4-6",
       max_tokens: 2048,
       system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],

@@ -2,11 +2,12 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiStreamMessage } from "@/lib/ai/gateway";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
 import { query } from "@/lib/db";
+import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
 const bodySchema = z.object({
   projectId: z.string().uuid("projectId が不正です"),
@@ -77,8 +78,7 @@ export async function POST(req: NextRequest) {
     await incrementAiUsage(munIdForLimit);
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ data: null, error: "ANTHROPIC_API_KEY が設定されていません" }, { status: 500 });
   }
 
@@ -104,8 +104,13 @@ export async function POST(req: NextRequest) {
        FROM projects p WHERE p.id = $1`,
       [projectId],
     ),
-    query<{ label: string; target: number; current: number; unit: string }>(
-      "SELECT label, target::float AS target, current::float AS current, unit FROM kpis WHERE project_id = $1",
+    query<{
+      label: string; target: number; current: number; unit: string;
+      baseline_value: number | null; achievement_condition: AchievementCondition | null;
+    }>(
+      `SELECT label, target::float AS target, current::float AS current, unit,
+              baseline_value::float AS baseline_value, achievement_condition
+       FROM kpis WHERE project_id = $1`,
       [projectId],
     ),
     query<{ title: string; evidence_type: string; strength: number }>(
@@ -140,7 +145,7 @@ export async function POST(req: NextRequest) {
 対象期間: ${periodLabel}
 
 【KPI達成状況】
-${kpis.map((k) => `| ${k.label} | 目標: ${k.target}${k.unit} | 現在: ${k.current}${k.unit} | 達成率: ${k.target > 0 ? Math.round((k.current / k.target) * 100) : 0}% |`).join("\n") || "KPIなし"}
+${kpis.map((k) => `| ${k.label} | 目標: ${k.target}${k.unit} | 現在: ${k.current}${k.unit} | 到達度: ${calcAchievement({ current: k.current, target: k.target, baseline: k.baseline_value, condition: k.achievement_condition }).clamped}% |`).join("\n") || "KPIなし"}
 
 【スケジュール進捗】
 全タスク ${sched.total}件 / 完了 ${sched.completed}件 (${sched.total > 0 ? Math.round((sched.completed / sched.total) * 100) : 0}%)
@@ -155,14 +160,13 @@ ${posts.map((p) => `[${p.type}] ${p.body.slice(0, 100)}...`).join("\n") || "投�
   const systemPrompt = SYSTEM_PROMPTS[reportType] ?? SYSTEM_PROMPTS["council"] ?? "";
   const reportTitle = `${project.title} ${REPORT_TYPE_LABEL[reportType]} (${periodLabel})`;
 
-  const anthropic = new Anthropic({ apiKey });
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       let fullText = "";
       try {
-        const claudeStream = anthropic.messages.stream({
+        const claudeStream = aiStreamMessage({ taskType: "generation.report" }, {
           model: "claude-sonnet-4-6",
           max_tokens: 3000,
           system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],

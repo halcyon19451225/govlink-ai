@@ -4,6 +4,9 @@ import { useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import KnowledgePanel from "@/components/KnowledgePanel";
+import OutcomeScoreboard from "@/components/outcome/OutcomeScoreboard";
+import { normalizeIndicatorType, OUTCOME_TIER_META } from "@/lib/outcome/tiers";
+import { LOGIC_COLUMNS, elementTexts } from "@/lib/logicmodel/elements";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -41,15 +44,20 @@ interface Kpi {
   previous_value: number | null;
   achievement_condition: AchievementCondition | null;
   target_deadline: string | null; // "YYYY-MM-DD"
+  baseline_value: number | null;
+  baseline_year: number | null;
+  contributes_to_kpi_id: string | null;
 }
 
 interface LogicModel {
   id: string;
-  inputs: string[];
-  activities: string[];
-  outputs: string[];
-  initial_outcomes: string[] | null;
-  intermediate_outcomes: string[] | null;
+  // 要素列は JSONB。normalizeElements / elementTexts を通して読む
+  inputs: unknown;
+  activities: unknown;
+  outputs: unknown;
+  initial_outcomes: unknown;
+  intermediate_outcomes: unknown;
+  long_outcomes: unknown;
   name: string | null;
   status: string;
   generated_at: string | null;
@@ -77,13 +85,10 @@ const STATUS_STYLE: Record<Project["status"], React.CSSProperties> = {
   archived: { background: "#f59e0b20", color: "#fbbf24", border: "1px solid #f59e0b40" },
 };
 
-const LOGIC_COLS = [
-  { key: "inputs",                label: "投入資源", color: "#6366f1" },
-  { key: "activities",            label: "実施活動", color: "#8b5cf6" },
-  { key: "outputs",               label: "産出物",   color: "#06b6d4" },
-  { key: "initial_outcomes",      label: "初期成果", color: "#10b981" },
-  { key: "intermediate_outcomes", label: "中期成果", color: "#0d9488" },
-] as const;
+// 列の定義は src/lib/logicmodel/elements.ts の LOGIC_COLUMNS が正本。
+// 以前はここに独自の一覧があり、長期アウトカムの列が欠けていたうえ
+// ラベルが他画面（「短期アウトカム」）と食い違っていた。
+const LOGIC_COLS = LOGIC_COLUMNS;
 
 // ─── 達成水準 ─────────────────────────────────────────────────────────────────
 
@@ -94,6 +99,35 @@ const CONDITION_LABELS: Record<AchievementCondition, string> = {
   lt:  "未満",
   eq:  "達成",
 };
+
+/** 指標タイプ。三層アウトカム（029で outcome_intermediate に統一）＋プロセス・効率性 */
+const INDICATOR_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "process", label: "プロセス指標" },
+  { value: "outcome_initial", label: `${OUTCOME_TIER_META.outcome_initial.label}（${OUTCOME_TIER_META.outcome_initial.span}）` },
+  { value: "outcome_intermediate", label: `${OUTCOME_TIER_META.outcome_intermediate.label}（${OUTCOME_TIER_META.outcome_intermediate.span}）` },
+  { value: "outcome_long", label: `${OUTCOME_TIER_META.outcome_long.label}（${OUTCOME_TIER_META.outcome_long.span}）` },
+  { value: "efficiency", label: "効率性指標" },
+];
+
+/**
+ * 「寄与する上位アウトカム」の選択肢。
+ * 短期 → 中間、中間 → 長期 の1段上だけを候補にする（連鎖を壊さないため）。
+ */
+function upperOutcomeOptions(
+  all: Kpi[],
+  selfId: string | null,
+  currentType: string,
+): { id: string; label: string }[] {
+  const t = normalizeIndicatorType(currentType);
+  const upper =
+    t === "outcome_initial" ? "outcome_intermediate"
+    : t === "outcome_intermediate" ? "outcome_long"
+    : null;
+  if (!upper) return [];
+  return all
+    .filter((k) => k.id !== selfId && normalizeIndicatorType(k.indicator_type) === upper)
+    .map((k) => ({ id: k.id, label: k.label }));
+}
 
 const CONDITION_OPTIONS: { value: AchievementCondition; label: string }[] = [
   { value: "gte", label: "以上" },
@@ -328,6 +362,10 @@ export default function ProjectOverviewClient({
     prev_str: string;
     achievement_condition: AchievementCondition | "";
     target_deadline: string;
+    indicator_type: string;
+    baseline_str: string;
+    baseline_year_str: string;
+    contributes_to_kpi_id: string;
   }>>({});
   const [kpiSaving, setKpiSaving]   = useState<Record<string, boolean>>({});
   const [kpiAddingFor, setKpiAddingFor] = useState<string | null>(null);
@@ -335,6 +373,10 @@ export default function ProjectOverviewClient({
     label: "", target_str: "", unit: "", prev_str: "",
     achievement_condition: "" as AchievementCondition | "",
     target_deadline: "",
+    indicator_type: "outcome_initial",
+    baseline_str: "",
+    baseline_year_str: "",
+    contributes_to_kpi_id: "",
   });
   const [kpiAddSaving, setKpiAddSaving] = useState(false);
   const kpiFb = useSaveFeedback();
@@ -348,6 +390,10 @@ export default function ProjectOverviewClient({
         prev_str: k.previous_value != null ? String(k.previous_value) : "",
         achievement_condition: k.achievement_condition ?? "",
         target_deadline: k.target_deadline ?? "",
+        indicator_type: normalizeIndicatorType(k.indicator_type),
+        baseline_str: k.baseline_value != null ? String(k.baseline_value) : "",
+        baseline_year_str: k.baseline_year != null ? String(k.baseline_year) : "",
+        contributes_to_kpi_id: k.contributes_to_kpi_id ?? "",
       },
     }));
   const cancelEditKpi = (id: string) =>
@@ -368,6 +414,10 @@ export default function ProjectOverviewClient({
           previous_value: edit.prev_str ? parseFloat(edit.prev_str) : null,
           achievement_condition: edit.achievement_condition || null,
           target_deadline: edit.target_deadline || null,
+          indicator_type: edit.indicator_type,
+          baseline_value: edit.baseline_str ? parseFloat(edit.baseline_str) : null,
+          baseline_year: edit.baseline_year_str ? parseInt(edit.baseline_year_str, 10) : null,
+          contributes_to_kpi_id: edit.contributes_to_kpi_id || null,
         }),
       });
       setKpis((p) => p.map((k) => k.id === id ? {
@@ -378,6 +428,10 @@ export default function ProjectOverviewClient({
         previous_value: edit.prev_str ? parseFloat(edit.prev_str) : null,
         achievement_condition: (edit.achievement_condition as AchievementCondition | null) || null,
         target_deadline: edit.target_deadline || null,
+        indicator_type: edit.indicator_type,
+        baseline_value: edit.baseline_str ? parseFloat(edit.baseline_str) : null,
+        baseline_year: edit.baseline_year_str ? parseInt(edit.baseline_year_str, 10) : null,
+        contributes_to_kpi_id: edit.contributes_to_kpi_id || null,
       } : k));
       cancelEditKpi(id);
       kpiFb.show();
@@ -406,6 +460,10 @@ export default function ProjectOverviewClient({
           previous_value: newKpi.prev_str ? parseFloat(newKpi.prev_str) : null,
           achievement_condition: newKpi.achievement_condition || null,
           target_deadline: newKpi.target_deadline || null,
+          indicator_type: newKpi.indicator_type,
+          baseline_value: newKpi.baseline_str ? parseFloat(newKpi.baseline_str) : null,
+          baseline_year: newKpi.baseline_year_str ? parseInt(newKpi.baseline_year_str, 10) : null,
+          contributes_to_kpi_id: newKpi.contributes_to_kpi_id || null,
         }),
       });
       const json = (await res.json()) as { data: { id: string } | null };
@@ -414,12 +472,17 @@ export default function ProjectOverviewClient({
           id: json.data!.id, label: newKpi.label,
           target: parseFloat(newKpi.target_str) || 0,
           current: 0, unit: newKpi.unit,
-          goal_id: goalId, indicator_type: "outcome_initial",
+          goal_id: goalId, indicator_type: newKpi.indicator_type,
           previous_value: newKpi.prev_str ? parseFloat(newKpi.prev_str) : null,
           achievement_condition: (newKpi.achievement_condition as AchievementCondition | null) || null,
           target_deadline: newKpi.target_deadline || null,
+          baseline_value: newKpi.baseline_str ? parseFloat(newKpi.baseline_str) : null,
+          baseline_year: newKpi.baseline_year_str ? parseInt(newKpi.baseline_year_str, 10) : null,
+          contributes_to_kpi_id: newKpi.contributes_to_kpi_id || null,
         }]);
-        setNewKpi({ label: "", target_str: "", unit: "", prev_str: "", achievement_condition: "", target_deadline: "" });
+        setNewKpi({ label: "", target_str: "", unit: "", prev_str: "", achievement_condition: "",
+          target_deadline: "", indicator_type: "outcome_initial", baseline_str: "",
+          baseline_year_str: "", contributes_to_kpi_id: "" });
         setKpiAddingFor(null);
         kpiFb.show();
       }
@@ -457,8 +520,11 @@ export default function ProjectOverviewClient({
           style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
           <div className="flex gap-4 min-w-max">
             {LOGIC_COLS.map((col) => {
-              const items: string[] =
-                (logicModel[col.key as keyof LogicModel] as string[] | null) ?? [];
+              // 要素オブジェクト・文字列配列のどちらでも表示できるようにする
+              const items: string[] = elementTexts(
+                (logicModel as unknown as Record<string, unknown>)[col.key],
+                col.key,
+              );
               return (
                 <div key={col.key} className="flex-1 min-w-[130px]">
                   <p className="text-xs font-semibold mb-2 pb-1 border-b"
@@ -506,6 +572,13 @@ export default function ProjectOverviewClient({
   if (!editMode) {
     return (
       <div className="p-6 max-w-3xl space-y-6">
+
+        {/* アウトカム・スコアボード（三層の到達状況を常時表示） */}
+        <OutcomeScoreboard
+          kpis={kpis}
+          planStartDate={project.plan_start_date}
+          planEndDate={project.plan_end_date}
+        />
 
         {/* メインカード */}
         <div className="neu-card p-6 space-y-4">
@@ -976,6 +1049,43 @@ export default function ProjectOverviewClient({
                                     className={INP} style={INP_S} placeholder="例：2030-03-31" />
                                 </div>
                               </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <label className="text-xs" style={{ color: "var(--text-secondary)" }}>指標タイプ</label>
+                                  <select value={ed.indicator_type}
+                                    onChange={(e) => setKpiEditMap((p) => ({ ...p, [k.id]: { ...p[k.id]!, indicator_type: e.target.value } }))}
+                                    className={INP} style={INP_S}>
+                                    {INDICATOR_TYPE_OPTIONS.map(({ value, label }) => (
+                                      <option key={value} value={value}>{label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="text-xs" style={{ color: "var(--text-secondary)" }}>基準値</label>
+                                  <input type="number" value={ed.baseline_str}
+                                    onChange={(e) => setKpiEditMap((p) => ({ ...p, [k.id]: { ...p[k.id]!, baseline_str: e.target.value } }))}
+                                    className={INP} style={INP_S} placeholder="策定時の値" />
+                                </div>
+                                <div>
+                                  <label className="text-xs" style={{ color: "var(--text-secondary)" }}>基準年度</label>
+                                  <input type="number" value={ed.baseline_year_str}
+                                    onChange={(e) => setKpiEditMap((p) => ({ ...p, [k.id]: { ...p[k.id]!, baseline_year_str: e.target.value } }))}
+                                    className={INP} style={INP_S} placeholder="2026" />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                                  寄与する上位アウトカム
+                                </label>
+                                <select value={ed.contributes_to_kpi_id}
+                                  onChange={(e) => setKpiEditMap((p) => ({ ...p, [k.id]: { ...p[k.id]!, contributes_to_kpi_id: e.target.value } }))}
+                                  className={INP} style={INP_S}>
+                                  <option value="">（なし）</option>
+                                  {upperOutcomeOptions(kpis, k.id, ed.indicator_type).map((o) => (
+                                    <option key={o.id} value={o.id}>{o.label}</option>
+                                  ))}
+                                </select>
+                              </div>
                               <div className="flex gap-2">
                                 <SaveButton saving={kpiSaving[k.id] ?? false} onClick={() => saveKpi(k.id)} />
                                 <button type="button" onClick={() => cancelEditKpi(k.id)}
@@ -1053,6 +1163,43 @@ export default function ProjectOverviewClient({
                               className={INP} style={INP_S} placeholder="例：2030-03-31" />
                           </div>
                         </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="text-xs" style={{ color: "var(--text-secondary)" }}>指標タイプ</label>
+                            <select value={newKpi.indicator_type}
+                              onChange={(e) => setNewKpi((p) => ({ ...p, indicator_type: e.target.value }))}
+                              className={INP} style={INP_S}>
+                              {INDICATOR_TYPE_OPTIONS.map(({ value, label }) => (
+                                <option key={value} value={value}>{label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs" style={{ color: "var(--text-secondary)" }}>基準値</label>
+                            <input type="number" value={newKpi.baseline_str}
+                              onChange={(e) => setNewKpi((p) => ({ ...p, baseline_str: e.target.value }))}
+                              className={INP} style={INP_S} placeholder="策定時の値" />
+                          </div>
+                          <div>
+                            <label className="text-xs" style={{ color: "var(--text-secondary)" }}>基準年度</label>
+                            <input type="number" value={newKpi.baseline_year_str}
+                              onChange={(e) => setNewKpi((p) => ({ ...p, baseline_year_str: e.target.value }))}
+                              className={INP} style={INP_S} placeholder="2026" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                            寄与する上位アウトカム
+                          </label>
+                          <select value={newKpi.contributes_to_kpi_id}
+                            onChange={(e) => setNewKpi((p) => ({ ...p, contributes_to_kpi_id: e.target.value }))}
+                            className={INP} style={INP_S}>
+                            <option value="">（なし）</option>
+                            {upperOutcomeOptions(kpis, null, newKpi.indicator_type).map((o) => (
+                              <option key={o.id} value={o.id}>{o.label}</option>
+                            ))}
+                          </select>
+                        </div>
                         <div className="flex gap-2">
                           <SaveButton saving={kpiAddSaving} onClick={() => addKpi(g.id)} disabled={!newKpi.label.trim()} />
                           <button type="button" onClick={() => setKpiAddingFor(null)}
@@ -1066,7 +1213,9 @@ export default function ProjectOverviewClient({
                       <button type="button"
                         onClick={() => {
                           setKpiAddingFor(g.id);
-                          setNewKpi({ label: "", target_str: "", unit: "", prev_str: "", achievement_condition: "", target_deadline: "" });
+                          setNewKpi({ label: "", target_str: "", unit: "", prev_str: "", achievement_condition: "",
+                            target_deadline: "", indicator_type: "outcome_initial", baseline_str: "",
+                            baseline_year_str: "", contributes_to_kpi_id: "" });
                         }}
                         className="w-full text-xs py-1.5 rounded-lg border border-dashed hover:border-cyan-500 hover:text-cyan-400 transition-colors"
                         style={{ ...BORDER_S, color: "var(--text-secondary)" }}>

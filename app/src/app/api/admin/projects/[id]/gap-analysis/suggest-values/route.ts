@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { downloadFromStorage } from "@/lib/storage";
@@ -73,9 +73,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const indicatorList = kpis.map((k, i) => `${i + 1}. ${k.label}（単位: ${k.unit || "—"}）`).join("\n");
   const datasetText = csvParts.join("\n\n").slice(0, 80_000);
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const message = await client.messages.create({
+  const message = await aiCreateMessage({ taskType: "analysis.gap_values", projectId: params.id }, {
     model: "claude-sonnet-4-6",
     max_tokens: 2048,
     messages: [{

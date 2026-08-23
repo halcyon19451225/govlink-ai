@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
 interface KpiRow {
   id: string;
@@ -10,6 +11,8 @@ interface KpiRow {
   current: number;
   unit: string;
   indicator_type: string;
+  baseline_value: number | null;
+  achievement_condition: AchievementCondition | null;
 }
 
 const INDICATOR_LABELS: Record<string, string> = {
@@ -187,7 +190,13 @@ export default function KpiReportForm({
           kpis.map((kpi, i) => {
             const entry = entries[i];
             if (!entry) return null;
-            const achievement = kpi.target > 0 ? Math.min(100, Math.round((kpi.current / kpi.target) * 100)) : null;
+            const ach = calcAchievement({
+              current: kpi.current,
+              target: kpi.target,
+              baseline: kpi.baseline_value,
+              condition: kpi.achievement_condition,
+            });
+            const achievement = ach.rate == null ? null : ach.clamped;
             return (
               <div
                 key={kpi.id}

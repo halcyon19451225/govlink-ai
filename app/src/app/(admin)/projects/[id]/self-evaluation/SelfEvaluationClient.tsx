@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import jsPDF from "jspdf";
 import PermissionGate from "@/components/PermissionGate";
 
 // ---- 型定義 ----
@@ -39,6 +38,18 @@ interface SheetRow {
   evaluation_timing: string | null;
   created_at: string;
   entries: EntryRow[];
+  upstream_program_evaluation: UpstreamEval | null;
+}
+
+interface UpstreamEval {
+  id: string;
+  evaluation_tier: string;
+  fiscal_year: number | null;
+  result: string | null;
+  achievement_rate: number | null;
+  findings: string | null;
+  improvement_actions: string | null;
+  next_steps: string | null;
 }
 
 interface EvalRef {
@@ -51,7 +62,18 @@ interface Props {
   project: { id: string; title: string };
   sheets: SheetRow[];
   evaluations: EvalRef[];
+  /** 計画期間から算出した評価対象年度 */
+  fiscalYears: number[];
 }
+
+const TIER_LABEL: Record<string, string> = {
+  process: "プロセス評価",
+  outcome: "アウトカム評価",
+  outcome_initial: "短期アウトカム評価",
+  outcome_intermediate: "中間アウトカム評価",
+  outcome_long: "長期アウトカム評価",
+  efficiency: "効率性評価",
+};
 
 // ---- 定数 ----
 
@@ -75,61 +97,86 @@ const inputClass =
 const inputStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 const textareaClass = `${inputClass} resize-vertical`;
 
-const FISCAL_YEAR_COUNT = 3;
 
-function getDefaultFiscalYears(): number[] {
-  const base = new Date().getFullYear();
-  return [base - 1, base, base + 1];
+
+// ---- 印刷（PDF化）----
+//
+// 以前は jsPDF の helvetica 固定で日本語がすべて文字化けしていた。
+// 日本語フォントの埋め込みは数MBになるため、ブラウザの印刷機能に切り替える。
+// 「送信先: PDFに保存」で日本語のままPDFになる。
+
+function esc(v: string | null | undefined): string {
+  return (v ?? "(未入力)")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
 }
 
-// ---- PDF出力 ----
-
-function exportToPDF(sheet: SheetRow, entries: EntryRow[], projectTitle: string) {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const pageW = 210;
-  const margin = 15;
-  const contentW = pageW - margin * 2;
-  let y = margin;
-
-  const addText = (text: string, fontSize: number, bold = false) => {
-    doc.setFontSize(fontSize);
-    doc.setFont("helvetica", bold ? "bold" : "normal");
-    const lines = doc.splitTextToSize(text || "", contentW);
-    if (y + lines.length * (fontSize * 0.352 + 2) > 280) {
-      doc.addPage();
-      y = margin;
-    }
-    doc.text(lines, margin, y);
-    y += lines.length * (fontSize * 0.352 + 2) + 3;
-  };
-
-  addText(projectTitle, 10);
-  addText(sheet.title, 16, true);
-  y += 3;
-  addText("【背景・課題】", 11, true);
-  addText(sheet.background || "(未入力)", 10);
-  addText("【取組内容】", 11, true);
-  addText(sheet.activities || "(未入力)", 10);
-  addText("【目標と指標】", 11, true);
-  addText(sheet.target_and_metrics || "(未入力)", 10);
-
-  for (const entry of entries) {
-    if (y > 240) {
-      doc.addPage();
-      y = margin;
-    }
-    addText(
-      `${entry.fiscal_year}年度 (${entry.period_type === "interim" ? "中間" : "最終"})`,
-      12,
-      true,
-    );
-    addText(`評価: ${RATING_LABELS[entry.rating ?? ""] ?? ""}`, 10);
-    addText(`実績: ${entry.actual_activities || "(未入力)"}`, 10);
-    addText(`達成分析: ${entry.achievement_analysis || "(未入力)"}`, 10);
-    addText(`課題: ${entry.challenges || "(未入力)"}`, 10);
+function printSheet(sheet: SheetRow, entries: EntryRow[], projectTitle: string) {
+  const win = window.open("", "_blank", "width=900,height=1000");
+  if (!win) {
+    alert("ポップアップがブロックされました。ブラウザの設定で許可してください。");
+    return;
   }
 
-  doc.save(`self-evaluation-${sheet.id.slice(0, 8)}.pdf`);
+  const field = (label: string, value: string | null) =>
+    `<div class="f"><div class="l">${label}</div><div class="v">${esc(value)}</div></div>`;
+
+  const entryHtml = entries
+    .map(
+      (e) => `
+      <section class="entry">
+        <h3>${e.fiscal_year}年度（${e.period_type === "interim" ? "中間" : "最終"}）
+          <span class="rating">${RATING_LABELS[e.rating ?? ""] ?? "評価未設定"}</span>
+        </h3>
+        ${field("実施内容", e.actual_activities)}
+        ${field("達成状況の分析", e.achievement_analysis)}
+        ${field("取組の妥当性", e.activity_appropriateness)}
+        ${field("課題", e.challenges)}
+        ${field("対策", e.countermeasures)}
+        ${field("次年度の変更点", e.next_year_changes)}
+        ${field("都道府県への支援要請", e.prefecture_support_request)}
+      </section>`,
+    )
+    .join("");
+
+  win.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<title>${esc(sheet.title)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+         color: #111; margin: 0; padding: 24px 28px; line-height: 1.7; font-size: 13px; }
+  .proj { font-size: 11px; color: #666; }
+  h1 { font-size: 20px; margin: 4px 0 18px; border-bottom: 2px solid #333; padding-bottom: 8px; }
+  h2 { font-size: 14px; margin: 22px 0 8px; padding-left: 8px; border-left: 4px solid #555; }
+  h3 { font-size: 13px; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #ccc;
+       display: flex; justify-content: space-between; align-items: baseline; }
+  .rating { font-size: 11px; font-weight: normal; border: 1px solid #666; padding: 1px 8px; border-radius: 10px; }
+  .f { display: grid; grid-template-columns: 130px 1fr; gap: 10px; margin-bottom: 7px;
+       page-break-inside: avoid; }
+  .l { font-size: 11px; color: #555; }
+  .v { font-size: 12px; white-space: pre-wrap; }
+  .entry { margin-bottom: 20px; page-break-inside: avoid; }
+  .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid #ccc;
+          font-size: 10px; color: #777; }
+  @page { size: A4; margin: 14mm; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+  <p class="proj">${esc(projectTitle)}</p>
+  <h1>${esc(sheet.title)}</h1>
+  <h2>取組の概要</h2>
+  ${field("背景・課題", sheet.background)}
+  ${field("取組内容", sheet.activities)}
+  ${field("目標と指標", sheet.target_and_metrics)}
+  ${field("評価方法", sheet.evaluation_method)}
+  ${field("評価時期", sheet.evaluation_timing)}
+  <h2>年度ごとの評価</h2>
+  ${entryHtml || '<p style="font-size:12px;color:#777">評価の記録がありません</p>'}
+  <p class="foot">自己評価シート ／ ${new Date().toLocaleDateString("ja-JP")} 出力</p>
+  <script>window.onload = function () { window.print(); };</script>
+</body></html>`);
+  win.document.close();
 }
 
 // ---- エントリーフォーム ----
@@ -312,7 +359,12 @@ function EntryForm({ projectId, sheetId, fiscalYear, periodType, existing, onSav
 
 // ---- メインコンポーネント ----
 
-export default function SelfEvaluationClient({ project, sheets: initialSheets, evaluations }: Props) {
+export default function SelfEvaluationClient({
+  project,
+  sheets: initialSheets,
+  evaluations,
+  fiscalYears,
+}: Props) {
   const [sheets, setSheets] = useState<SheetRow[]>(initialSheets);
   const [selectedSheetId, setSelectedSheetId] = useState<string | null>(
     initialSheets[0]?.id ?? null,
@@ -334,8 +386,6 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
   const [sheetSaveError, setSheetSaveError] = useState<Record<string, string | null>>({});
 
   const [activeEntryTab, setActiveEntryTab] = useState<Record<string, "interim" | "final">>({});
-
-  const fiscalYears = getDefaultFiscalYears().slice(0, FISCAL_YEAR_COUNT);
 
   const selectedSheet = sheets.find((s) => s.id === selectedSheetId) ?? null;
 
@@ -385,6 +435,50 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
       setSheetSaveError((p) => ({ ...p, [sheet.id]: "ネットワークエラーが発生しました" }));
     } finally {
       setSheetSaving((p) => ({ ...p, [sheet.id]: false }));
+    }
+  };
+
+  const saveTitle = async (sheet: SheetRow, title: string) => {
+    setSheets((prev) => prev.map((s) => (s.id === sheet.id ? { ...s, title } : s)));
+    try {
+      await fetch(`/api/admin/projects/${project.id}/self-evaluation/${sheet.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+    } catch {
+      setSheetSaveError((p) => ({ ...p, [sheet.id]: "タイトルの保存に失敗しました" }));
+    }
+  };
+
+  // 自己評価の対策・次年度の変更点から改善アクションを起票する
+  const [issuing, setIssuing] = useState<string | null>(null);
+  const issueImprovement = async (entry: EntryRow, sheet: SheetRow) => {
+    const seed = [entry.countermeasures, entry.next_year_changes].filter(Boolean).join("\n");
+    const title = window.prompt(
+      "改善アクションの見出しを入力してください（自己評価の記入内容を引き継いでいます）",
+      (seed.split("\n")[0] ?? "").slice(0, 120) || sheet.title,
+    );
+    if (!title || !title.trim()) return;
+    setIssuing(entry.id);
+    try {
+      const res = await fetch(`/api/admin/projects/${project.id}/improvement-actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "self_evaluation",
+          self_evaluation_entry_id: entry.id,
+          program_evaluation_id: sheet.program_evaluation_id,
+          title: title.trim(),
+          detail: seed || null,
+          fiscal_year: entry.fiscal_year,
+        }),
+      });
+      if (res.ok && confirm("改善アクションを起票しました。管理画面を開きますか？")) {
+        window.location.href = `/projects/${project.id}/improvement-actions`;
+      }
+    } finally {
+      setIssuing(null);
     }
   };
 
@@ -507,6 +601,50 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
           </div>
         ) : (
           <>
+            {/* 上流のプログラム評価（この自己評価が受けている評価結果） */}
+            {selectedSheet.upstream_program_evaluation && (
+              <div
+                className="rounded-2xl border p-5"
+                style={{ background: "#6366f110", borderColor: "#6366f140" }}
+              >
+                <div className="flex items-baseline gap-2 flex-wrap mb-2">
+                  <h3 className="text-sm font-semibold" style={{ color: "#a5b4fc" }}>
+                    このシートが受けている評価結果
+                  </h3>
+                  <span className="text-[11px] text-slate-400">
+                    {TIER_LABEL[selectedSheet.upstream_program_evaluation.evaluation_tier] ??
+                      selectedSheet.upstream_program_evaluation.evaluation_tier}
+                    {selectedSheet.upstream_program_evaluation.fiscal_year
+                      ? `（${selectedSheet.upstream_program_evaluation.fiscal_year}年度）`
+                      : ""}
+                    {selectedSheet.upstream_program_evaluation.achievement_rate != null
+                      ? ` 到達度 ${selectedSheet.upstream_program_evaluation.achievement_rate}%`
+                      : ""}
+                  </span>
+                </div>
+                <dl className="space-y-2">
+                  {([
+                    ["評価結果", selectedSheet.upstream_program_evaluation.result],
+                    ["所見", selectedSheet.upstream_program_evaluation.findings],
+                    ["改善策", selectedSheet.upstream_program_evaluation.improvement_actions],
+                    ["次のステップ", selectedSheet.upstream_program_evaluation.next_steps],
+                  ] as const)
+                    .filter(([, v]) => !!v)
+                    .map(([label, v]) => (
+                      <div key={label}>
+                        <dt className="text-[10px] text-slate-500">{label}</dt>
+                        <dd className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                          {v}
+                        </dd>
+                      </div>
+                    ))}
+                </dl>
+                <p className="text-[10px] text-slate-500 mt-3">
+                  プログラム評価の結果を踏まえて、この取組の自己評価を記入してください。
+                </p>
+              </div>
+            )}
+
             {/* シート詳細フォーム */}
             <div className="rounded-2xl border p-5 space-y-4" style={cardStyle}>
               <div className="flex items-center justify-between">
@@ -515,13 +653,13 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                   contentEditable
                   suppressContentEditableWarning
                   onBlur={(e) => {
-                    const val = e.currentTarget.textContent ?? "";
-                    if (val !== selectedSheet.title) {
-                      setSheets((prev) =>
-                        prev.map((s) =>
-                          s.id === selectedSheet.id ? { ...s, title: val } : s,
-                        ),
-                      );
+                    // 以前はローカル state を書き換えるだけで PATCH を送っておらず、
+                    // 変更したタイトルが保存されていなかった
+                    const val = (e.currentTarget.textContent ?? "").trim();
+                    if (val && val !== selectedSheet.title) {
+                      void saveTitle(selectedSheet, val);
+                    } else if (!val) {
+                      e.currentTarget.textContent = selectedSheet.title;
                     }
                   }}
                 >
@@ -532,7 +670,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                     <button
                       type="button"
                       onClick={() =>
-                        exportToPDF(selectedSheet, selectedSheet.entries, project.title)
+                        printSheet(selectedSheet, selectedSheet.entries, project.title)
                       }
                       className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors duration-200"
                       style={{
@@ -540,7 +678,7 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                         color: "#94a3b8",
                       }}
                     >
-                      PDFエクスポート
+                      印刷 / PDF保存
                     </button>
                   </PermissionGate>
                   <PermissionGate module="self_evaluation" level="edit" projectId={project.id}>
@@ -655,6 +793,29 @@ export default function SelfEvaluationClient({ project, sheets: initialSheets, e
                         existing={entry}
                         onSaved={(e) => handleEntrySaved(selectedSheet.id, e)}
                       />
+
+                      {/* 対策・次年度の変更点を、追跡できる改善アクションに変える */}
+                      {entry && (entry.countermeasures || entry.next_year_changes) && (
+                        <PermissionGate module="self_evaluation" level="edit" projectId={project.id}>
+                          <div
+                            className="mt-4 pt-3 flex items-center justify-between gap-3 flex-wrap"
+                            style={{ borderTop: "1px solid var(--border)" }}
+                          >
+                            <p className="text-[11px] text-slate-500 leading-snug">
+                              記入した対策・次年度の変更点は、そのままでは追跡されません。改善アクションとして起票すると反映先まで追えます。
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => void issueImprovement(entry, selectedSheet)}
+                              disabled={issuing === entry.id}
+                              className="text-[11px] px-3 py-1.5 rounded-lg font-medium whitespace-nowrap disabled:opacity-50 shrink-0"
+                              style={{ background: "#b4530918", color: "#f59e0b", border: "1px solid #b4530940" }}
+                            >
+                              {issuing === entry.id ? "起票中..." : "改善を起票"}
+                            </button>
+                          </div>
+                        </PermissionGate>
+                      )}
                     </div>
                   </div>
                 );

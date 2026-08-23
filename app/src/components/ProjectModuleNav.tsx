@@ -15,6 +15,7 @@ const MODULE_PATHS: Record<string, string> = {
   dataset_manager: "datasets",
   gap_analysis: "gap-analysis",
   issue_hypothesis: "issue-hypothesis",
+  measure_design: "measure-design",
   logic_model: "logic-model",
   program_evaluation: "program-evaluation",
   cost_efficiency: "cost-efficiency",

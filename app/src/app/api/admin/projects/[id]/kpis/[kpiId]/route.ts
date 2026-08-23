@@ -11,10 +11,13 @@ const patchSchema = z.object({
   target:                z.union([z.number(), z.string()]).transform((v) => Number(v)).optional(),
   unit:                  z.string().optional(),
   goal_id:               z.string().nullable().optional(),
-  indicator_type:        z.enum(["process","outcome_initial","outcome_mid","outcome_long","efficiency"]).optional(),
+  indicator_type:        z.enum(["process","outcome_initial","outcome_mid","outcome_intermediate","outcome_long","efficiency"]).optional(),
   previous_value:        z.number().nullable().optional(),
   achievement_condition: z.enum(["lte","lt","gte","gt","eq"]).nullable().optional(),
   target_deadline:       z.string().nullable().optional(), // "YYYY-MM-DD"
+  baseline_value:        z.union([z.number(), z.string()]).transform((v) => Number(v)).nullable().optional(),
+  baseline_year:         z.number().int().nullable().optional(),
+  contributes_to_kpi_id: z.string().uuid().nullable().optional(),
 });
 
 // PATCH: KPIを更新
@@ -41,6 +44,9 @@ export async function PATCH(
     previous_value: "previous_value",
     achievement_condition: "achievement_condition",
     target_deadline: "target_deadline",
+    baseline_value: "baseline_value",
+    baseline_year: "baseline_year",
+    contributes_to_kpi_id: "contributes_to_kpi_id",
   };
 
   const sets: string[] = [];

@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 
 const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 const MODEL = "claude-sonnet-4-6";
@@ -101,8 +101,7 @@ ${instruction}
   "change_note": "どこをどう変えたかの短い説明"
 }`;
 
-  const client = new Anthropic();
-  const message = await client.messages.create({
+  const message = await aiCreateMessage({ taskType: "knowledge.dict_edit" }, {
     model: MODEL,
     max_tokens: 2048,
     messages: [{ role: "user", content: prompt }],

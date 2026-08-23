@@ -94,6 +94,8 @@ export interface AsisMessage {
   role: "user" | "assistant";
   content: string;
   step?: AsisStep;
+  /** AIからの回答ヒント（assistantメッセージのみ）。「〜という強みがあるのではないですか？」形式の仮説提示 */
+  suggestions?: string[];
 }
 
 export const EMPTY_SWOT: SwotData = {

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PermissionGate from "@/components/PermissionGate";
+import AiThinkingIndicator from "@/components/AiThinkingIndicator";
 import {
   PESTLE_META,
   PESTLE_ORDER,
@@ -73,6 +74,50 @@ function SevenSBadge({ k }: { k: SevenSKey }) {
     >
       {m.label}
     </span>
+  );
+}
+
+// ─── 対話履歴（読み取り専用）───────────────────────
+function TranscriptView({ messages }: { messages: AsisMessage[] }) {
+  return (
+    <div
+      className="rounded-xl border p-4 space-y-3 max-h-[600px] overflow-y-auto"
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
+    >
+      {messages.length === 0 ? (
+        <p className="text-sm text-slate-500">対話の記録がありません</p>
+      ) : (
+        messages.map((m, idx) => (
+          <div
+            key={idx}
+            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+          >
+            <div className="max-w-[80%]">
+              <p
+                className={`text-[10px] mb-0.5 text-slate-500 ${m.role === "user" ? "text-right" : ""}`}
+              >
+                {m.role === "user" ? "担当者" : "AI"}
+                {m.step ? `・${STEP_LABEL[m.step]}` : ""}
+              </p>
+              <div
+                className="rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap leading-relaxed"
+                style={
+                  m.role === "user"
+                    ? { background: "#6366f1", color: "#fff" }
+                    : {
+                        background: "var(--bg-primary)",
+                        color: "var(--text-primary)",
+                        border: "1px solid var(--border)",
+                      }
+                }
+              >
+                {m.content}
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
   );
 }
 
@@ -305,7 +350,7 @@ function CrossView({ cross }: { cross: CrossAnalysis }) {
   );
 }
 
-type ResultTab = "pestle" | "seven_s" | "swot" | "cross";
+type ResultTab = "pestle" | "seven_s" | "swot" | "cross" | "dialogue";
 
 function ResultView({ record }: { record: AsisRecord }) {
   const [tab, setTab] = useState<ResultTab>("swot");
@@ -314,6 +359,7 @@ function ResultView({ record }: { record: AsisRecord }) {
     { key: "seven_s", label: "7S別" },
     { key: "swot", label: "SWOTマトリクス" },
     { key: "cross", label: "クロス分析" },
+    { key: "dialogue", label: "💬 対話履歴" },
   ];
   return (
     <div>
@@ -336,6 +382,7 @@ function ResultView({ record }: { record: AsisRecord }) {
       {tab === "seven_s" && <SevenSTable swot={record.swot} />}
       {tab === "swot" && <SwotMatrixView swot={record.swot} />}
       {tab === "cross" && <CrossView cross={record.cross_analysis} />}
+      {tab === "dialogue" && <TranscriptView messages={record.messages} />}
     </div>
   );
 }
@@ -539,6 +586,12 @@ export default function AsisAnalysisClient({
   const kpiModeLabel =
     kpis.find((k) => k.id === kpiIdParam)?.label ?? selected?.kpi_label ?? null;
 
+  // 直近のAIメッセージに付いた回答ヒント（クリックで入力欄に追加できる）
+  const lastAssistant = selected
+    ? [...selected.messages].reverse().find((m) => m.role === "assistant")
+    : undefined;
+  const latestSuggestions = lastAssistant?.suggestions ?? [];
+
   // 対話パネル / 結果パネル（selected 前提で描画）
   const detailPanel =
     selected == null ? null : selected.status === "completed" ? (
@@ -599,42 +652,72 @@ export default function AsisAnalysisClient({
           ))}
           {sending && (
             <div className="flex justify-start">
-              <div
-                className="rounded-2xl px-4 py-2 text-sm"
-                style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
-              >
-                <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-              </div>
+              <AiThinkingIndicator
+                label="AIが考えています"
+                sub="ナレッジとWebを参照しながら次の問いとヒントを準備しています"
+              />
             </div>
           )}
         </div>
 
         {/* 入力 */}
         <PermissionGate module="issue_hypothesis" level="edit" projectId={projectId}>
-          <div className="border-t p-3 flex gap-2" style={{ borderColor: "var(--border)" }}>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSend();
-                }
-              }}
-              rows={1}
-              placeholder="回答を入力（Enterで送信 / Shift+Enterで改行）"
-              className={inputClass}
-              style={{ ...inputStyle, resize: "none" }}
-              disabled={sending}
-            />
-            <button
-              onClick={() => void handleSend()}
-              disabled={!input.trim() || sending}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 shrink-0"
-              style={{ background: "#6366f1" }}
-            >
-              送信
-            </button>
+          <div className="border-t p-3 space-y-2" style={{ borderColor: "var(--border)" }}>
+            {/* AIからの回答ヒント（仮説提示） */}
+            {latestSuggestions.length > 0 && !sending && (
+              <div>
+                <p className="text-[11px] font-semibold mb-1.5" style={{ color: "#818cf8" }}>
+                  💡 回答のヒント — クリックすると入力欄に追加されます
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {latestSuggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setInput((prev) => (prev ? `${prev}\n${s}` : s))}
+                      className="text-left text-xs leading-snug px-3 py-2 rounded-lg transition-colors hover:brightness-125"
+                      style={{
+                        background: "rgba(99,102,241,0.10)",
+                        color: "#c7d2fe",
+                        border: "1px solid rgba(99,102,241,0.35)",
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* 回答フォーマットの常時ガイド */}
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              現在: {STEP_LABEL[selected.current_step]}｜ヒントには「はい／いいえ＋実情の補足」で答えるだけでも、
+              箇条書きや自由記述でも構いません。分からない項目は「不明」でOKです。
+            </p>
+            <div className="flex gap-2">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                rows={2}
+                placeholder="回答を入力（Enterで送信 / Shift+Enterで改行）"
+                className={inputClass}
+                style={{ ...inputStyle, resize: "none" }}
+                disabled={sending}
+              />
+              <button
+                onClick={() => void handleSend()}
+                disabled={!input.trim() || sending}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 shrink-0"
+                style={{ background: "#6366f1" }}
+              >
+                送信
+              </button>
+            </div>
           </div>
         </PermissionGate>
       </div>
@@ -642,11 +725,10 @@ export default function AsisAnalysisClient({
 
   const loadingPanel = (
     <div
-      className="rounded-xl border p-12 text-center flex flex-col items-center gap-3"
+      className="rounded-xl border p-12 flex flex-col items-center gap-3"
       style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
     >
-      <span className="inline-block w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-      <p className="text-slate-500 text-sm">対話を準備しています...</p>
+      <AiThinkingIndicator label="対話を準備しています" sub="指標の情報を読み込んでいます" />
     </div>
   );
 

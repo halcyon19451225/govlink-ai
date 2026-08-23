@@ -6,6 +6,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
+import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
 type Params = { params: { id: string } };
 
@@ -21,7 +22,12 @@ const bodySchema = z.object({
 });
 
 // achievement_condition に基づいてギャップ・達成率・優先度を算出
-function calcGap(target: number, current: number, condition: string | null) {
+function calcGap(
+  target: number,
+  current: number,
+  condition: string | null,
+  baseline?: number | null,
+) {
   const cond = condition ?? "gte";
   // 目標値との差（条件方向を考慮）
   // gte/gt: 現状 >= 目標 が良い → ギャップ = 目標 - 現状（負なら達成）
@@ -39,8 +45,13 @@ function calcGap(target: number, current: number, condition: string | null) {
       : current >= target;
   }
 
-  // 達成率（%）
-  const achievementRate = target !== 0 ? Math.round((current / target) * 1000) / 10 : null;
+  // 到達度（%）— 目標の向きと基準値を考慮する共通実装に委譲
+  const achievementRate = calcAchievement({
+    current,
+    target,
+    baseline: baseline ?? null,
+    condition: (condition ?? null) as AchievementCondition | null,
+  }).rate;
 
   // 優先度スコア（0〜100: ギャップが大きいほど高い）
   const absGap = Math.abs(gapValue);
@@ -74,9 +85,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     kpis = await query<{
       id: string; label: string; target: number; unit: string;
       achievement_condition: string | null; target_deadline: string | null;
-      goal_id: string | null;
+      goal_id: string | null; baseline_value: number | null;
     }>(
       `SELECT id, label, target::float, unit, achievement_condition,
+              baseline_value::float AS baseline_value,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline, goal_id
        FROM kpis WHERE id = $1 AND project_id = $2`,
       [kpi_id, params.id]
@@ -85,9 +97,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     kpis = await query<{
       id: string; label: string; target: number; unit: string;
       achievement_condition: string | null; target_deadline: string | null;
-      goal_id: string | null;
+      goal_id: string | null; baseline_value: number | null;
     }>(
       `SELECT id, label, target::float, unit, achievement_condition,
+              baseline_value::float AS baseline_value,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline, goal_id
        FROM kpis WHERE project_id = $1 ORDER BY created_at`,
       [params.id]
@@ -105,7 +118,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (cv === undefined) continue; // 現状値がなければスキップ
 
     const { gapValue, achieved, achievementRate, priorityScore } =
-      calcGap(kpi.target, cv.current_value, kpi.achievement_condition);
+      calcGap(kpi.target, cv.current_value, kpi.achievement_condition, kpi.baseline_value);
 
     const condLabel =
       kpi.achievement_condition === "lte" ? "以下" :

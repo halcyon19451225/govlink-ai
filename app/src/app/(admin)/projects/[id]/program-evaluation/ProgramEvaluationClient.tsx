@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import PermissionGate from "@/components/PermissionGate";
 import LogicModelContext from "@/components/LogicModelContext";
 import EfficiencyEvaluationPanel from "@/components/program-eval/EfficiencyEvaluationPanel";
+import EvaluationWizard, { type WizardKpi } from "@/components/program-eval/EvaluationWizard";
+import { getFlow, type FlowDecisionPath } from "@/lib/evaluation/flow";
 import { calcPrePost } from "@/lib/stats/pre-post-comparison";
 import { calcDiffInDiff } from "@/lib/stats/diff-in-diff";
 import StatCalcStepsPanel from "@/components/stats/StatCalcStepsPanel";
+import { elementTexts, normalizeColumns } from "@/lib/logicmodel/elements";
+import type { WizardMeasure } from "@/components/program-eval/EvaluationWizard";
+import Link from "next/link";
 
 // ---- 型定義 ----
 
@@ -20,7 +26,17 @@ interface ProgramEvalRow {
   findings: string | null;
   kpi_ids: string[] | null;
   flow_decision_path: unknown;
+  improvement_actions?: string | null;
+  next_steps?: string | null;
+  approved_snapshot_at?: string | null;
   created_at: string;
+  // この評価が前提にしたロジックモデルの版（L5）
+  logic_model_id?: string | null;
+  logic_model_version?: number | null;
+  logic_model_is_current?: boolean | null;
+  // この評価が対象にした施策（E5）
+  measure_design_id?: string | null;
+  measure_title?: string | null;
 }
 
 interface KpiRow {
@@ -30,12 +46,29 @@ interface KpiRow {
   current: number;
   unit: string;
   previous_value: number | null;
+  baseline_value?: number | null;
+  achievement_condition?: "lte" | "lt" | "gte" | "gt" | "eq" | null;
+  indicator_type?: string | null;
 }
 
 interface LogicModelRow {
   id: string;
   activities: unknown;
   major_policy: string | null;
+  version?: number;
+  // 成果からKPIを決める導線（L5）に使う
+  outputs?: unknown;
+  inputs?: unknown;
+  initial_outcomes?: unknown;
+  intermediate_outcomes?: unknown;
+  long_outcomes?: unknown;
+  outcomes?: unknown;
+}
+
+/** 施策データセット（確定済み）。ウィザードと効率性評価が使う（E5） */
+export interface MeasureForEval extends WizardMeasure {
+  total_budget: number | null;
+  funding: string | null;
 }
 
 interface Props {
@@ -43,6 +76,7 @@ interface Props {
   evaluations: ProgramEvalRow[];
   kpis: KpiRow[];
   logicModels: LogicModelRow[];
+  measures?: MeasureForEval[];
 }
 
 // ---- 定数 ----
@@ -100,22 +134,20 @@ export default function ProgramEvaluationClient({
   evaluations: initialEvaluations,
   kpis,
   logicModels,
+  measures = [],
 }: Props) {
   const logicModelId = logicModels[0]?.id ?? null;
+  // 現行版の要素。「どの成果を評価するのか」から入れるようにするため（L5）
+  const logicColumns = logicModels[0]
+    ? normalizeColumns(logicModels[0] as unknown as Record<string, unknown>)
+    : null;
   const [activeTab, setActiveTab] = useState<TabKey>("process");
   const [evaluations, setEvaluations] = useState<ProgramEvalRow[]>(initialEvaluations);
 
-  // ロジックモデルの activity 候補
-  const activities: string[] = (() => {
-    const acts = logicModels[0]?.activities as unknown;
-    if (Array.isArray(acts)) return (acts as unknown[]).map((a) => String(a));
-    if (acts && typeof acts === "object") {
-      const obj = acts as Record<string, unknown>;
-      const arr = obj["items"] ?? obj["list"] ?? obj["activities"];
-      if (Array.isArray(arr)) return (arr as unknown[]).map((a) => String(a));
-    }
-    return [];
-  })();
+  // ロジックモデルの activity 候補。
+  // ここには独自の正規化があり、要素オブジェクトを String() で潰すため
+  // 選択肢が "[object Object]" になっていた。共通の正規化に寄せる。
+  const activities: string[] = elementTexts(logicModels[0]?.activities, "activities");
 
   // プロセス評価フォーム
   const [proc, setProc] = useState<ProcessFormState>({
@@ -245,6 +277,74 @@ export default function ProgramEvaluationClient({
     setDidResult(calcDiffInDiff({ treat_pre: tp, treat_post: tpo, control_pre: cp, control_post: cpo }));
   };
 
+  // ---- ステータス遷移（draft → in_review → approved）----
+  // approved に進めた時点で、サーバー側がKPI実績と算定式を凍結する（C-6）
+  const router = useRouter();
+  const [statusSaving, setStatusSaving] = useState<string | null>(null);
+  const advanceStatus = async (ev: ProgramEvalRow) => {
+    const next = ev.status === "draft" ? "in_review" : "approved";
+    if (next === "approved" &&
+        !confirm("承認すると、この時点のKPI実績と算定式が凍結され、以後KPIが更新されても数値は変わりません。よろしいですか？")) {
+      return;
+    }
+    setStatusSaving(ev.id);
+    try {
+      const res = await fetch(`/api/admin/projects/${project.id}/evaluations/${ev.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      if (res.ok) router.refresh();
+    } finally {
+      setStatusSaving(null);
+    }
+  };
+
+  // ---- 評価から改善アクションを起票する（A-1）----
+  // 図6/図7フローで記入した改善策・次のステップを、追跡可能なオブジェクトに変換する。
+  const [issuing, setIssuing] = useState<string | null>(null);
+  const issueImprovement = async (ev: ProgramEvalRow) => {
+    const seed = ev.improvement_actions ?? ev.next_steps ?? "";
+    const title = window.prompt(
+      "改善アクションの見出しを入力してください（評価の記入内容を引き継いでいます）",
+      seed.split("\n")[0]?.slice(0, 120) ?? "",
+    );
+    if (!title || !title.trim()) return;
+    setIssuing(ev.id);
+    try {
+      const res = await fetch(`/api/admin/projects/${project.id}/improvement-actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "program_evaluation",
+          program_evaluation_id: ev.id,
+          title: title.trim(),
+          detail: seed || null,
+          fiscal_year: ev.fiscal_year,
+        }),
+      });
+      if (res.ok) {
+        if (confirm("改善アクションを起票しました。管理画面を開きますか？")) {
+          router.push(`/projects/${project.id}/improvement-actions`);
+        }
+      }
+    } finally {
+      setIssuing(null);
+    }
+  };
+
+  // ---- ウィザードへ渡すKPI（到達度の自動判定に使う）----
+  const wizardKpis: WizardKpi[] = kpis.map((k) => ({
+    id: k.id,
+    label: k.label,
+    unit: k.unit,
+    target: k.target,
+    current: k.current,
+    baseline_value: k.baseline_value ?? null,
+    achievement_condition: k.achievement_condition ?? null,
+    indicator_type: k.indicator_type ?? null,
+  }));
+
   // ---- 該当 tier の保存済み評価一覧 ----
   const tierEvaluations = (tiers: string[]) =>
     evaluations.filter((e) => tiers.includes(e.evaluation_tier));
@@ -263,19 +363,117 @@ export default function ProgramEvaluationClient({
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">結果</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">達成率</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">ステータス</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">前提の計画</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-500">作成日</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-slate-500"></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((ev) => (
+            {rows.map((ev) => {
+              const path = ev.flow_decision_path as FlowDecisionPath | null;
+              const flowDef = getFlow(path?.flow);
+              return (
               <tr key={ev.id} style={{ borderBottom: "1px solid var(--border)" }}>
                 <td className="px-4 py-3 text-slate-300">{ev.fiscal_year ? `${ev.fiscal_year}年度` : "—"}</td>
-                <td className="px-4 py-3 text-slate-300 max-w-xs"><p className="truncate">{ev.result ?? "—"}</p></td>
-                <td className="px-4 py-3 text-slate-300">{ev.achievement_rate != null ? `${ev.achievement_rate}%` : "—"}</td>
+                <td className="px-4 py-3 text-slate-300 max-w-xs">
+                  <p className="truncate">{ev.result ?? "—"}</p>
+                  {flowDef && path?.answers && (
+                    <details className="mt-1">
+                      <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-slate-300">
+                        {flowDef.label}の判断経路（{path.answers.length}問）
+                      </summary>
+                      <ol className="mt-1.5 space-y-1">
+                        {path.answers.map((a, i) => (
+                          <li key={i} className="text-[10px] text-slate-400 leading-snug">
+                            <span className="text-slate-500">{a.section}</span>{" "}
+                            {a.label && <span className="text-slate-200">{a.label}</span>}
+                            {a.overridden && <span style={{ color: "#f59e0b" }}>（上書き）</span>}
+                            {a.note && <span className="block text-slate-500">{a.note}</span>}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-slate-300 tabular-nums">
+                  {ev.achievement_rate != null ? `${ev.achievement_rate}%` : "—"}
+                  {ev.approved_snapshot_at && (
+                    <span className="block text-[9px] text-slate-500">凍結済み</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-slate-400">{STATUS_LABELS[ev.status] ?? ev.status}</td>
+                {/* この評価が前提にしたロジックモデルの版（L5）。
+                    計画が改訂されても評価が指す版は動かないため、
+                    現行版と違えばそのことを明示する。 */}
+                <td className="px-4 py-3">
+                  {ev.measure_title && (
+                    <span
+                      className="block text-[10px] mb-1 truncate"
+                      style={{ color: "#818cf8", maxWidth: 160 }}
+                      title={`評価対象の施策: ${ev.measure_title}`}
+                    >
+                      🔬 {ev.measure_title}
+                    </span>
+                  )}
+                  {ev.logic_model_version == null ? (
+                    <span className="text-xs text-slate-600" title="この評価はロジックモデルに紐付いていません">
+                      —
+                    </span>
+                  ) : ev.logic_model_is_current ? (
+                    <span className="text-xs" style={{ color: "#10b981" }}>
+                      第{ev.logic_model_version}版（現行）
+                    </span>
+                  ) : (
+                    <span className="flex flex-col gap-0.5">
+                      <span className="text-xs" style={{ color: "#f59e0b" }}>
+                        第{ev.logic_model_version}版
+                      </span>
+                      <Link
+                        href={`/projects/${project.id}/logic-model`}
+                        className="text-[10px] transition-opacity hover:opacity-70"
+                        style={{ color: "#06b6d4" }}
+                        title="この評価の後に計画が改訂されています。ロジックモデル画面で版を切り替えると差分を確認できます"
+                      >
+                        改訂後 → 差分を見る
+                      </Link>
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-xs text-slate-500">{ev.created_at}</td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-col gap-1.5 items-end">
+                  {(ev.improvement_actions || ev.next_steps) && (
+                    <PermissionGate module="self_evaluation" level="edit" projectId={project.id}>
+                      <button
+                        type="button"
+                        onClick={() => void issueImprovement(ev)}
+                        disabled={issuing === ev.id}
+                        className="text-[11px] px-3 py-1.5 rounded-lg font-medium whitespace-nowrap disabled:opacity-50"
+                        style={{ background: "#b4530918", color: "#f59e0b", border: "1px solid #b4530940" }}
+                      >
+                        {issuing === ev.id ? "..." : "改善を起票"}
+                      </button>
+                    </PermissionGate>
+                  )}
+                  {ev.status !== "approved" && (
+                    <PermissionGate module="program_evaluation" level="approve" projectId={project.id}>
+                      <button
+                        type="button"
+                        onClick={() => void advanceStatus(ev)}
+                        disabled={statusSaving === ev.id}
+                        className="text-[11px] px-3 py-1.5 rounded-lg font-medium whitespace-nowrap disabled:opacity-50"
+                        style={{ background: "#10b98118", color: "#10b981", border: "1px solid #10b98140" }}
+                      >
+                        {statusSaving === ev.id
+                          ? "..."
+                          : ev.status === "draft" ? "審査へ回す" : "承認して確定"}
+                      </button>
+                    </PermissionGate>
+                  )}
+                  </div>
+                </td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
       </div>
@@ -392,9 +590,21 @@ export default function ProgramEvaluationClient({
             </button>
           </div>
 
-          <div className="rounded-2xl border p-6 space-y-4" style={cardStyle}>
-            <h3 className="text-sm font-semibold text-slate-200">アウトカム・インパクト評価の記録</h3>
-            <p className="text-xs text-slate-500">ロジックモデルの成果（初期・中間アウトカム）の達成状況を記録します。</p>
+          {/* 図6・図7の分岐ウィザード（推奨の記録手段） */}
+          <EvaluationWizard
+            projectId={project.id}
+            kpis={wizardKpis}
+            logicModelId={logicModelId}
+            logicColumns={logicColumns}
+            measures={measures}
+            onSaved={() => router.refresh()}
+          />
+
+          <details className="rounded-2xl border p-6 space-y-4" style={cardStyle}>
+            <summary className="text-sm font-semibold text-slate-200 cursor-pointer">
+              フローを使わず直接入力する
+            </summary>
+            <p className="text-xs text-slate-500">ロジックモデルの成果（初期・中間アウトカム）の達成状況を記録します。判断経路は残りません。</p>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -435,9 +645,9 @@ export default function ProgramEvaluationClient({
               </button>
               </div>
             </PermissionGate>
-          </div>
+          </details>
 
-          <EvalTable rows={tierEvaluations(["outcome", "outcome_initial", "outcome_intermediate"])} />
+          <EvalTable rows={tierEvaluations(["outcome", "outcome_initial", "outcome_intermediate", "outcome_long"])} />
         </div>
       )}
 
@@ -445,6 +655,51 @@ export default function ProgramEvaluationClient({
       {activeTab === "efficiency" && (
         <div className="space-y-6">
           <LogicModelContext projectId={project.id} logicModelId={logicModelId} tier="efficiency" />
+
+          {/* 施策構築（EBPM）で確定した施策のコスト（E5）。
+              F区画の算定式は「効率性評価がそのまま使う」約束で書かれている。
+              ここに出すことでその約束を果たす。 */}
+          {measures.length > 0 && (
+            <div className="rounded-2xl border p-5" style={cardStyle}>
+              <h3 className="text-sm font-semibold text-slate-200 mb-1">
+                施策データセットのコスト（施策構築より）
+              </h3>
+              <p className="text-xs text-slate-500 mb-3">
+                確定済みの施策に記録された費用と、成果1単位あたり費用の算定式です。
+                効率性評価はこの式に実績値を当てはめて算定してください。
+              </p>
+              <div className="space-y-2">
+                {measures.map((m) => (
+                  <div
+                    key={m.id}
+                    className="rounded-lg px-3 py-2.5"
+                    style={{ background: "var(--bg-input)", border: "1px solid var(--border)" }}
+                  >
+                    <p className="text-xs font-medium text-slate-100">{m.title}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      総事業費{" "}
+                      {m.total_budget != null
+                        ? `¥${m.total_budget.toLocaleString("ja-JP")}`
+                        : "未設定"}
+                      ／ 1人あたり{" "}
+                      {m.unit_cost != null ? `¥${m.unit_cost.toLocaleString("ja-JP")}` : "未設定"}
+                      {m.funding ? ` ／ 財源: ${m.funding}` : ""}
+                    </p>
+                    {m.cost_per_outcome_note ? (
+                      <p className="text-[11px] mt-1" style={{ color: "#818cf8" }}>
+                        算定式: {m.cost_per_outcome_note}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] mt-1" style={{ color: "#f59e0b" }}>
+                        ⚠ 算定式が未記入です（施策構築のコスト工程で設定してください）
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <EfficiencyEvaluationPanel projectId={project.id} />
         </div>
       )}

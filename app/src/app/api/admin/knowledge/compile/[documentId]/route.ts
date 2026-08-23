@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
 import { downloadFromStorage } from "@/lib/storage";
@@ -73,8 +73,6 @@ export async function POST(req: NextRequest, { params }: Params) {
       dictRow = { id: ins[0]!.id, dict_data: { version: 0, sections: [], global_terms: {} } };
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
-    const anthropic = new Anthropic({ apiKey });
 
     const existingDict = dictRow.dict_data;
     const prompt = `あなたは行政計画策定の専門家です。ドキュメントを分析し、ナレッジ辞書に統合してください。
@@ -88,7 +86,7 @@ ${extractedText.slice(0, 40000)}
 JSON形式のみで回答:
 {"document_category":"law|guideline|research|plan|policy|ordinance|other","section_id":"snake_case_id","section_title":"タイトル","is_new_section":true,"summary":"要約300字","key_points":["ポイント"],"planning_implications":["留意点"],"new_terms":{"用語":"定義"},"diff_from_existing":"差分説明"}`;
 
-    const msg = await anthropic.messages.create({
+    const msg = await aiCreateMessage({ taskType: "knowledge.compile" }, {
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],

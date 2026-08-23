@@ -2,9 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import UpgradeModal from "../../../../../components/UpgradeModal";
+import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
 // ────────────────── 型定義 ──────────────────
-interface KpiRow { id: string; label: string; target: number; current: number; unit: string }
+interface KpiRow {
+  id: string; label: string; target: number; current: number; unit: string;
+  baseline_value: number | null;
+  achievement_condition: AchievementCondition | null;
+}
 interface EvidenceRow {
   id: string; title: string; evidence_type: string; strength: number;
   output_kpi_id: string | null; outcome_kpi_id: string | null;
@@ -271,7 +276,12 @@ export default function EbpmClient({
                   linked.length > 0
                     ? linked.reduce((s, e) => s + e.strength, 0) / linked.length
                     : 0;
-                const pct = kpi.target > 0 ? Math.min(100, (kpi.current / kpi.target) * 100) : 0;
+                const pct = calcAchievement({
+                  current: kpi.current,
+                  target: kpi.target,
+                  baseline: kpi.baseline_value,
+                  condition: kpi.achievement_condition,
+                }).clamped;
                 return (
                   <div key={kpi.id} className="flex items-center gap-4 flex-wrap">
                     <div className="w-40 shrink-0">

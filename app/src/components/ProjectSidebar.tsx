@@ -18,6 +18,7 @@ const NAV_ITEMS = [
       { id: "gap-analysis",    label: "ギャップ分析",        icon: "📊", path: "gap-analysis" },
       { id: "asis-analysis",   label: "現状整理(As-Is)",     icon: "🧭", path: "asis-analysis" },
       { id: "issue-hypothesis",label: "課題仮説設定",        icon: "💡", path: "issue-hypothesis" },
+      { id: "measure-design",  label: "施策構築(EBPM)",      icon: "🔬", path: "measure-design" },
       { id: "logic-model",     label: "ロジックモデル",      icon: "🗺️", path: "logic-model" },
       { id: "evidences",       label: "エビデンス管理",      icon: "🔍", path: "evidences" },
       { id: "schedule",        label: "スケジュール設定",    icon: "📅", path: "schedule" },
@@ -49,6 +50,7 @@ const NAV_ITEMS = [
     label: "改善",
     color: "#b45309",
     items: [
+      { id: "improvement-actions", label: "改善アクション",  icon: "🔧", path: "improvement-actions" },
       { id: "self-evaluation", label: "自己評価シート",      icon: "📝", path: "self-evaluation" },
       { id: "post",            label: "AI改善提案",          icon: "🤖", path: "post" },
       { id: "kpi-summary",     label: "KPIサマリー",         icon: "📑", path: "kpi-summary" },

@@ -9,7 +9,7 @@ import { downloadFromStorage } from "@/lib/storage";
 import { extractText, chunkText } from "@/lib/knowledge-extract";
 import { setProgress, appendLog } from "@/lib/knowledge-progress";
 import { triggerNextStep } from "@/lib/chain-fetch";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 
 const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 const MODEL = "claude-sonnet-4-6";
@@ -232,7 +232,6 @@ export async function POST(
         [documentId],
       );
 
-      const client = new Anthropic();
       const prompt = `あなたは行政計画策定の専門家です。文書の一部（チャンク）を分析し、指定されたPDCA工程タグに沿って構造化してください。
 
 【このドキュメントに付与されたタグ】
@@ -261,7 +260,7 @@ ${chunk}
   ]
 }`;
 
-      const message = await client.messages.create({
+      const message = await aiCreateMessage({ taskType: "knowledge.compile" }, {
         model: MODEL,
         // 2048 だと日本語の構造化JSONが途中で打ち切られ（stop_reason=max_tokens）、
         // パース失敗→items:[] でチャンクのデータが丸ごと消失するため十分に確保する。

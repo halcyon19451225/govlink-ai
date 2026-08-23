@@ -5,6 +5,11 @@
 export const CAUSAL_EDGES: Array<[from: string, to: string]> = [
   ["dataset_manager",    "gap_analysis"],
   ["gap_analysis",       "issue_hypothesis"],
+  // 施策構築（EBPM・036〜）: 真因 → エビデンス/実験設計付きの施策 → ロジックモデル。
+  // issue_hypothesis → logic_model の直行辺も互換のため残す
+  // （施策構築を経ずにロジックモデルへ進む既存プロジェクトを壊さない）。
+  ["issue_hypothesis",   "measure_design"],
+  ["measure_design",     "logic_model"],
   ["issue_hypothesis",   "logic_model"],
   ["logic_model",        "program_evaluation"],
   ["program_evaluation", "cost_efficiency"],

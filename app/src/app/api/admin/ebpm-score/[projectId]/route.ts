@@ -4,8 +4,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
-interface KpiRow { target: number; current: number }
+interface KpiRow {
+  target: number;
+  current: number;
+  baseline_value: number | null;
+  achievement_condition: AchievementCondition | null;
+}
 interface EvidenceRow { strength: number }
 interface ScheduleRow { total_tasks: number; completed_tasks: number }
 interface DocumentRow { count: number; required: number }
@@ -23,7 +29,8 @@ export async function GET(
 
   const [kpis, evidences, scheduleRows, docRows] = await Promise.all([
     query<KpiRow>(
-      `SELECT target::float AS target, current::float AS current
+      `SELECT target::float AS target, current::float AS current,
+              baseline_value::float AS baseline_value, achievement_condition
        FROM kpis WHERE project_id = $1`,
       [projectId],
     ),
@@ -57,14 +64,25 @@ export async function GET(
       : 0;
   const evidence_score = Math.min(100, (evidenceCount / kpiCount) * avgStrength * 20);
 
-  // kpi_score: 各KPIの達成率平均、MAX 100
+  // kpi_score: 各KPIの到達度平均、MAX 100
+  // 目標の向き（achievement_condition）と基準値を考慮する。
+  // 旧実装は current/target のため下向き指標で 100 を超えていた。
   const kpi_score =
     kpis.length === 0
       ? 0
       : Math.min(
           100,
-          kpis.reduce((s, k) => s + (k.target > 0 ? (k.current / k.target) * 100 : 0), 0) /
-            kpis.length,
+          kpis.reduce(
+            (s, k) =>
+              s +
+              calcAchievement({
+                current: k.current,
+                target: k.target,
+                baseline: k.baseline_value,
+                condition: k.achievement_condition,
+              }).clamped,
+            0,
+          ) / kpis.length,
         );
 
   // schedule_score: 完了タスク / 全タスク × 100、MAX 100

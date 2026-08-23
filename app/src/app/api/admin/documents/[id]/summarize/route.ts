@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getS3 } from "@/lib/storage";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 
@@ -26,8 +26,7 @@ export async function POST(
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ data: null, error: "ANTHROPIC_API_KEY が設定されていません" }, { status: 500 });
   }
 
@@ -56,9 +55,8 @@ export async function POST(
     return NextResponse.json({ data: null, error: "S3 からファイルの取得に失敗しました" }, { status: 500 });
   }
 
-  const anthropic = new Anthropic({ apiKey });
 
-  const message = await anthropic.messages.create({
+  const message = await aiCreateMessage({ taskType: "knowledge.summarize" }, {
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
     system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],

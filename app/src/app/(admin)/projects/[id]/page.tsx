@@ -36,15 +36,20 @@ interface KpiRow {
   previous_value: number | null;
   achievement_condition: "lte" | "lt" | "gte" | "gt" | "eq" | null;
   target_deadline: string | null;
+  baseline_value: number | null;
+  baseline_year: number | null;
+  contributes_to_kpi_id: string | null;
 }
 
 interface LogicModelRow {
   id: string;
-  inputs: string[];
-  activities: string[];
-  outputs: string[];
-  initial_outcomes: string[] | null;
-  intermediate_outcomes: string[] | null;
+  // 要素列は JSONB（文字列配列と要素オブジェクトが混在しうる）
+  inputs: unknown;
+  activities: unknown;
+  outputs: unknown;
+  initial_outcomes: unknown;
+  intermediate_outcomes: unknown;
+  long_outcomes: unknown;
   name: string | null;
   status: string;
   generated_at: string | null;
@@ -83,16 +88,20 @@ export default async function AdminProjectDetailPage({
       `SELECT id, label, target::float, current::float, unit,
               goal_id, indicator_type, previous_value::float,
               achievement_condition,
+              baseline_value::float AS baseline_value, baseline_year,
+              contributes_to_kpi_id,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline
        FROM kpis WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
     query<LogicModelRow>(
       `SELECT id, inputs, activities, outputs,
-              initial_outcomes, intermediate_outcomes,
+              initial_outcomes, intermediate_outcomes, long_outcomes,
               name, status, generated_at::text
        FROM logic_models WHERE project_id = $1
-       ORDER BY generated_at DESC LIMIT 1`,
+       -- 現行版は is_current で決める（034）。
+       -- 以前は generated_at 順で、他画面の version 順と別の行を見ていた。
+       ORDER BY is_current DESC, version DESC, created_at DESC LIMIT 1`,
       [params.id],
     ),
   ]);

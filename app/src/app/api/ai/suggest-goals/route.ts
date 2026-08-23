@@ -2,12 +2,11 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
 
-const client = new Anthropic();
 
 // ─── スキーマ ─────────────────────────────────────────────────────────────────
 
@@ -96,7 +95,7 @@ ${planName ? `計画名: ${planName}\n` : ""}${municipalityName ? `自治体名:
   ]
 }`;
 
-      const message = await client.messages.create({
+      const message = await aiCreateMessage({ taskType: "proposal.goals" }, {
         model: "claude-sonnet-4-6",
         max_tokens: 1024,
         messages: [{ role: "user", content: prompt }],
@@ -132,7 +131,7 @@ ${planName ? `計画名: ${planName}\n` : ""}${municipalityName ? `自治体名:
   ]
 }`;
 
-    const message = await client.messages.create({
+    const message = await aiCreateMessage({ taskType: "proposal.goals" }, {
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
       messages: [{ role: "user", content: prompt }],

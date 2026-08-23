@@ -16,6 +16,7 @@ interface KpiRow {
   unit: string;
   achievement_condition: "lte" | "lt" | "gte" | "gt" | "eq" | null;
   target_deadline: string | null;
+  baseline_value: number | null;
   goal_id: string | null;
   goal_title: string | null;
 }
@@ -48,6 +49,7 @@ export default async function GapAnalysisPage({
     query<KpiRow>(
       `SELECT k.id, k.label, k.target::float, k.unit,
               k.achievement_condition,
+              k.baseline_value::float AS baseline_value,
               to_char(k.target_deadline, 'YYYY-MM-DD') AS target_deadline,
               k.goal_id,
               g.title AS goal_title

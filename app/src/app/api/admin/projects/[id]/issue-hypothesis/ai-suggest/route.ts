@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
@@ -32,8 +32,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     await incrementAiUsage(munIdForLimit);
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
       { data: null, error: "ANTHROPIC_API_KEY が設定されていません" },
       { status: 500 },
@@ -99,9 +98,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     .filter(Boolean)
     .join("\n");
 
-  const anthropic = new Anthropic({ apiKey });
 
-  const message = await anthropic.messages.create({
+  const message = await aiCreateMessage({ taskType: "proposal.issue_hypothesis", projectId: params.id }, {
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
     system: [

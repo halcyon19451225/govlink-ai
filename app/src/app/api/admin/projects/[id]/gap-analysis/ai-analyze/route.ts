@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const aiCtx = { taskType: "analysis.gap", projectId: params.id } as const;
 
   // ── モード1: データセットから自動抽出・gap_analyses 登録 ──
   if ("from_datasets" in parsed.data) {
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const hasMieruka = datasetContents.some((d) => d.def_id === "mieruka_export");
 
-    const message = await client.messages.create({
+    const message = await aiCreateMessage(aiCtx, {
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
       tools: [
@@ -339,7 +339,7 @@ ${datasetText}`,
     return NextResponse.json({ data: null, error: "対象ギャップが見つかりません" }, { status: 404 });
   }
 
-  const message = await client.messages.create({
+  const message = await aiCreateMessage(aiCtx, {
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
     messages: [

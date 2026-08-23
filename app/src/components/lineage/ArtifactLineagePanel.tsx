@@ -8,6 +8,7 @@ const MODULE_LABELS: Record<string, string> = {
   gap_analysis: "GA",
   issue_hypothesis: "IH",
   logic_model: "LM",
+  measure_design: "MD",
   program_evaluation: "PE",
   cost_efficiency: "CE",
   service_volume: "SV",

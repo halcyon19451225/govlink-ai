@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
 import { downloadFromStorage } from "@/lib/storage";
@@ -96,10 +96,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     const existingDict = dictRow?.dict_data ?? { version: 0, sections: [], global_terms: {}, planning_checklist: [] };
 
     // Step 4: Claude API呼び出し
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY が設定されていません");
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY が設定されていません");
 
-    const anthropic = new Anthropic({ apiKey });
 
     const prompt = `あなたは行政計画策定の専門家です。
 以下のドキュメントを分析し、既存のナレッジ辞書に統合してください。
@@ -125,7 +123,7 @@ ${extractedText.slice(0, 40000)}
   "diff_from_existing": "既存ナレッジとの差分・追加情報の説明"
 }`;
 
-    const message = await anthropic.messages.create({
+    const message = await aiCreateMessage({ taskType: "knowledge.compile" }, {
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],

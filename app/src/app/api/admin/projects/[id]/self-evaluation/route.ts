@@ -20,6 +20,8 @@ const bodySchema = z.object({
   evaluation_timing: z.string().optional(),
   has_interim_review: z.boolean().default(true),
   program_evaluation_id: z.string().uuid().optional(),
+  // PDCAチェックポイントとの紐付け（従来 API がセットしておらず常に NULL だった）
+  checkpoint_id: z.string().uuid().optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -100,8 +102,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const row = await queryOne<{ id: string }>(
     `INSERT INTO self_evaluation_sheets
        (project_id, title, background, activities, target_and_metrics,
-        evaluation_method, evaluation_timing, has_interim_review, program_evaluation_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        evaluation_method, evaluation_timing, has_interim_review, program_evaluation_id,
+        checkpoint_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [
       params.id,
@@ -113,6 +116,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       d.evaluation_timing ?? null,
       d.has_interim_review,
       d.program_evaluation_id ?? null,
+      d.checkpoint_id ?? null,
     ],
   );
 

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import KpiReportForm from "./KpiReportForm";
+import type { AchievementCondition } from "@/lib/stats/achievement";
 
 interface KpiRow {
   id: string;
@@ -9,6 +10,8 @@ interface KpiRow {
   current: number;
   unit: string;
   indicator_type: string;
+  baseline_value: number | null;
+  achievement_condition: AchievementCondition | null;
 }
 
 export default async function KpiReportPage({ params }: { params: { id: string } }) {
@@ -21,6 +24,8 @@ export default async function KpiReportPage({ params }: { params: { id: string }
 
   const kpis = await query<KpiRow>(
     `SELECT id, label, target::float, current::float, unit,
+            baseline_value::float AS baseline_value,
+            achievement_condition,
             COALESCE(indicator_type, 'process') AS indicator_type
      FROM kpis WHERE project_id = $1 ORDER BY id`,
     [params.id],

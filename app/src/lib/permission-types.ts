@@ -6,6 +6,7 @@ export type ModuleId =
   | "dataset_manager"
   | "gap_analysis"
   | "issue_hypothesis"
+  | "measure_design"
   | "logic_model"
   | "program_evaluation"
   | "cost_efficiency"

@@ -15,15 +15,20 @@ const PHASE_COLORS: Record<string, string> = {
 };
 
 // モジュールID → 相対URLパス（プロジェクトID以降）のマッピング
+//
+// 以前は4件が汎用ページ（/evaluations・/ebpm）を指しており、
+// 自己評価をクリックすると評価一覧に飛ぶなど動線が壊れていた。
+// それぞれの専用ページへ向けるよう修正している。
 const MODULE_PATH: Record<string, string> = {
-  dataset_manager:    "documents",
-  gap_analysis:       "ebpm",
-  issue_hypothesis:   "ebpm",
-  logic_model:        "",
-  program_evaluation: "evaluations",
-  cost_efficiency:    "evaluations",
-  service_volume:     "evaluations",
-  self_evaluation:    "evaluations",
+  dataset_manager:    "datasets",
+  gap_analysis:       "gap-analysis",
+  issue_hypothesis:   "issue-hypothesis",
+  measure_design:     "measure-design",
+  logic_model:        "logic-model",
+  program_evaluation: "program-evaluation",
+  cost_efficiency:    "program-evaluation", // 第5階層として統合済み
+  service_volume:     "service-volume",
+  self_evaluation:    "self-evaluation",
 };
 
 interface CheckpointFull extends PdcaCheckpoint {

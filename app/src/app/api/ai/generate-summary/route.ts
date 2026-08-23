@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { aiStreamMessage } from "@/lib/ai/gateway";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
@@ -52,8 +52,7 @@ export async function POST(req: NextRequest) {
     await incrementAiUsage(munIdForLimit);
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
       { data: null, error: "ANTHROPIC_API_KEY が設定されていません" },
       { status: 500 },
@@ -94,13 +93,12 @@ export async function POST(req: NextRequest) {
 本文:
 ${body}${kpiLines}`;
 
-  const anthropic = new Anthropic({ apiKey });
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const claudeStream = anthropic.messages.stream({
+        const claudeStream = aiStreamMessage({ taskType: "generation.summary" }, {
           model: "claude-sonnet-4-6",
           max_tokens: 512,
           system: [

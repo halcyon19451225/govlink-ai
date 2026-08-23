@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
+import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
 interface ProjectRow {
   id: string;
@@ -14,6 +15,8 @@ interface KpiRow {
   id: string;
   label: string;
   target: number;
+  baseline_value: number | null;
+  achievement_condition: AchievementCondition | null;
   current: number;
   unit: string;
 }
@@ -72,7 +75,8 @@ export default async function PublicProjectPage({
 
   const [kpis, posts] = await Promise.all([
     query<KpiRow>(
-      `SELECT id, label, target::float AS target, current::float AS current, unit
+      `SELECT id, label, target::float AS target, current::float AS current, unit,
+              baseline_value::float AS baseline_value, achievement_condition
        FROM kpis WHERE project_id = $1 ORDER BY created_at`,
       [project.id],
     ),
@@ -130,7 +134,12 @@ export default async function PublicProjectPage({
             >
               {kpis.map((kpi) => {
                 const pct =
-                  kpi.target > 0 ? Math.min(100, (kpi.current / kpi.target) * 100) : 0;
+                  calcAchievement({
+                    current: kpi.current,
+                    target: kpi.target,
+                    baseline: kpi.baseline_value,
+                    condition: kpi.achievement_condition,
+                  }).clamped;
                 return (
                   <div key={kpi.id}>
                     <div className="flex justify-between items-baseline mb-1.5">

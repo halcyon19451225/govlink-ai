@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import KpiSummaryClient from "./KpiSummaryClient";
+import type { AchievementCondition } from "@/lib/stats/achievement";
 
 interface ProjectRow { id: string; title: string }
 
@@ -11,6 +12,8 @@ interface KpiRow {
   current: number;
   unit: string;
   indicator_type: string;
+  baseline_value: number | null;
+  achievement_condition: AchievementCondition | null;
 }
 
 interface ReportRow {
@@ -38,6 +41,8 @@ export default async function KpiSummaryPage({ params }: { params: { id: string 
   const [kpis, reports] = await Promise.all([
     query<KpiRow>(
       `SELECT id, label, target::float, current::float, unit,
+              baseline_value::float AS baseline_value,
+              achievement_condition,
               COALESCE(indicator_type, 'process') AS indicator_type
        FROM kpis WHERE project_id = $1 ORDER BY id`,
       [params.id],

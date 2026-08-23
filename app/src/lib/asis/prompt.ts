@@ -48,7 +48,13 @@ const CROSS_GUIDE = `【クロス分析フェーズ（cross）】
 - WO戦略（弱み×機会）: 弱みを補強して機会を取りこぼさない改善戦略
 - ST戦略（強み×脅威）: 強みで脅威に対抗する差別化戦略
 - WT戦略（弱み×脅威）: 弱みと脅威による最悪シナリオを避ける防衛/撤退戦略
-利用者に4戦略の要点を分かりやすく提示し、completed=true としてください。`;
+利用者に4戦略の要点を分かりやすく提示し、cross_analysis（so/wo/st/wt すべて1件以上）を出力したうえで completed=true としてください。
+
+【重要な禁止事項】
+cross_analysis を出力しないまま phase="done" や completed=true にすることは禁止です。
+internal フェーズの質問を終えたら、必ず phase="cross" に移行し、cross_analysis の4戦略を
+提示するターンを挟んでから完了してください。internal の最後の回答を受け取ったターンで
+いきなり完了扱いにしてはいけません。`;
 
 const PESTLE_LEGEND = PESTLE_ORDER.map(
   (k) => `${k}=${PESTLE_META[k].label}(${PESTLE_META[k].full})`,
@@ -123,12 +129,24 @@ export function buildSystemPrompt(opts: {
   kpiContext?: KpiContext | null;
   currentStep: string;
   swot: SwotData;
+  knowledgeContext?: string;
+  /** 横断コーパスの接地ブロック（X4・assistモードのとき注入） */
+  corpusBlock?: string | null;
 }): string {
-  const { projectTitle, kpiLabel, kpiContext, currentStep, swot } = opts;
+  const { projectTitle, kpiLabel, kpiContext, currentStep, swot, knowledgeContext, corpusBlock } =
+    opts;
   const target = kpiLabel
     ? `指標「${kpiLabel}」`
     : "プロジェクト全体の現状";
   const kpiBlock = kpiContext ? `\n\n【${buildKpiContextText(kpiContext)}】` : "";
+  const knowledgeBlock = knowledgeContext
+    ? `\n\n${knowledgeContext}\n`
+    : "";
+  const corpusGroundingBlock = corpusBlock
+    ? `\n\n${corpusBlock}\n※ 上記コーパスは他自治体の確定済みデータ（匿名・検収済み）です。SWOTの機会・脅威や
+  打ち手の視点の材料として参照し、使うときは「（コーパス: ◯◯）」と出所を添えて、
+  当自治体との規模・体制の違いを確認してください。\n`
+    : "";
   return `あなたは日本の地方自治体の政策アナリストです。
 担当者と対話しながら「現状整理（As-Is分析）」を進めるファシリテーターを務めます。
 対象プロジェクト: ${projectTitle}
@@ -150,7 +168,22 @@ ${CROSS_GUIDE}
 - external では new_opportunities / new_threats（pestle タグ必須）を抽出。
 - internal では new_strengths / new_weaknesses（seven_s タグ必須）を抽出。
 - cross では cross_analysis（so/wo/st/wt）を作成し completed=true。
+- **フェーズは必ず external → internal → cross → done の順に進めてください。cross を飛ばして
+  done にすること・cross_analysis 未出力のまま completed=true にすることは禁止です。**
 - 既に抽出済みの項目は再度返さず、今回の回答から新たに分かった項目のみを new_* に入れてください。
+
+【回答ヒント（suggestions）の作成 — 毎ターン必須】
+質問を投げかけるターンでは、担当者が答えやすいように「回答のヒント」を2〜4件、
+suggestions フィールドで必ず添えてください。書き方のルール:
+- 「〜という強みがあるのではないですか？」「〜が追い風になっていませんか？」のように、
+  具体的な仮説を提示して知見を引き出す疑問形で書く（1件60〜90文字程度）。
+- 根拠はまず【参照ナレッジ】の記載から探す。ナレッジに関連する記載がある場合は
+  必ずそれを優先し、文末に（出典: ナレッジ名）を付す。
+- ナレッジに十分な材料がない場合のみ web_search ツールで最新の政策動向・統計・
+  他自治体事例を調べて補完する（文末に 出典: サイト名 を付す）。検索は1ターンに
+  最大2回まで。検索結果が乏しければ一般的な行政実務の知見から仮説を立ててよい
+  （その場合は出典表記は不要）。
+- cross フェーズと完了ターンでは suggestions は不要（空でよい）。
 
 【タグの凡例】
 PESTLE: ${PESTLE_LEGEND}
@@ -158,8 +191,10 @@ PESTLE: ${PESTLE_LEGEND}
 
 【これまでに整理済みのSWOT】
 ${swotSummary(swot)}
-
-必ず record_turn ツールを使って応答してください。reply には担当者へのメッセージ（次の質問または締めくくり）を入れてください。`;
+${knowledgeBlock}${corpusGroundingBlock}
+応答の最後は必ず record_turn ツールで締めくくってください（web_search を使った場合も、
+最終的な応答は必ず record_turn で返します）。reply には担当者へのメッセージ
+（次の質問または締めくくり）を入れてください。`;
 }
 
 // 対話開始時の最初のメッセージ（external フェーズ）
@@ -270,6 +305,12 @@ export const RECORD_TURN_TOOL: Anthropic.Tool = {
           st: { type: "array", items: { type: "string" } },
           wt: { type: "array", items: { type: "string" } },
         },
+      },
+      suggestions: {
+        type: "array",
+        description:
+          "担当者への回答ヒント2〜4件。「〜という強みがあるのではないですか？」のような仮説提示の疑問形。ナレッジ→Web検索の順で根拠を取り、出典があれば文末に付す",
+        items: { type: "string" },
       },
       completed: {
         type: "boolean",

@@ -1,9 +1,14 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import EbpmClient from "./EbpmClient";
+import type { AchievementCondition } from "@/lib/stats/achievement";
 
 interface ProjectRow { id: string; title: string }
-interface KpiRow { id: string; label: string; target: number; current: number; unit: string }
+interface KpiRow {
+  id: string; label: string; target: number; current: number; unit: string;
+  baseline_value: number | null;
+  achievement_condition: AchievementCondition | null;
+}
 interface EvidenceRow {
   id: string; title: string; evidence_type: string; strength: number;
   output_kpi_id: string | null; outcome_kpi_id: string | null;
@@ -31,7 +36,8 @@ export default async function EbpmPage({ params }: { params: { id: string } }) {
 
   const [kpis, evidences, suggestions, benchmarks, reports] = await Promise.all([
     query<KpiRow>(
-      `SELECT id, label, target::float AS target, current::float AS current, unit
+      `SELECT id, label, target::float AS target, current::float AS current, unit,
+              baseline_value::float AS baseline_value, achievement_condition
        FROM kpis WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),

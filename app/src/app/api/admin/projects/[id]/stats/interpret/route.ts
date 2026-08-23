@@ -4,9 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { aiCreateMessage } from "@/lib/ai/gateway";
 
 const bodySchema = z.object({
   module: z.string(),
@@ -38,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   const prompt = `あなたは日本の介護保険行政の専門家です。以下の統計データを分析し、自治体担当者向けに分かりやすく日本語で解釈・解説してください（200字以内）。\n\nモジュール: ${module}\nデータ: ${JSON.stringify(data, null, 2)}`;
 
-  const message = await anthropic.messages.create({
+  const message = await aiCreateMessage({ taskType: "analysis.stats" }, {
     model: "claude-sonnet-4-6",
     max_tokens: 400,
     messages: [{ role: "user", content: prompt }],

@@ -12,16 +12,22 @@ interface EvaluationRow {
   evaluation_tier: string;
   fiscal_year: number | null;
   status: string;
-  summary: string | null;
+  result: string | null;
+  findings: string | null;
   created_at: string;
 }
 
 const TIER_LABELS: Record<string, string> = {
-  needs:   "ニーズ評価",
-  theory:  "セオリー評価",
-  process: "プロセス評価",
-  outcome: "アウトカム評価",
-  cost:    "コスト効率評価",
+  needs:                 "ニーズ評価",
+  theory:                "セオリー評価",
+  process:               "プロセス評価",
+  outcome:               "アウトカム評価",
+  outcome_initial:       "短期アウトカム評価",
+  outcome_intermediate:  "中間アウトカム評価",
+  outcome_long:          "長期アウトカム評価",
+  cost:                  "コスト効率評価",
+  cost_efficiency:       "効率性評価",
+  efficiency:            "効率性評価",
 };
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -41,14 +47,18 @@ export default async function EvaluationsPage({ params }: { params: { id: string
   const project = projects[0];
   if (!project) notFound();
 
+  // 注: summary 列は存在しない（010 で定義されていない）。result / findings を使う。
   const evaluations = await query<EvaluationRow>(
-    `SELECT id, evaluation_tier, fiscal_year, status, summary,
+    `SELECT id, evaluation_tier, fiscal_year, status, result, findings,
             to_char(created_at, 'YYYY-MM-DD') AS created_at
      FROM program_evaluations
      WHERE project_id = $1
      ORDER BY created_at DESC`,
     [params.id],
-  ).catch(() => [] as EvaluationRow[]);
+  ).catch((e) => {
+    console.error("評価一覧の取得に失敗:", e);
+    return [] as EvaluationRow[];
+  });
 
   return (
     <div className="max-w-4xl">
@@ -106,8 +116,10 @@ export default async function EvaluationsPage({ params }: { params: { id: string
                         <span className="text-xs text-slate-500">{ev.fiscal_year}年度</span>
                       )}
                     </div>
-                    {ev.summary && (
-                      <p className="text-sm text-slate-300 mt-1 leading-relaxed line-clamp-2">{ev.summary}</p>
+                    {(ev.result ?? ev.findings) && (
+                      <p className="text-sm text-slate-300 mt-1 leading-relaxed line-clamp-2">
+                        {ev.result ?? ev.findings}
+                      </p>
                     )}
                   </div>
                   <span className="text-xs text-slate-600 shrink-0">{ev.created_at}</span>

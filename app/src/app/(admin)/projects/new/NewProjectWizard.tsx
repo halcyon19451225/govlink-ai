@@ -1280,7 +1280,8 @@ export default function NewProjectWizard({
             target: parseFloat(k.target_value) || 0,
             unit: k.unit,
             goal_index: gIdx,
-            indicator_type: "outcome_initial" as const,
+            // indicator_type は送らない。サーバーが target_deadline から評価スパンを推定する
+            // （以前ここで "outcome_initial" を固定していたため、長期指標まで短期に分類されていた）
             previous_value: k.baseline_value ? parseFloat(k.baseline_value) : null,
             achievement_condition: k.achievement_condition || null,
             target_deadline: k.target_deadline || null,

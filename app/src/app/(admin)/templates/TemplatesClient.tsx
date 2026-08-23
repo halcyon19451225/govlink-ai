@@ -28,6 +28,7 @@ const MODULE_ICONS: Record<string, string> = {
   gap_analysis:       "📊",
   issue_hypothesis:   "🔬",
   logic_model:        "🔗",
+  measure_design:     "🔬",
   program_evaluation: "📋",
   cost_efficiency:    "💴",
   service_volume:     "📈",

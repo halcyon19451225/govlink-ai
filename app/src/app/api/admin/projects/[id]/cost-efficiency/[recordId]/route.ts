@@ -33,7 +33,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  const deny = await requireModulePermission(session, params.id, "cost_efficiency", "edit");
+  const deny = await requireModulePermission(session, params.id, "program_evaluation", "edit");
   if (deny) return deny;
 
   let raw: unknown;
@@ -112,7 +112,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  const deny = await requireModulePermission(session, params.id, "cost_efficiency", "edit");
+  const deny = await requireModulePermission(session, params.id, "program_evaluation", "edit");
   if (deny) return deny;
 
   const row = await queryOne(

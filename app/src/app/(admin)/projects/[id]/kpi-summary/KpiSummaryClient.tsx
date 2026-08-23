@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
 interface KpiRow {
   id: string;
@@ -9,6 +10,8 @@ interface KpiRow {
   current: number;
   unit: string;
   indicator_type: string;
+  baseline_value: number | null;
+  achievement_condition: AchievementCondition | null;
 }
 
 interface ReportRow {
@@ -91,7 +94,13 @@ export default function KpiSummaryClient({
         </h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {kpis.map((kpi) => {
-            const pct = kpi.target > 0 ? Math.min(100, Math.round((kpi.current / kpi.target) * 100)) : 0;
+            const ach = calcAchievement({
+              current: kpi.current,
+              target: kpi.target,
+              baseline: kpi.baseline_value,
+              condition: kpi.achievement_condition,
+            });
+            const pct = ach.clamped;
             const color = pct >= 80 ? "#10b981" : pct >= 50 ? "#06b6d4" : "#f59e0b";
             return (
               <div
@@ -223,7 +232,12 @@ export default function KpiSummaryClient({
                                        (r.reported_value / kpi.target) >= 0.5 ? "#06b6d4" : "#f59e0b",
                               }}
                             >
-                              {Math.round((r.reported_value / kpi.target) * 100)}%達成
+                              {calcAchievement({
+                                current: r.reported_value,
+                                target: kpi.target,
+                                baseline: kpi.baseline_value,
+                                condition: kpi.achievement_condition,
+                              }).clamped}%到達
                             </span>
                             ）
                           </span>

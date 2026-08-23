@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { normalizeColumns, type LogicColumnKey } from "@/lib/logicmodel/elements";
 
 // ロジックモデルを評価の「軸」として参照表示するパネル（設計 §2 / フェーズP3）。
 // tier に応じてロジックモデルの該当要素を表示する:
@@ -19,6 +20,7 @@ interface LogicModelData {
   outcomes: unknown;
   initial_outcomes: unknown;
   intermediate_outcomes: unknown;
+  long_outcomes?: unknown;
 }
 
 interface Props {
@@ -37,23 +39,9 @@ const TIER_DESC: Record<LogicModelTier, string> = {
   efficiency: "効率性評価は、ロジックモデルの「投入」と「成果」の費用対効果を評価します。",
 };
 
-/** JSONB フィールドを string[] に正規化する（ベストエフォート） */
-function toStringList(value: unknown): string[] {
-  if (value == null) return [];
-  if (Array.isArray(value)) return value.map((v) => String(v)).filter((s) => s.trim() !== "");
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const arr = obj["items"] ?? obj["list"] ?? obj["activities"] ?? obj["values"];
-    if (Array.isArray(arr)) return arr.map((v) => String(v)).filter((s) => s.trim() !== "");
-    // オブジェクトの値を平坦化
-    return Object.values(obj)
-      .flatMap((v) => (Array.isArray(v) ? v.map((x) => String(x)) : typeof v === "string" ? [v] : []))
-      .filter((s) => s.trim() !== "");
-  }
-  if (typeof value === "string") return value.trim() ? [value] : [];
-  return [];
-}
-
+// 正規化は src/lib/logicmodel/elements.ts に集約した。
+// 以前はこのファイルに独自の toStringList / pickTerm があり、
+// 同じ処理が画面ごとに少しずつ違う形で重複していた。
 function Section({ label, items }: { label: string; items: string[] }) {
   return (
     <div>
@@ -103,24 +91,30 @@ export default function LogicModelContext({ projectId, logicModelId, tier, defau
 
   const sections: { label: string; items: string[] }[] = (() => {
     if (!model) return [];
-    // 中間アウトカムが未設定なら旧 outcomes にフォールバック
-    const intermediate = toStringList(model.intermediate_outcomes);
-    const outcomeItems = intermediate.length > 0 ? intermediate : toStringList(model.outcomes);
+    // 6列すべてを一度に正規化する。
+    // 三層アウトカムが空なら旧 outcomes 列から term を見て振り分けられる。
+    const cols = normalizeColumns(model as unknown as Record<string, unknown>);
+    const texts = (key: LogicColumnKey) => cols[key].map((e) => e.text);
+
     switch (tier) {
       case "process":
         return [
-          { label: "活動（Activities）", items: toStringList(model.activities) },
-          { label: "産出（Outputs）", items: toStringList(model.outputs) },
+          { label: "活動（Activities）", items: texts("activities") },
+          { label: "産出（Outputs）", items: texts("outputs") },
         ];
       case "outcome":
         return [
-          { label: "初期アウトカム（Initial Outcomes）", items: toStringList(model.initial_outcomes) },
-          { label: "中間アウトカム（Intermediate Outcomes）", items: outcomeItems },
+          { label: "短期アウトカム（概ね1年）", items: texts("initial_outcomes") },
+          { label: "中間アウトカム（2〜5年）", items: texts("intermediate_outcomes") },
+          { label: "長期アウトカム（計画期間超・参考）", items: texts("long_outcomes") },
         ];
       case "efficiency":
         return [
-          { label: "投入（Inputs）", items: toStringList(model.inputs) },
-          { label: "成果（Outcomes）", items: outcomeItems },
+          { label: "投入（Inputs）", items: texts("inputs") },
+          {
+            label: "成果（Outcomes）",
+            items: [...texts("intermediate_outcomes"), ...texts("initial_outcomes")],
+          },
         ];
     }
   })();

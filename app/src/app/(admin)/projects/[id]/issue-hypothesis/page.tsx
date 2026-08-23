@@ -2,33 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
-import IssueHypothesisClient from "./IssueHypothesisClient";
-
-interface IssueHypothesis {
-  id: string;
-  title: string;
-  description: string | null;
-  root_cause: string | null;
-  root_cause_tree: unknown | null;
-  priority_rank: number | null;
-  smart_check: unknown | null;
-  evidence_sources: string[] | null;
-  proposed_measures: string[] | null;
-  status: "draft" | "confirmed" | "rejected";
-  ai_generated: boolean;
-  verification_notes: string | null;
-  gap_analysis_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface GapRow {
-  id: string;
-  indicator_name: string;
-  gap_value: string;
-  trend: string;
-  priority_score: number | null;
-}
+import IssueHypothesisClient, {
+  type IssueDialogueRecord,
+  type CommittedHypothesis,
+  type KpiRow,
+} from "./IssueHypothesisClient";
 
 export default async function IssueHypothesisPage({
   params,
@@ -41,18 +19,34 @@ export default async function IssueHypothesisPage({
   );
   if (!project) notFound();
 
-  const [hypotheses, gaps] = await Promise.all([
-    query<IssueHypothesis>(
-      `SELECT id, title, description, root_cause, root_cause_tree,
-              priority_rank, smart_check, evidence_sources, proposed_measures,
-              status, ai_generated, verification_notes,
-              gap_analysis_id, created_at::text, updated_at::text
-       FROM issue_hypotheses WHERE project_id = $1 ORDER BY priority_rank NULLS LAST, created_at`,
+  const [dialogues, kpis, committed] = await Promise.all([
+    query<IssueDialogueRecord>(
+      `SELECT d.id, d.kpi_id, d.gap_analysis_id, d.asis_analysis_id, d.title,
+              d.status, d.current_step,
+              COALESCE(d.messages,    '[]'::jsonb) AS messages,
+              COALESCE(d.problems,    '[]'::jsonb) AS problems,
+              COALESCE(d.selection,   '[]'::jsonb) AS selection,
+              COALESCE(d.root_causes, '[]'::jsonb) AS root_causes,
+              COALESCE(d.hypotheses,  '[]'::jsonb) AS hypotheses,
+              d.committed_at::text,
+              d.created_at::text, d.updated_at::text,
+              k.label AS kpi_label
+       FROM issue_dialogues d
+       LEFT JOIN kpis k ON k.id = d.kpi_id
+       WHERE d.project_id = $1
+       ORDER BY d.created_at DESC`,
       [params.id],
     ),
-    query<GapRow>(
-      `SELECT id, indicator_name, gap_value::text, trend, priority_score
-       FROM gap_analyses WHERE project_id = $1 ORDER BY created_at`,
+    query<KpiRow>(
+      "SELECT id, label, unit FROM kpis WHERE project_id = $1 ORDER BY created_at",
+      [params.id],
+    ),
+    query<CommittedHypothesis>(
+      `SELECT id, issue_dialogue_id, title, description, root_cause,
+              priority_rank, status, evidence_sources, proposed_measures
+       FROM issue_hypotheses
+       WHERE project_id = $1
+       ORDER BY priority_rank NULLS LAST, created_at`,
       [params.id],
     ),
   ]);
@@ -60,9 +54,10 @@ export default async function IssueHypothesisPage({
   return (
     <IssueHypothesisClient
       project={project}
-      hypotheses={hypotheses}
-      gaps={gaps}
       projectId={params.id}
+      initialDialogues={dialogues}
+      kpis={kpis}
+      initialCommitted={committed}
     />
   );
 }

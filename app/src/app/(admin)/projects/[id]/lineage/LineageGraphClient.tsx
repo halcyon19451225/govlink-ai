@@ -18,6 +18,7 @@ import type { LineageNode, LineageEdge } from "@/app/api/admin/projects/[id]/lin
 const MODULE_CONFIG: Record<string, { label: string; color: string }> = {
   gap_analysis:       { label: "ギャップ分析",   color: "#f59e0b" },
   issue_hypothesis:   { label: "課題仮説",       color: "#8b5cf6" },
+  measure_design:     { label: "施策構築(EBPM)", color: "#6366f1" },
   logic_model:        { label: "ロジックモデル", color: "#10b981" },
   program_evaluation: { label: "プログラム評価", color: "#3b82f6" },
   cost_efficiency:    { label: "コスト効率",     color: "#ef4444" },
@@ -102,6 +103,7 @@ function computeLayout(
 const MODULE_PATH: Record<string, string> = {
   gap_analysis:       "gap-analysis",
   issue_hypothesis:   "issue-hypothesis",
+  measure_design:     "measure-design",
   logic_model:        "logic-model",
   program_evaluation: "evaluations",
   cost_efficiency:    "cost-efficiency",

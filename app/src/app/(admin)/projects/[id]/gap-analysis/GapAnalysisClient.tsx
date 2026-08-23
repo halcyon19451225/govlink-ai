@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { calcAchievement } from "@/lib/stats/achievement";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ interface Kpi {
   unit: string;
   achievement_condition: AchievementCondition | null;
   target_deadline: string | null;
+  baseline_value: number | null;
   goal_id: string | null;
   goal_title: string | null;
 }
@@ -73,9 +75,12 @@ function calcDisplay(kpi: Kpi, current: number | null) {
       : current >= kpi.target;
   }
 
-  const achievementRate = kpi.target !== 0
-    ? Math.round((current / kpi.target) * 1000) / 10
-    : null;
+  const achievementRate = calcAchievement({
+    current,
+    target: kpi.target,
+    baseline: kpi.baseline_value,
+    condition: kpi.achievement_condition,
+  }).rate;
 
   return { gapValue, achieved, achievementRate };
 }
@@ -111,6 +116,10 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
   const [asisStatus, setAsisStatus] = useState<
     Record<string, { asis_id: string; status: string; current_step: string }>
   >({});
+  // 課題仮説設定のKPIごとのステータス（kpi_id → 状態）
+  const [issueStatus, setIssueStatus] = useState<
+    Record<string, { dialogue_id: string; status: string; current_step: string }>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +141,47 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
           map[s.kpi_id] = { asis_id: s.asis_id, status: s.status, current_step: s.current_step };
         }
         setAsisStatus(map);
+      } catch {
+        /* 取得失敗時はボタン未実施扱い */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/projects/${projectId}/issue-dialogue?byKpi=true`,
+        );
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          data: {
+            statuses: {
+              kpi_id: string;
+              dialogue_id: string;
+              status: string;
+              current_step: string;
+            }[];
+          } | null;
+          error: string | null;
+        };
+        if (cancelled || !json.data) return;
+        const map: Record<
+          string,
+          { dialogue_id: string; status: string; current_step: string }
+        > = {};
+        for (const s of json.data.statuses) {
+          map[s.kpi_id] = {
+            dialogue_id: s.dialogue_id,
+            status: s.status,
+            current_step: s.current_step,
+          };
+        }
+        setIssueStatus(map);
       } catch {
         /* 取得失敗時はボタン未実施扱い */
       }
@@ -367,7 +417,7 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
         <table className="w-full min-w-[700px]">
           <thead>
             <tr className="border-b" style={{ borderColor: "var(--border)" }}>
-              {["指標名", "目標値", "現状値", "ギャップ", "達成率", "優先度", "現状整理", ""].map((h) => (
+              {["指標名", "目標値", "現状値", "ギャップ", "達成率", "優先度", "現状整理", "課題仮説", ""].map((h) => (
                 <th key={h} className="text-left text-xs font-semibold px-4 py-3"
                   style={{ color: "var(--text-secondary)" }}>
                   {h}
@@ -531,6 +581,45 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
                           style={{ color: "#f59e0b", background: "#f59e0b20", border: "1px solid #f59e0b40" }}
                         >
                           ⏳ 整理中
+                        </Link>
+                      );
+                    })()}
+                  </td>
+
+                  {/* 課題仮説設定の導線（現状整理の次工程） */}
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const issue = issueStatus[kpi.id];
+                      const href = `/projects/${projectId}/issue-hypothesis?kpiId=${kpi.id}`;
+                      if (!issue) {
+                        return (
+                          <Link
+                            href={href}
+                            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors hover:border-indigo-400 hover:text-indigo-400"
+                            style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                          >
+                            💡 課題仮説
+                          </Link>
+                        );
+                      }
+                      if (issue.status === "completed") {
+                        return (
+                          <Link
+                            href={href}
+                            className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full transition-colors"
+                            style={{ color: "#10b981", background: "#10b98120", border: "1px solid #10b98140" }}
+                          >
+                            ✓ 設定済み
+                          </Link>
+                        );
+                      }
+                      return (
+                        <Link
+                          href={href}
+                          className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full transition-colors"
+                          style={{ color: "#f59e0b", background: "#f59e0b20", border: "1px solid #f59e0b40" }}
+                        >
+                          ⏳ 設定中
                         </Link>
                       );
                     })()}
