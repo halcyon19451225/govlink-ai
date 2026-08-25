@@ -25,6 +25,7 @@ const patchSchema = z.object({
   license_note: z.string().max(1000).optional(),
   query_config: z.record(z.string(), z.unknown()).optional().nullable(),
   enabled: z.boolean().optional(),
+  review_mode: z.enum(["full", "light", "spot"]).optional(),
 });
 
 /**
@@ -76,6 +77,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
        license_note = COALESCE($5, license_note),
        query_config = CASE WHEN $6::boolean THEN $7::jsonb ELSE query_config END,
        enabled = COALESCE($8, enabled),
+       review_mode = COALESCE($9, review_mode),
        updated_at = now()
      WHERE id = $1
      RETURNING id`,
@@ -88,6 +90,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       d.query_config !== undefined,
       d.query_config != null ? JSON.stringify(d.query_config) : null,
       d.enabled ?? null,
+      d.review_mode ?? null,
     ],
   );
   return NextResponse.json({ data: { id: row?.id ?? null }, error: null });

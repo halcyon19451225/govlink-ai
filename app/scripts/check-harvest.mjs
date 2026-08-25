@@ -236,6 +236,34 @@ try {
   check("sources API: license_note 空の有効化を拒否（POST）", sourcesSrc.includes("有効化できません"));
   check("sources API: license_note 空の有効化を拒否（PATCH）", sourcePatchSrc.includes("有効化できません"));
   check("sources API: 未実装アダプタを拒否", sourcesSrc.includes("未実装のアダプタ"));
+
+  // ── 6. X7c: 検収スループット（043・一括検収・閲覧専用） ──
+  const mig043Path = join(MIG_DIR, "043_corpus_review.sql");
+  check("043_corpus_review.sql が存在する", existsSync(mig043Path));
+  const mig043 = existsSync(mig043Path) ? readFileSync(mig043Path, "utf-8") : "";
+  check("043: review_mode のCHECKとアプリ語彙（REVIEW_MODES）が一致", types.REVIEW_MODES.every((m) => mig043.includes(`'${m.key}'`)) && types.REVIEW_MODES.length === 3);
+  check("043: reviewed_by を evidence/measures に追加", (mig043.match(/ADD COLUMN IF NOT EXISTS reviewed_by/g) ?? []).length === 2);
+  check("REVIEW_MODES: 既定は full（migの DEFAULT と一致）", types.REVIEW_MODES[0].key === "full" && mig043.includes("DEFAULT 'full'"));
+  check("SPOT_SAMPLE_RATE は 10%", types.SPOT_SAMPLE_RATE === 0.1);
+
+  const bulkSrc = readFileSync(join(APP_ROOT, "src", "app", "api", "ordo-admin", "corpus", "bulk", "route.ts"), "utf-8");
+  check("bulk: 1トランザクション（transaction( を使用）", bulkSrc.includes("transaction(async"));
+  check("bulk: pending 以外を絶対に触らない（SELECT と UPDATE 両方でガード）", (bulkSrc.match(/status = 'pending'/g) ?? []).length >= 3);
+  check("bulk: reviewed_by / reviewed_at を1件ずつ記録", bulkSrc.includes("reviewed_by") && bulkSrc.includes("reviewed_at = now()"));
+  check("bulk: 対象行をロック（FOR UPDATE）", bulkSrc.includes("FOR UPDATE"));
+  check("bulk: ids か harvest_run_id の排他指定", bulkSrc.includes("どちらか一方"));
+  check("bulk: 3種（measures/evidence/context）対応", ["corpus_measures", "corpus_evidence", "corpus_context"].every((t) => bulkSrc.includes(t)));
+
+  const browseSrc = readFileSync(join(APP_ROOT, "src", "app", "api", "ordo-admin", "corpus", "browse", "route.ts"), "utf-8");
+  check("browse: approved のみ対象", browseSrc.includes("t.status = 'approved'"));
+  check("browse: 書き込みを持たない（閲覧専用）", !/\b(UPDATE|DELETE|INSERT)\s/i.test(browseSrc.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/「[^」]*」/g, "")) || (!browseSrc.includes("await query(`UPDATE") && !browseSrc.includes("await query(`DELETE") && !browseSrc.includes("await query(`INSERT")));
+  check("browse: context の期限切れを既定で除外", browseSrc.includes("effective_until"));
+  check("browse: CSV出力（BOMつき）", browseSrc.includes("text/csv"));
+
+  const rowPatchSrc = readFileSync(join(APP_ROOT, "src", "app", "api", "ordo-admin", "corpus", "[kind]", "[rowId]", "route.ts"), "utf-8");
+  check("個別検収: status 変更時に reviewed_by を記録", rowPatchSrc.includes('add("reviewed_by"'));
+  check("個別検収: context を検収対象に追加", rowPatchSrc.includes("corpus_context"));
+  check("個別検収: DELETE を提供しない", !rowPatchSrc.includes("export async function DELETE"));
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

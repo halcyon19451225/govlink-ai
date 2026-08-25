@@ -49,6 +49,26 @@ export const HARVEST_RUN_STATUS_META = Object.fromEntries(
   HARVEST_RUN_STATUS.map((s) => [s.key, { label: s.label, color: s.color }]),
 ) as Record<HarvestRunStatus, { label: string; color: string }>;
 
+/**
+ * 検収の粒度（043 の CHECK と同一 — X7c §3-4）。
+ * どのモードでも「無確認の自動登録をしない」は維持 —
+ * 承認操作なしに approved には絶対ならない。変わるのは確認の粒度だけ。
+ */
+export const REVIEW_MODES = [
+  { key: "full", label: "full — 1件ずつ精査", detail: "AI抽出を経る全行の既定。統計欄・財政欄も目視" },
+  { key: "light", label: "light — 収集回まとめ承認", detail: "機械転記・AI不介在のソース向け。サンプル10件＋欠損サマリーを確認して収集回単位で承認" },
+  { key: "spot", label: "spot — 10%抜き取り", detail: "低リスク種別。ランダム10%を目視→問題なければ残りをまとめ承認（問題があればfullに切替）" },
+] as const;
+
+export type ReviewMode = (typeof REVIEW_MODES)[number]["key"];
+
+export const REVIEW_MODE_META = Object.fromEntries(
+  REVIEW_MODES.map((m) => [m.key, { label: m.label, detail: m.detail }]),
+) as Record<ReviewMode, { label: string; detail: string }>;
+
+/** spot モードの抜き取り率 */
+export const SPOT_SAMPLE_RATE = 0.1;
+
 // ─── 統計的根拠・財政効果の語彙（042 の CHECK と同一） ──────
 
 /** outcome_tier — kpis.indicator_type / lib/outcome/tiers.ts と同語彙（語彙分裂を作らない） */

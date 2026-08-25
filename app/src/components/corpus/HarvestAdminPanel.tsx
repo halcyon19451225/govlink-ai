@@ -16,10 +16,13 @@ import {
   CRAWL_FREQUENCIES,
   HARVEST_RUN_STATUS_META,
   HARVEST_SOURCE_KINDS,
+  REVIEW_MODES,
+  REVIEW_MODE_META,
   estimateTokenCostYen,
   nextCrawlDue,
   type CrawlFrequency,
   type HarvestRunStatus,
+  type ReviewMode,
 } from "@/lib/corpus/harvest/types";
 import { HARVEST_ADAPTERS, HARVEST_ADAPTER_KEYS } from "@/lib/corpus/harvest/adapters";
 
@@ -47,6 +50,7 @@ interface SourceRow {
   crawl_frequency: CrawlFrequency;
   license_note: string;
   enabled: boolean;
+  review_mode: ReviewMode;
   last_crawled_at: string | null;
   last_run: LastRun | null;
 }
@@ -61,10 +65,14 @@ interface LogEntry {
 interface RunRow extends LastRun {
   source_id: string;
   source_name: string;
+  review_mode: ReviewMode;
   pages_fetched: number;
   input_tokens: number;
   output_tokens: number;
   log: LogEntry[];
+  pending_evidence: number;
+  pending_measures: number;
+  pending_context: number;
 }
 
 export interface HarvestSummaryData {
@@ -73,6 +81,7 @@ export interface HarvestSummaryData {
   input_tokens: number;
   output_tokens: number;
   pending_review: { evidence: number; measures: number; context: number };
+  pending_by_mode: { full: number; light: number; spot: number };
 }
 
 const card: React.CSSProperties = {
@@ -110,6 +119,17 @@ interface EditState {
   base_url: string;
   crawl_frequency: CrawlFrequency;
   license_note: string;
+  review_mode: ReviewMode;
+}
+
+interface BulkPreview {
+  run: RunRow;
+  kind: "evidence" | "measures" | "context";
+  loading: boolean;
+  total: number;
+  sample: Array<Record<string, unknown>>;
+  spotSample: Array<Record<string, unknown>>;
+  missing: Record<string, number> | null;
 }
 
 export default function HarvestAdminPanel(props: {
@@ -124,6 +144,7 @@ export default function HarvestAdminPanel(props: {
   const [editing, setEditing] = useState<Record<string, EditState>>({});
   const [confirmEnable, setConfirmEnable] = useState<SourceRow | null>(null);
   const [openRun, setOpenRun] = useState<RunRow | null>(null);
+  const [bulkPreview, setBulkPreview] = useState<BulkPreview | null>(null);
   const [runSourceFilter, setRunSourceFilter] = useState("");
   const [runStatusFilter, setRunStatusFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -275,6 +296,79 @@ export default function HarvestAdminPanel(props: {
     }
   };
 
+  // ── light/spot のまとめ承認（X7c §3-4） ────────
+
+  const runPendingTotal = (r: RunRow) => r.pending_evidence + r.pending_measures + r.pending_context;
+
+  const openBulkPreview = async (r: RunRow) => {
+    const kind: BulkPreview["kind"] =
+      r.pending_evidence > 0 ? "evidence" : r.pending_measures > 0 ? "measures" : "context";
+    setBulkPreview({ run: r, kind, loading: true, total: 0, sample: [], spotSample: [], missing: null });
+    try {
+      const res = await fetch(`/api/ordo-admin/corpus/bulk?kind=${kind}&harvest_run_id=${r.id}`);
+      const json = (await res.json()) as {
+        data: {
+          total: number;
+          sample: Array<Record<string, unknown>>;
+          spot_sample: Array<Record<string, unknown>>;
+          missing: Record<string, number> | null;
+        } | null;
+        error: string | null;
+      };
+      if (res.ok && json.data) {
+        setBulkPreview({
+          run: r,
+          kind,
+          loading: false,
+          total: json.data.total,
+          sample: json.data.sample,
+          spotSample: json.data.spot_sample,
+          missing: json.data.missing,
+        });
+      } else {
+        setBulkPreview(null);
+        onError(json.error ?? "プレビューの取得に失敗しました");
+      }
+    } catch {
+      setBulkPreview(null);
+      onError("通信エラーが発生しました");
+    }
+  };
+
+  const confirmBulkApprove = async () => {
+    if (!bulkPreview) return;
+    setBusy("bulkApprove");
+    onError(null);
+    try {
+      const mode = bulkPreview.run.review_mode;
+      const res = await fetch("/api/ordo-admin/corpus/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: bulkPreview.kind,
+          action: "approve",
+          harvest_run_id: bulkPreview.run.id,
+          note: `${mode}モードの収集回まとめ承認（${bulkPreview.run.source_name}）`,
+        }),
+      });
+      const json = (await res.json()) as {
+        data: { updated: number; skipped: number } | null;
+        error: string | null;
+      };
+      if (!res.ok || !json.data) {
+        onError(json.error ?? "まとめ承認に失敗しました");
+        return;
+      }
+      onInfo(`この収集回の${json.data.updated}件をまとめて承認しました（reviewed_by は1件ずつ記録されています）`);
+      setBulkPreview(null);
+      await loadRuns();
+    } catch {
+      onError("通信エラーが発生しました");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // ── 描画 ───────────────────────────────────────
 
   const pendingTotal = summary
@@ -305,6 +399,12 @@ export default function HarvestAdminPanel(props: {
               >
                 {value}
               </p>
+              {i === 1 && summary.pending_by_mode && (
+                <p className="text-[10px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                  full {summary.pending_by_mode.full} / light {summary.pending_by_mode.light} / spot{" "}
+                  {summary.pending_by_mode.spot}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -434,6 +534,10 @@ export default function HarvestAdminPanel(props: {
                     <p className="text-[11px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
                       {FREQ_LABEL[s.crawl_frequency]} / 最終収集: {fmtDate(s.last_crawled_at)} / 次回予定:{" "}
                       {s.crawl_frequency === "manual" ? "（手動のみ）" : s.enabled ? fmtDate(due?.toISOString() ?? null) : "（無効）"}
+                      {" / "}
+                      <span title={REVIEW_MODE_META[s.review_mode]?.detail}>
+                        検収: {s.review_mode}
+                      </span>
                     </p>
                     {lr && lrMeta && (
                       <p className="text-[11px] mt-0.5">
@@ -482,6 +586,7 @@ export default function HarvestAdminPanel(props: {
                                   base_url: s.base_url,
                                   crawl_frequency: s.crawl_frequency,
                                   license_note: s.license_note,
+                                  review_mode: s.review_mode,
                                 },
                               },
                         )
@@ -535,6 +640,21 @@ export default function HarvestAdminPanel(props: {
                           setEditing({ ...editing, [s.id]: { ...ed, license_note: e.target.value } })
                         }
                       />
+                      <select
+                        className={inputClass}
+                        style={inputStyle}
+                        value={ed.review_mode}
+                        title={REVIEW_MODE_META[ed.review_mode]?.detail}
+                        onChange={(e) =>
+                          setEditing({ ...editing, [s.id]: { ...ed, review_mode: e.target.value as ReviewMode } })
+                        }
+                      >
+                        {REVIEW_MODES.map((m) => (
+                          <option key={m.key} value={m.key}>
+                            検収: {m.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <button
                       onClick={() =>
@@ -600,11 +720,17 @@ export default function HarvestAdminPanel(props: {
           <div className="rounded-xl overflow-hidden" style={card}>
             {runs.map((r) => {
               const m = HARVEST_RUN_STATUS_META[r.status];
+              const pending = runPendingTotal(r);
               return (
-                <button
+                <div
                   key={r.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setOpenRun(r)}
-                  className="w-full text-left px-4 py-2.5 text-xs flex flex-wrap items-center gap-x-3 gap-y-1 hover:opacity-80"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") setOpenRun(r);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-xs flex flex-wrap items-center gap-x-3 gap-y-1 hover:opacity-80 cursor-pointer"
                   style={{ borderBottom: "1px solid var(--border)", color: "var(--text-secondary)" }}
                 >
                   <span style={{ color: m.color }}>● {m.label}</span>
@@ -616,11 +742,33 @@ export default function HarvestAdminPanel(props: {
                   <span>
                     候補{r.items_found} / 新規{r.items_new} / 既知{r.items_duplicate} / 却下{r.items_rejected_by_sanitize}
                   </span>
+                  {pending > 0 && (
+                    <span
+                      className="px-1.5 py-0.5 rounded"
+                      style={{ background: "#f59e0b18", color: "#fbbf24" }}
+                    >
+                      検収待ち{pending}件
+                    </span>
+                  )}
                   {(r.input_tokens > 0 || r.output_tokens > 0) && (
                     <span>約{estimateTokenCostYen(r.input_tokens, r.output_tokens).toLocaleString()}円</span>
                   )}
                   {r.error_summary && <span style={{ color: "#f87171" }}>⚠ {r.error_summary}</span>}
-                </button>
+                  {(r.review_mode === "light" || r.review_mode === "spot") && pending > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void openBulkPreview(r);
+                      }}
+                      className="px-2 py-1 rounded-lg text-[11px] font-semibold"
+                      style={{ background: "#10b98122", color: "#34d399", border: "1px solid #10b98155" }}
+                    >
+                      {r.review_mode === "light"
+                        ? `この収集回の${pending}件をまとめて承認…`
+                        : `10%抜き取り検収（${pending}件）…`}
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -685,6 +833,96 @@ export default function HarvestAdminPanel(props: {
               <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
                 明細ログはありません
               </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── light/spot まとめ承認モーダル（X7c） ── */}
+      {bulkPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "#00000088" }}
+          onClick={() => setBulkPreview(null)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl p-5 space-y-3"
+            style={{ background: "var(--bg-primary)", border: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              {bulkPreview.run.review_mode === "light"
+                ? `この収集回の ${bulkPreview.total} 件をまとめて承認（light）`
+                : `10%抜き取り検収 — 全${bulkPreview.total}件（spot）`}
+              — {bulkPreview.run.source_name}
+            </h3>
+            {bulkPreview.loading ? (
+              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>読み込み中…</p>
+            ) : (
+              <>
+                {bulkPreview.missing && (
+                  <p className="text-xs rounded-lg px-3 py-2" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)" }}>
+                    全{bulkPreview.total}件の統計サマリー:{" "}
+                    {Object.entries(bulkPreview.missing)
+                      .map(([k, v]) => {
+                        const label: Record<string, string> = {
+                          no_source: "出典なし",
+                          no_url: "URLなし",
+                          no_year: "年なし",
+                          no_effect_size: "効果量なし",
+                          no_category: "分野未設定",
+                          no_region_code: "地域コードなし",
+                          dup_suspects: "⚠重複疑い",
+                        };
+                        return `${label[k] ?? k} ${v}件`;
+                      })
+                      .join(" / ")}
+                  </p>
+                )}
+                <p className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
+                  {bulkPreview.run.review_mode === "light"
+                    ? "サンプル（先頭10件）を確認してください。まとめ承認でも reviewed_by / reviewed_at は1件ずつ記録されます。"
+                    : "ランダム抽出されたサンプルを目視してください。問題があればキャンセルし、ソースの検収モードを full に切り替えて1件ずつ検収してください。"}
+                </p>
+                <div className="rounded-xl overflow-hidden" style={card}>
+                  {(bulkPreview.run.review_mode === "light" ? bulkPreview.sample : bulkPreview.spotSample).map(
+                    (row, i) => (
+                      <div
+                        key={i}
+                        className="px-3 py-2 text-[11px]"
+                        style={{ borderBottom: "1px solid var(--border)", color: "var(--text-secondary)" }}
+                      >
+                        <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                          {String(row["title"] ?? "")}
+                        </span>
+                        {row["source"] != null && ` / ${String(row["source"])}`}
+                        {row["source_org"] != null && ` / ${String(row["source_org"])}`}
+                        {row["effect_summary"] != null && ` / ${String(row["effect_summary"]).slice(0, 80)}`}
+                        {row["dup_of"] != null && (
+                          <span style={{ color: "#fbbf24" }}> ⚠類似あり</span>
+                        )}
+                      </div>
+                    ),
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setBulkPreview(null)}
+                    className="px-3 py-1.5 rounded-lg text-xs"
+                    style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    disabled={busy != null || bulkPreview.total === 0}
+                    onClick={() => void confirmBulkApprove()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40"
+                    style={{ background: "#10b981" }}
+                  >
+                    {busy === "bulkApprove" ? "承認中…" : `${bulkPreview.total}件をまとめて承認`}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>

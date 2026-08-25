@@ -12,8 +12,10 @@
  *  - 同意管理: 自治体ごとのオプトイン。オプトアウトは供出済み行を全削除する。
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import HarvestAdminPanel from "@/components/corpus/HarvestAdminPanel";
+import CorpusBrowsePanel from "@/components/corpus/CorpusBrowsePanel";
+import { CONTEXT_KINDS } from "@/lib/corpus/harvest/types";
 import {
   CORPUS_STATUS_META,
   POPULATION_BANDS,
@@ -30,11 +32,15 @@ interface CorpusRow {
   field_category: string | null;
   population_band: string | null;
   title: string;
-  source_kind: string;
+  source_kind?: string;
   source_note: string | null;
-  contributor_key: string | null;
+  contributor_key?: string | null;
   review_note: string | null;
   created_at: string;
+  // X7a/X7c
+  dup_of?: string | null;
+  dup_score?: number | null;
+  harvest_run_id?: string | null;
   // measures
   approach?: string | null;
   intervention?: string | null;
@@ -47,6 +53,32 @@ interface CorpusRow {
   evidence_level?: number;
   effect_summary?: string;
   year?: number | null;
+  output_summary?: string | null;
+  outcome_summary?: string | null;
+  effect_size_type?: string | null;
+  effect_size_value?: number | null;
+  ci_low?: number | null;
+  ci_high?: number | null;
+  p_value?: number | null;
+  fiscal_effect_rate?: number | null;
+  fiscal_effect_amount?: number | null;
+  // context
+  kind?: string;
+  pestle_tag?: string;
+  seven_s_tag?: string | null;
+  swot_hint?: string;
+  body?: string;
+  source_org?: string;
+  source_url?: string | null;
+  region_scope?: string;
+  effective_until?: string | null;
+}
+
+type ReviewKind = "measures" | "evidence" | "context";
+
+interface SourceOption {
+  id: string;
+  name: string;
 }
 
 interface ConsentRow {
@@ -90,10 +122,15 @@ const SOURCE_KIND_LABEL: Record<string, string> = {
   knowledge_extract: "ナレッジ抽出",
   evidence_item: "施策のエビデンス欄",
   experiment_result: "自治体の実験結果",
+  harvest: "自動収集",
 };
 
+const CONTEXT_KIND_LABEL: Record<string, string> = Object.fromEntries(
+  CONTEXT_KINDS.map((k) => [k.key, k.label]),
+);
+
 export default function CorpusAdminClient() {
-  const [tab, setTab] = useState<"review" | "extract" | "harvest" | "consents">("review");
+  const [tab, setTab] = useState<"review" | "extract" | "harvest" | "browse" | "consents">("review");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -115,16 +152,37 @@ export default function CorpusAdminClient() {
   }, []);
 
   // ── 検収 ─────────────────────────────────────
-  const [kind, setKind] = useState<"measures" | "evidence">("measures");
+  const [kind, setKind] = useState<ReviewKind>("measures");
   const [statusFilter, setStatusFilter] = useState<CorpusStatus | "all">("pending");
   const [rows, setRows] = useState<CorpusRow[] | null>(null);
   const [edits, setEdits] = useState<Record<string, { field_category: string; population_band: string; review_note: string }>>({});
 
+  // X7c: 絞り込み（収集ソース・Lv・分野・重複疑いのみ）
+  const [fSourceId, setFSourceId] = useState("");
+  const [fLevel, setFLevel] = useState("");
+  const [fCategory, setFCategory] = useState("");
+  const [fDupOnly, setFDupOnly] = useState(false);
+  const [sourceOptions, setSourceOptions] = useState<SourceOption[] | null>(null);
+
+  // X7c: 一括検収
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkNote, setBulkNote] = useState("");
+  const [bulkConfirm, setBulkConfirm] = useState<{ action: "approve" | "reject"; dupCount: number } | null>(null);
+
+  // X7c: 重複比較ドロワー
+  const [dupCompare, setDupCompare] = useState<{ row: CorpusRow; partner: CorpusRow | null; loading: boolean } | null>(null);
+
   const loadRows = useCallback(async () => {
     setRows(null);
+    setSelected(new Set());
     try {
-      const q = statusFilter === "all" ? "" : `&status=${statusFilter}`;
-      const res = await fetch(`/api/ordo-admin/corpus?kind=${kind}${q}`);
+      const q = new URLSearchParams({ kind });
+      if (statusFilter !== "all") q.set("status", statusFilter);
+      if (fSourceId) q.set("sourceId", fSourceId);
+      if (fCategory.trim()) q.set("category", fCategory.trim());
+      if (fDupOnly) q.set("dupOnly", "1");
+      if (kind === "evidence" && fLevel) q.set("level", fLevel);
+      const res = await fetch(`/api/ordo-admin/corpus?${q.toString()}`);
       const json = (await res.json()) as { data: { rows: CorpusRow[] } | null; error: string | null };
       if (res.ok && json.data) setRows(json.data.rows);
       else {
@@ -135,11 +193,114 @@ export default function CorpusAdminClient() {
       setRows([]);
       setError("通信エラーが発生しました");
     }
-  }, [kind, statusFilter]);
+  }, [kind, statusFilter, fSourceId, fCategory, fDupOnly, fLevel]);
 
   useEffect(() => {
     if (tab === "review") void loadRows();
   }, [tab, loadRows]);
+
+  useEffect(() => {
+    if (tab !== "review" || sourceOptions !== null) return;
+    void (async () => {
+      try {
+        const res = await fetch("/api/ordo-admin/corpus/sources");
+        const json = (await res.json()) as { data: SourceOption[] | null };
+        setSourceOptions(res.ok && json.data ? json.data.map((s) => ({ id: s.id, name: s.name })) : []);
+      } catch {
+        setSourceOptions([]);
+      }
+    })();
+  }, [tab, sourceOptions]);
+
+  const pendingRows = useMemo(() => (rows ?? []).filter((r) => r.status === "pending"), [rows]);
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const runBulk = async (action: "approve" | "reject") => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBusy("bulk");
+    setError(null);
+    try {
+      const res = await fetch("/api/ordo-admin/corpus/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, action, ids, note: bulkNote.trim() || null }),
+      });
+      const json = (await res.json()) as {
+        data: { updated: number; skipped: number } | null;
+        error: string | null;
+      };
+      if (!res.ok || !json.data) {
+        setError(json.error ?? "一括検収に失敗しました");
+        return;
+      }
+      setInfo(
+        `${json.data.updated}件を${action === "approve" ? "承認" : "却下"}しました` +
+          (json.data.skipped > 0 ? `（pending以外の${json.data.skipped}件はスキップ）` : ""),
+      );
+      setBulkNote("");
+      await loadRows();
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setBusy(null);
+      setBulkConfirm(null);
+    }
+  };
+
+  const requestBulk = (action: "approve" | "reject") => {
+    // 安全弁: 一括対象に重複疑い行が含まれる場合は件数を明示して確認（§3-2）
+    const dupCount = (rows ?? []).filter((r) => selected.has(r.id) && r.dup_of).length;
+    if (action === "approve" && dupCount > 0) {
+      setBulkConfirm({ action, dupCount });
+      return;
+    }
+    void runBulk(action);
+  };
+
+  const openDupCompare = async (r: CorpusRow) => {
+    if (!r.dup_of) return;
+    setDupCompare({ row: r, partner: null, loading: true });
+    try {
+      const res = await fetch(`/api/ordo-admin/corpus/${kind}/${r.dup_of}`);
+      const json = (await res.json()) as { data: { row: CorpusRow } | null };
+      setDupCompare({ row: r, partner: res.ok && json.data ? json.data.row : null, loading: false });
+    } catch {
+      setDupCompare({ row: r, partner: null, loading: false });
+    }
+  };
+
+  const decideDup = async (r: CorpusRow, asDuplicate: boolean) => {
+    setBusy(r.id);
+    setError(null);
+    try {
+      const body = asDuplicate
+        ? { status: "rejected", review_note: `重複として却下（類似行 ${r.dup_of} と同一内容）` }
+        : { status: "approved", review_note: `類似行 ${r.dup_of} とは別物と判断して承認` };
+      const res = await fetch(`/api/ordo-admin/corpus/${kind}/${r.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await res.json()) as { data: unknown; error: string | null };
+      if (!res.ok || json.error) {
+        setError(json.error ?? "更新に失敗しました");
+        return;
+      }
+      setDupCompare(null);
+      await loadRows();
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const patchRow = async (id: string, body: Record<string, unknown>) => {
     setBusy(id);
@@ -356,6 +517,7 @@ export default function CorpusAdminClient() {
             ["review", "🧐 検収"],
             ["extract", "📄 ナレッジ抽出"],
             ["harvest", harvestAlert ? "🛰 自動収集 ⚠" : "🛰 自動収集"],
+            ["browse", "📚 コーパス一覧"],
             ["consents", "🤝 同意管理"],
           ] as const
         ).map(([key, label]) => (
@@ -397,6 +559,7 @@ export default function CorpusAdminClient() {
               [
                 ["measures", "施策"],
                 ["evidence", "エビデンス"],
+                ["context", "コンテキスト"],
               ] as const
             ).map(([k, label]) => (
               <button
@@ -429,6 +592,93 @@ export default function CorpusAdminClient() {
             ))}
           </div>
 
+          {/* ── X7c: 絞り込み ── */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className={inputClass}
+              style={inputStyle}
+              value={fSourceId}
+              onChange={(e) => setFSourceId(e.target.value)}
+            >
+              <option value="">全収集ソース（手動シード含む）</option>
+              {(sourceOptions ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            {kind === "evidence" && (
+              <select className={inputClass} style={inputStyle} value={fLevel} onChange={(e) => setFLevel(e.target.value)}>
+                <option value="">全レベル</option>
+                {[5, 4, 3, 2, 1].map((lv) => (
+                  <option key={lv} value={lv}>
+                    Lv{lv}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              className={inputClass}
+              style={inputStyle}
+              placeholder="分野で絞り込み"
+              value={fCategory}
+              onChange={(e) => setFCategory(e.target.value)}
+            />
+            <button
+              onClick={() => setFDupOnly((v) => !v)}
+              className="px-3 py-1.5 rounded-lg text-xs"
+              style={
+                fDupOnly
+                  ? { background: "#f59e0b22", color: "#fbbf24", border: "1px solid #f59e0b55" }
+                  : { color: "var(--text-secondary)", border: "1px solid var(--border)" }
+              }
+            >
+              ⚠ 重複疑いのみ
+            </button>
+          </div>
+
+          {/* ── X7c: 一括検収バー ── */}
+          {pendingRows.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl px-3 py-2" style={card}>
+              <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
+                <input
+                  type="checkbox"
+                  checked={selected.size > 0 && pendingRows.every((r) => selected.has(r.id))}
+                  onChange={(e) =>
+                    setSelected(e.target.checked ? new Set(pendingRows.map((r) => r.id)) : new Set())
+                  }
+                />
+                検収待ちを全選択
+              </label>
+              <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+                {selected.size}件選択中
+              </span>
+              <input
+                className={`${inputClass} flex-1 min-w-[160px]`}
+                style={inputStyle}
+                placeholder="一括検収メモ（全行に共通で記録）"
+                value={bulkNote}
+                onChange={(e) => setBulkNote(e.target.value)}
+              />
+              <button
+                disabled={selected.size === 0 || busy != null}
+                onClick={() => requestBulk("approve")}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40"
+                style={{ background: "#10b981" }}
+              >
+                選択した{selected.size}件を承認
+              </button>
+              <button
+                disabled={selected.size === 0 || busy != null}
+                onClick={() => requestBulk("reject")}
+                className="px-3 py-1.5 rounded-lg text-xs disabled:opacity-40"
+                style={{ color: "#f87171", border: "1px solid #ef444440" }}
+              >
+                却下
+              </button>
+            </div>
+          )}
+
           {rows === null ? (
             <p className="text-sm" style={{ color: "var(--text-secondary)" }}>読み込み中…</p>
           ) : rows.length === 0 ? (
@@ -442,7 +692,16 @@ export default function CorpusAdminClient() {
               return (
                 <div key={r.id} className="rounded-xl p-4 space-y-2" style={card}>
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex items-start gap-2">
+                      {r.status === "pending" && (
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 shrink-0"
+                          checked={selected.has(r.id)}
+                          onChange={() => toggleSelect(r.id)}
+                        />
+                      )}
+                      <div className="min-w-0">
                       <p className="text-sm font-semibold break-words" style={{ color: "var(--text-primary)" }}>
                         {kind === "evidence" && r.evidence_level != null && (
                           <span
@@ -458,18 +717,34 @@ export default function CorpusAdminClient() {
                         {r.title}
                       </p>
                       <p className="text-[11px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                        {SOURCE_KIND_LABEL[r.source_kind] ?? r.source_kind}
-                        {r.contributor_key ? "（匿名化供出）" : "（Tier1資料由来）"}
+                        {kind === "context"
+                          ? `${CONTEXT_KIND_LABEL[r.kind ?? ""] ?? r.kind} / ${r.source_org ?? ""}`
+                          : `${SOURCE_KIND_LABEL[r.source_kind ?? ""] ?? r.source_kind}${
+                              r.contributor_key ? "（匿名化供出）" : "（Tier1資料由来）"
+                            }`}
                         {r.source ? ` / 出典: ${r.source}${r.year ? `・${r.year}` : ""}` : ""}
                         {r.source_note ? ` / ${r.source_note}` : ""}
                       </p>
+                      </div>
                     </div>
-                    <span
-                      className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0"
-                      style={{ background: sm.color + "22", color: sm.color }}
-                    >
-                      {sm.label}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {r.dup_of && (
+                        <button
+                          onClick={() => void openDupCompare(r)}
+                          className="text-[10px] font-bold px-2 py-0.5 rounded"
+                          style={{ background: "#f59e0b22", color: "#fbbf24", border: "1px solid #f59e0b55" }}
+                          title="類似行と並べて比較する"
+                        >
+                          ⚠ 類似あり{r.dup_score != null ? ` ${Math.round(Number(r.dup_score) * 100)}%` : ""}
+                        </button>
+                      )}
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded"
+                        style={{ background: sm.color + "22", color: sm.color }}
+                      >
+                        {sm.label}
+                      </span>
+                    </div>
                   </div>
 
                   {kind === "measures" ? (
@@ -479,9 +754,41 @@ export default function CorpusAdminClient() {
                       {r.effect_note && <p style={{ color: "#6ee7b7" }}>実績: {r.effect_note}</p>}
                       {r.total_budget != null && <p>事業費: {Number(r.total_budget).toLocaleString("ja-JP")}円</p>}
                     </div>
+                  ) : kind === "context" ? (
+                    <div className="text-xs space-y-1" style={{ color: "var(--text-secondary)" }}>
+                      {r.body && <p className="break-words">{r.body}</p>}
+                      <p>
+                        {r.pestle_tag && `PESTLE: ${r.pestle_tag}`}
+                        {r.seven_s_tag && ` / 7S: ${r.seven_s_tag}`}
+                        {r.swot_hint && r.swot_hint !== "neutral" && ` / SWOT: ${r.swot_hint}`}
+                        {r.region_scope && ` / 範囲: ${r.region_scope}`}
+                        {r.effective_until && ` / 適用期限: ${r.effective_until}`}
+                      </p>
+                    </div>
                   ) : (
                     <div className="text-xs space-y-1" style={{ color: "var(--text-secondary)" }}>
                       {r.effect_summary && <p>効果: {r.effect_summary}</p>}
+                      {(r.output_summary || r.outcome_summary) && (
+                        <p>
+                          {r.output_summary && `アウトプット: ${r.output_summary}`}
+                          {r.output_summary && r.outcome_summary && " → "}
+                          {r.outcome_summary && `アウトカム: ${r.outcome_summary}`}
+                        </p>
+                      )}
+                      {r.effect_size_value != null && (
+                        <p style={{ color: "#93c5fd" }}>
+                          効果量: {r.effect_size_type ?? ""} {r.effect_size_value}
+                          {r.ci_low != null && r.ci_high != null && `（95%CI ${r.ci_low}〜${r.ci_high}）`}
+                          {r.p_value != null && ` p=${r.p_value}`}
+                        </p>
+                      )}
+                      {(r.fiscal_effect_rate != null || r.fiscal_effect_amount != null) && (
+                        <p style={{ color: "#6ee7b7" }}>
+                          財政効果:
+                          {r.fiscal_effect_amount != null && ` ${Number(r.fiscal_effect_amount).toLocaleString("ja-JP")}円`}
+                          {r.fiscal_effect_rate != null && ` / 効果率 ${r.fiscal_effect_rate}`}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -718,6 +1025,142 @@ export default function CorpusAdminClient() {
 
       {/* ── 自動収集タブ（X7a） ── */}
       {tab === "harvest" && <HarvestAdminPanel onError={setError} onInfo={setInfo} />}
+
+      {/* ── コーパス一覧タブ（X7c・承認済みの閲覧専用） ── */}
+      {tab === "browse" && <CorpusBrowsePanel onError={setError} />}
+
+      {/* ── X7c: 重複比較ドロワー ── */}
+      {dupCompare && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end"
+          style={{ background: "#00000088" }}
+          onClick={() => setDupCompare(null)}
+        >
+          <div
+            className="h-full w-full max-w-2xl overflow-y-auto p-5 space-y-3"
+            style={{ background: "var(--bg-primary)", borderLeft: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                ⚠ 重複疑いの比較
+                {dupCompare.row.dup_score != null &&
+                  `（類似度 ${Math.round(Number(dupCompare.row.dup_score) * 100)}%）`}
+              </h3>
+              <button
+                onClick={() => setDupCompare(null)}
+                className="px-2 py-1 rounded text-xs"
+                style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+              >
+                閉じる
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                { label: "この行（検収対象）", row: dupCompare.row },
+                { label: "類似行", row: dupCompare.partner },
+              ].map(({ label, row }) => (
+                <div key={label} className="rounded-xl p-3 space-y-1.5" style={card}>
+                  <p className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+                    {label}
+                  </p>
+                  {row ? (
+                    <>
+                      <p className="text-xs font-semibold break-words" style={{ color: "var(--text-primary)" }}>
+                        {row.title}
+                      </p>
+                      <p className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
+                        {CORPUS_STATUS_META[row.status]?.label ?? row.status}
+                        {row.evidence_level != null && ` / Lv${row.evidence_level}`}
+                        {row.source && ` / ${row.source}`}
+                        {row.year && `・${row.year}`}
+                      </p>
+                      {row.effect_summary && (
+                        <p className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
+                          効果: {row.effect_summary}
+                        </p>
+                      )}
+                      {row.source_note && (
+                        <p className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
+                          {row.source_note}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                      {dupCompare.loading ? "読み込み中…" : "類似行を取得できませんでした（削除済みの可能性）"}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
+              自動では絶対に落とさない設計です。同一内容なら「重複として却下」、別の検証・別の資料なら
+              「別物として承認」を選んでください（どちらも検収メモに判断が残ります）。
+            </p>
+            {dupCompare.row.status === "pending" && (
+              <div className="flex gap-2">
+                <button
+                  disabled={busy != null}
+                  onClick={() => void decideDup(dupCompare.row, true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40"
+                  style={{ color: "#f87171", border: "1px solid #ef444440" }}
+                >
+                  重複として却下
+                </button>
+                <button
+                  disabled={busy != null}
+                  onClick={() => void decideDup(dupCompare.row, false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40"
+                  style={{ background: "#10b981" }}
+                >
+                  別物として承認
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── X7c: 一括承認の安全弁（重複疑いを含む場合の確認） ── */}
+      {bulkConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "#00000088" }}
+          onClick={() => setBulkConfirm(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl p-5 space-y-3"
+            style={{ background: "var(--bg-primary)", border: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              一括承認の確認
+            </h3>
+            <p className="text-xs rounded-lg px-3 py-2" style={{ background: "#f59e0b18", color: "#fbbf24" }}>
+              ⚠ 選択した{selected.size}件のうち<b>{bulkConfirm.dupCount}件に重複の疑い</b>があります。
+              重複疑い行は「⚠ 類似あり」から個別に比較・判断することを推奨します。
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setBulkConfirm(null)}
+                className="px-3 py-1.5 rounded-lg text-xs"
+                style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+              >
+                キャンセル
+              </button>
+              <button
+                disabled={busy != null}
+                onClick={() => void runBulk(bulkConfirm.action)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40"
+                style={{ background: "#10b981" }}
+              >
+                重複疑いを含めて{selected.size}件を承認
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 同意管理タブ ── */}
       {tab === "consents" && (

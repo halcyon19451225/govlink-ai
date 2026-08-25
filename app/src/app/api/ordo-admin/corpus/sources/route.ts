@@ -34,7 +34,7 @@ export async function GET() {
   try {
     const rows = await query(
       `SELECT s.id, s.name, s.kind, s.base_url, s.adapter, s.crawl_frequency,
-              s.license_note, s.query_config, s.enabled,
+              s.license_note, s.query_config, s.enabled, s.review_mode,
               s.last_crawled_at::text AS last_crawled_at,
               s.created_at::text AS created_at,
               (SELECT row_to_json(r) FROM (
@@ -73,6 +73,7 @@ const createSchema = z.object({
   license_note: z.string().max(1000).default(""),
   query_config: z.record(z.string(), z.unknown()).optional().nullable(),
   enabled: z.boolean().default(false),
+  review_mode: z.enum(["full", "light", "spot"]).default("full"),
 });
 
 export async function POST(req: NextRequest) {
@@ -109,8 +110,8 @@ export async function POST(req: NextRequest) {
   }
 
   const row = await queryOne<{ id: string }>(
-    `INSERT INTO corpus_sources (name, kind, base_url, adapter, crawl_frequency, license_note, query_config, enabled)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+    `INSERT INTO corpus_sources (name, kind, base_url, adapter, crawl_frequency, license_note, query_config, enabled, review_mode)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
      RETURNING id`,
     [
       d.name,
@@ -121,6 +122,7 @@ export async function POST(req: NextRequest) {
       d.license_note,
       d.query_config ? JSON.stringify(d.query_config) : null,
       d.enabled,
+      d.review_mode,
     ],
   );
   return NextResponse.json({ data: { id: row?.id ?? null }, error: null });

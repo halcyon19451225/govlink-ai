@@ -43,11 +43,17 @@ export async function GET(req: NextRequest) {
     const runs = lite
       ? []
       : await query(
-      `SELECT r.id, r.source_id, s.name AS source_name, r.trigger, r.status,
+      `SELECT r.id, r.source_id, s.name AS source_name, s.review_mode, r.trigger, r.status,
               r.started_at::text AS started_at, r.finished_at::text AS finished_at,
               r.pages_fetched, r.items_found, r.items_new, r.items_duplicate,
               r.items_rejected_by_sanitize, r.knowledge_docs_created,
-              r.input_tokens::float, r.output_tokens::float, r.error_summary, r.log
+              r.input_tokens::float, r.output_tokens::float, r.error_summary, r.log,
+              (SELECT count(*) FROM corpus_evidence e
+                WHERE e.harvest_run_id = r.id AND e.status = 'pending')::int AS pending_evidence,
+              (SELECT count(*) FROM corpus_measures m
+                WHERE m.harvest_run_id = r.id AND m.status = 'pending')::int AS pending_measures,
+              (SELECT count(*) FROM corpus_context c
+                WHERE c.harvest_run_id = r.id AND c.status = 'pending')::int AS pending_context
        FROM corpus_harvest_runs r
        JOIN corpus_sources s ON s.id = r.source_id
        WHERE ${conds.join(" AND ")}
@@ -76,6 +82,28 @@ export async function GET(req: NextRequest) {
               (SELECT count(*) FROM corpus_context  WHERE status = 'pending')::text AS context`,
     );
 
+    // 検収残のモード別内訳（週次ダイジェスト常置 — §3-4。
+    // 収集run経由の行はソースの review_mode、手動シード等（harvest_run_id なし）は full 扱い）
+    const byMode = await queryOne<{ full: string; light: string; spot: string }>(
+      `WITH pend AS (
+         SELECT e.harvest_run_id FROM corpus_evidence e WHERE e.status = 'pending'
+         UNION ALL
+         SELECT m.harvest_run_id FROM corpus_measures m WHERE m.status = 'pending'
+         UNION ALL
+         SELECT c.harvest_run_id FROM corpus_context c WHERE c.status = 'pending'
+       ),
+       modes AS (
+         SELECT COALESCE(s.review_mode, 'full') AS mode
+         FROM pend p
+         LEFT JOIN corpus_harvest_runs r ON r.id = p.harvest_run_id
+         LEFT JOIN corpus_sources s ON s.id = r.source_id
+       )
+       SELECT count(*) FILTER (WHERE mode = 'full')::text AS full,
+              count(*) FILTER (WHERE mode = 'light')::text AS light,
+              count(*) FILTER (WHERE mode = 'spot')::text AS spot
+       FROM modes`,
+    );
+
     return NextResponse.json({
       data: {
         runs,
@@ -89,6 +117,11 @@ export async function GET(req: NextRequest) {
             evidence: Number(pending?.evidence ?? 0),
             measures: Number(pending?.measures ?? 0),
             context: Number(pending?.context ?? 0),
+          },
+          pending_by_mode: {
+            full: Number(byMode?.full ?? 0),
+            light: Number(byMode?.light ?? 0),
+            spot: Number(byMode?.spot ?? 0),
           },
         },
       },
