@@ -264,6 +264,68 @@ try {
   check("個別検収: status 変更時に reviewed_by を記録", rowPatchSrc.includes('add("reviewed_by"'));
   check("個別検収: context を検収対象に追加", rowPatchSrc.includes("corpus_context"));
   check("個別検収: DELETE を提供しない", !rowPatchSrc.includes("export async function DELETE"));
+
+  // ── 7. X7b: アダプタB（PDF→ナレッジ）・JAGES・海外アダプタ ──
+  const mig044Path = join(MIG_DIR, "044_harvest_pdf_sources.sql");
+  check("044_harvest_pdf_sources.sql が存在する", existsSync(mig044Path));
+  const mig044 = existsSync(mig044Path) ? readFileSync(mig044Path, "utf-8") : "";
+  for (const key of ["jages_press", "mhlw_grants", "wsipp", "community_guide"]) {
+    check(`044のシードアダプタが実装済み: ${key}`, mig044.includes(`'${key}'`) && key in adapters.HARVEST_ADAPTERS);
+  }
+  check(
+    "044: 追加ソースはすべて enabled=false（無許諾で動き出さない）",
+    !/,\s*true\s*,\s*'(full|light|spot)'/.test(mig044.slice(mig044.indexOf("INSERT INTO corpus_sources"))),
+  );
+  check("044: harvest_source_key の一意インデックス（ON CONFLICT 用）", mig044.includes("UNIQUE INDEX") && mig044.includes("harvest_source_key"));
+
+  check("overseas フラグ: WSIPP・Community Guide は true", adapters.HARVEST_ADAPTERS.wsipp.overseas === true && adapters.HARVEST_ADAPTERS.community_guide.overseas === true);
+  check("overseas フラグ: JAGES・厚労科研は false", adapters.HARVEST_ADAPTERS.jages_press.overseas === false && adapters.HARVEST_ADAPTERS.mhlw_grants.overseas === false);
+  check("mhlw_grants: mode=pdf_to_knowledge・resolvePdfUrls あり", adapters.HARVEST_ADAPTERS.mhlw_grants.mode === "pdf_to_knowledge" && typeof adapters.HARVEST_ADAPTERS.mhlw_grants.resolvePdfUrls === "function");
+  check("アダプタA系は mode 未指定（extract 既定）", adapters.HARVEST_ADAPTERS.jages_press.mode == null && adapters.HARVEST_ADAPTERS.env_best.mode == null);
+
+  // jages_press: NetCommonsダウンロードリンクの抽出
+  const jagesHtml = `
+    <a href="/?action=common_download_main&upload_id=13321">仮設住宅への転居でうつ発症リスク2倍（プレスリリース）</a>
+    <a href="https://www.jages.net/?action=common_download_main&upload_id=3411">地域サロン参加と認知症発症: 7年追跡で0.7倍</a>
+    <a href="/?action=common_download_main&upload_id=99999">プレスリリースタグ_220901.xlsx</a>
+    <a href="/?action=common_download_main&upload_id=13321">仮設住宅への転居でうつ発症リスク2倍（プレスリリース）</a>
+    <a href="/library/pressrelease/2024/">2024年度</a>`;
+  const jagesItems = adapters.HARVEST_ADAPTERS.jages_press.listItems(jagesHtml, "https://www.jages.net/library/pressrelease/");
+  check("jages_press: upload_id リンクだけを重複なしで拾う", jagesItems.length === 2);
+  check("jages_press: xlsx等のデータファイルは拾わない", jagesItems.every((i) => !i.title.includes(".xlsx")));
+  check("jages_press: stableId が upload_id 由来で安定", jagesItems[0].stableId === "upload-13321");
+
+  // mhlw_grants: /project/{id} リンクの抽出とPDF解決
+  const mhlwHtml = `
+    <a href="/project/180181">介護予防の効果検証に関する研究（令和5年度 総括研究報告書）</a>
+    <a href="/project/180181">介護予防の効果検証に関する研究（令和5年度 総括研究報告書）</a>
+    <a href="/search?keyword=x&page=1">次のページへ進む</a>`;
+  const mhlwItems = adapters.HARVEST_ADAPTERS.mhlw_grants.listItems(mhlwHtml, "https://mhlw-grants.niph.go.jp/search?keyword=x");
+  check("mhlw_grants: /project/{id} を重複なしで拾う", mhlwItems.length === 1 && mhlwItems[0].stableId === "project-180181");
+  const mhlwPdfs = adapters.HARVEST_ADAPTERS.mhlw_grants.resolvePdfUrls(
+    `<a href="/system/files/report/202405001A-sokatsu.pdf">総括研究報告書</a><a href="/project/1">別課題ページへのリンク</a>`,
+    "https://mhlw-grants.niph.go.jp/project/180181",
+  );
+  check("mhlw_grants: ページ内のPDFリンクを解決", mhlwPdfs.length === 1 && mhlwPdfs[0].endsWith("-sokatsu.pdf"));
+
+  // 海外アダプタのフィクスチャ
+  const wsippItems = adapters.HARVEST_ADAPTERS.wsipp.listItems(
+    `<a href="/BenefitCost/Program/123">Nurse Family Partnership program page</a><a href="/About">About the institute page</a>`,
+    "https://www.wsipp.wa.gov/BenefitCost",
+  );
+  check("wsipp: /BenefitCost/Program だけを拾う", wsippItems.length === 1);
+  const cgItems = adapters.HARVEST_ADAPTERS.community_guide.listItems(
+    `<a href="/findings/physical-activity-something.html">Physical Activity: Community-wide campaigns</a><a href="/about/our-methods.html">About our review methods</a>`,
+    "https://www.thecommunityguide.org/pages/task-force-findings.html",
+  );
+  check("community_guide: /findings/ だけを拾う", cgItems.length === 1);
+
+  // エンジンのアダプタB経路（静的検査）
+  check("engine: pdf_to_knowledge 分岐がある", engineSrc.includes("pdf_to_knowledge"));
+  check("engine: S3原本保全は corpus-harvest/ プレフィックス", engineSrc.includes("corpus-harvest/${adapter.key}"));
+  check("engine: ナレッジ登録は Tier1・pending・冪等", engineSrc.includes("ON CONFLICT (harvest_source_key) DO NOTHING") && /VALUES \(1, \$1/.test(engineSrc));
+  check("engine: PDFサイズ上限ガードがある", engineSrc.includes("MAX_PDF_BYTES"));
+  check("engine: run に knowledge_docs_created を記録", engineSrc.includes("knowledge_docs_created = $8"));
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

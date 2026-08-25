@@ -1,13 +1,22 @@
 /**
- * 収集アダプタの正本（純粋・テスト可能）— X7a
+ * 収集アダプタの正本（純粋・テスト可能）— X7a / X7b
  *
  * corpus_sources.adapter はここに登録されたキーのみ有効
  * （未登録アダプタのソースはエンジンが実行時に拒否する）。
  *
- * X7a はアダプタA（構造化ソース）2本:
- *  - env_best    … 環境省 日本版ナッジ・ユニット（BEST）— 政府標準利用規約系。初弾
- *  - nudge_share … 自治体ナッジシェア — 要事前許諾。実装のみ・許諾完了まで enabled=false
- * X7b で generic_pdf / 海外DB、X7d で学術API、X7e で統計・行政データを追加予定。
+ * mode の2系統:
+ *  - extract          … アダプタA: 本文→AI構造化抽出→corpus_evidence(pending)
+ *  - pdf_to_knowledge … アダプタB: PDF→S3原本保全→Tier1ナレッジ自動登録→既存X3フロー合流
+ *                       （AI抽出は既存のナレッジ抽出タブから。無確認でコーパスに入らない）
+ *
+ * 登録済み:
+ *  - env_best        … 環境省BEST（A・政府標準利用規約系）— X7a初弾
+ *  - nudge_share     … 自治体ナッジシェア（A・要事前許諾。許諾完了まで enabled=false）— X7a
+ *  - jages_press     … JAGESプレスリリース（A・NetCommons形式のPDFダウンロード）— X7b
+ *  - mhlw_grants     … 厚労科研成果DB（B・/project/{id}→報告書PDF）— X7b
+ *  - wsipp           … WSIPP Benefit-Cost（A・海外: 外的妥当性メモ必須）— X7b
+ *  - community_guide … The Community Guide（A・海外）— X7b
+ * X7d で学術API、X7e で統計・行政データを追加予定。
  *
  * 設計: claude/coe-x7-pdca-design.md 第1部 §2。
  */
@@ -119,12 +128,37 @@ export interface HarvestAdapterDef {
   sourceOrg: string;
   /** 海外ソースか（外的妥当性メモ必須・金額は参考値扱い） */
   overseas: boolean;
+  /**
+   * 処理系統。省略時は 'extract'（アダプタA）。
+   * 'pdf_to_knowledge'（アダプタB）は item のページ/PDFを S3 に原本保全し
+   * Tier1ナレッジへ自動登録する（コーパスへの直接投入はしない）。
+   */
+  mode?: "extract" | "pdf_to_knowledge";
   /** 1回のrunで処理する新規アイテムの上限（Amplifyタイムアウト対策。超過分は次回） */
   itemLimitPerRun: number;
   /** 一覧HTMLから候補アイテムを抽出する（純関数） */
   listItems(html: string, baseUrl: string): HarvestListItem[];
+  /**
+   * pdf_to_knowledge 用: アイテムページのHTMLから報告書PDFのURLを解決する（純関数）。
+   * item.url 自体がPDFの場合は不要。
+   */
+  resolvePdfUrls?(html: string, pageUrl: string): string[];
   /** 抽出プロンプトへのソース特記（判定規律の追加指示） */
   promptHint: string;
+}
+
+/** HTMLからPDFへのリンクを列挙する（pdf_to_knowledge の既定ヘルパー） */
+export function extractPdfLinks(html: string, baseUrl: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const a of extractAnchors(html)) {
+    const url = absolutizeUrl(a.href, baseUrl);
+    if (!url || !/\.pdf(\?|$)/i.test(url)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
 }
 
 /**
@@ -194,11 +228,146 @@ const nudgeShare: HarvestAdapterDef = {
     "効果量の記載を丁寧に拾ってください。出典には掲載ページ名を含めます。",
 };
 
+/**
+ * jages_press — JAGES（日本老年学的評価研究）プレスリリース — X7b
+ * NetCommons形式: `?action=common_download_main&upload_id=NNNN` の直接ダウンロード
+ * （実体は主にPDF。エンジンが content-type で判別して本文抽出する）。
+ * webseed第1弾（JAGES介護予防）の継続供給源。
+ */
+const jagesPress: HarvestAdapterDef = {
+  key: "jages_press",
+  label: "JAGES プレスリリース",
+  sourceOrg: "JAGES（日本老年学的評価研究）",
+  overseas: false,
+  itemLimitPerRun: 5,
+  listItems(html, baseUrl) {
+    const seen = new Set<string>();
+    const items: HarvestListItem[] = [];
+    for (const a of extractAnchors(html)) {
+      const url = absolutizeUrl(a.href, baseUrl);
+      if (!url || !sameHost(url, baseUrl)) continue;
+      // NetCommonsのファイルダウンロードリンクだけを対象にする
+      const uploadId = url.match(/[?&]upload_id=(\d+)/)?.[1];
+      if (!uploadId || !/common_download_main/.test(url)) continue;
+      // 表・タグ一覧等のデータファイルは対象外（本文抽出できない）
+      if (/\.(xlsx?|zip|csv|pptx?)\s*$/i.test(a.text)) continue;
+      if (isNavText(a.text)) continue;
+      if (seen.has(uploadId)) continue;
+      seen.add(uploadId);
+      items.push({ stableId: `upload-${uploadId}`, title: a.text.slice(0, 200), url });
+    }
+    return items;
+  },
+  promptHint:
+    "JAGES（日本老年学的評価研究）のプレスリリースです。高齢者の社会参加・介護予防に関する" +
+    "縦断研究・地域相関研究が中心です。多くは観察研究（qed または prepost）— 無作為割付の明記が" +
+    "無い限り rct にしないこと。効果量（OR/RR/HR/IRR）・追跡年数・対象自治体数と標本規模を丁寧に転記してください。",
+};
+
+/**
+ * mhlw_grants — 厚生労働科学研究成果データベース — X7b・アダプタB
+ * 検索結果（base_url に検索クエリを含める）→ /project/{id} → 報告書PDF。
+ * PDFはS3へ原本保全し、Tier1ナレッジに自動登録して既存X3フローに合流する。
+ */
+const mhlwGrants: HarvestAdapterDef = {
+  key: "mhlw_grants",
+  label: "厚労科研 成果データベース",
+  sourceOrg: "厚生労働科学研究成果データベース",
+  overseas: false,
+  mode: "pdf_to_knowledge",
+  itemLimitPerRun: 3, // 報告書PDFは大きいため少なめに（残りは次回のrunで処理）
+  listItems(html, baseUrl) {
+    const seen = new Set<string>();
+    const items: HarvestListItem[] = [];
+    for (const a of extractAnchors(html)) {
+      const url = absolutizeUrl(a.href, baseUrl);
+      if (!url || !sameHost(url, baseUrl)) continue;
+      const projectId = url.match(/\/project\/(\d+)/)?.[1];
+      if (!projectId) continue;
+      if (isNavText(a.text)) continue;
+      if (seen.has(projectId)) continue;
+      seen.add(projectId);
+      items.push({ stableId: `project-${projectId}`, title: a.text.slice(0, 200), url });
+    }
+    return items;
+  },
+  resolvePdfUrls(html, pageUrl) {
+    return extractPdfLinks(html, pageUrl);
+  },
+  promptHint: "（アダプタB: 本文のAI抽出は既存のナレッジ抽出タブで行う）",
+};
+
+/**
+ * wsipp — Washington State Institute for Public Policy: Benefit-Cost Results — X7b・海外
+ * プログラム別ページ（/BenefitCost/Program/…）から便益費用・効果量を抽出する。
+ * 海外ソース: 外的妥当性メモ（transferability）必須・金額は参考値注記（sanitizeが強制）。
+ */
+const wsipp: HarvestAdapterDef = {
+  key: "wsipp",
+  label: "WSIPP Benefit-Cost（米・ワシントン州）",
+  sourceOrg: "Washington State Institute for Public Policy (WSIPP)",
+  overseas: true,
+  itemLimitPerRun: 5,
+  listItems(html, baseUrl) {
+    const seen = new Set<string>();
+    const items: HarvestListItem[] = [];
+    for (const a of extractAnchors(html)) {
+      const url = absolutizeUrl(a.href, baseUrl);
+      if (!url || !sameHost(url, baseUrl)) continue;
+      if (!/\/BenefitCost\/Program/i.test(url)) continue;
+      if (a.text.length < 8) continue;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      items.push({ stableId: stableIdOf(url), title: a.text.slice(0, 200), url });
+    }
+    return items;
+  },
+  promptHint:
+    "WSIPP（米国ワシントン州公共政策研究所）のBenefit-Cost分析ページです（英語）。" +
+    "メタ分析ベースの効果量と便益費用比が載っています。日本語で構造化し、" +
+    "**transferability（外的妥当性メモ）に米国の制度・対象の前提を必ず書く**こと（無い行は取り込まれません）。" +
+    "金額はUSDのまま fiscal_note に通貨を明記（円換算しない）。benefit-cost ratio は fiscal_effect_rate に入れず fiscal_note に記載する（定義が財政効果率と異なるため）。",
+};
+
+/**
+ * community_guide — The Community Guide（米CDC系・介入推奨）— X7b・海外
+ * findings ページ（/findings/…）から推奨・エビデンスを抽出する。
+ */
+const communityGuide: HarvestAdapterDef = {
+  key: "community_guide",
+  label: "The Community Guide（米CDC）",
+  sourceOrg: "The Guide to Community Preventive Services (The Community Guide)",
+  overseas: true,
+  itemLimitPerRun: 5,
+  listItems(html, baseUrl) {
+    const seen = new Set<string>();
+    const items: HarvestListItem[] = [];
+    for (const a of extractAnchors(html)) {
+      const url = absolutizeUrl(a.href, baseUrl);
+      if (!url || !sameHost(url, baseUrl)) continue;
+      if (!/\/findings\//i.test(url)) continue;
+      if (a.text.length < 8) continue;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      items.push({ stableId: stableIdOf(url), title: a.text.slice(0, 200), url });
+    }
+    return items;
+  },
+  promptHint:
+    "The Community Guide（米国の予防サービス介入ガイド）の findings ページです（英語）。" +
+    "系統的レビューに基づく推奨と効果の要約が載っています（design は多くが sr）。日本語で構造化し、" +
+    "**transferability（外的妥当性メモ）に米国の文脈・対象の前提を必ず書く**こと（無い行は取り込まれません）。",
+};
+
 // ─── レジストリ ───────────────────────────────────────────
 
 export const HARVEST_ADAPTERS: Record<string, HarvestAdapterDef> = {
   [envBest.key]: envBest,
   [nudgeShare.key]: nudgeShare,
+  [jagesPress.key]: jagesPress,
+  [mhlwGrants.key]: mhlwGrants,
+  [wsipp.key]: wsipp,
+  [communityGuide.key]: communityGuide,
 };
 
 export function getAdapter(key: string): HarvestAdapterDef | null {

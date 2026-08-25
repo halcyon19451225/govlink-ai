@@ -3,9 +3,12 @@ import { createHash } from "node:crypto";
 import type Anthropic from "@anthropic-ai/sdk";
 import { query, queryOne } from "@/lib/db";
 import { aiCreateMessage } from "@/lib/ai/gateway";
+import { uploadToStorage } from "@/lib/storage";
 import {
+  extractPdfLinks,
   getAdapter,
   htmlToText,
+  type HarvestAdapterDef,
   type HarvestListItem,
 } from "@/lib/corpus/harvest/adapters";
 import {
@@ -34,6 +37,10 @@ import {
 const FETCH_TIMEOUT_MS = 20_000;
 const MAX_BODY_CHARS = 60_000;
 const DUP_THRESHOLD = 0.6;
+/** アダプタB: 1アイテム（例: 厚労科研の1課題ページ）から保全するPDFの上限（総括＋分担の先頭） */
+const MAX_PDFS_PER_ITEM = 2;
+/** アダプタB: PDFサイズ上限（これを超える報告書はログに残してスキップ） */
+const MAX_PDF_BYTES = 30 * 1024 * 1024;
 const USER_AGENT = "CoeCorpusHarvester/1.0 (EBPM corpus builder; contact: ordoservice.com@gmail.com)";
 
 // ─── 対象ソースの選定 ─────────────────────────────────────
@@ -261,6 +268,7 @@ export interface HarvestSummary {
   itemsNew: number;
   itemsDuplicate: number;
   itemsRejected: number;
+  knowledgeDocsCreated: number;
   inputTokens: number;
   outputTokens: number;
   errorSummary: string | null;
@@ -297,6 +305,7 @@ export async function runHarvest(
   let itemsNew = 0;
   let itemsDuplicate = 0;
   let itemsRejected = 0;
+  let knowledgeDocsCreated = 0;
   let inputTokens = 0;
   let outputTokens = 0;
   let itemErrors = 0;
@@ -307,7 +316,8 @@ export async function runHarvest(
       `UPDATE corpus_harvest_runs SET
          status = $2, finished_at = now(), pages_fetched = $3, items_found = $4,
          items_new = $5, items_duplicate = $6, items_rejected_by_sanitize = $7,
-         input_tokens = $8, output_tokens = $9, error_summary = $10, log = $11::jsonb
+         knowledge_docs_created = $8,
+         input_tokens = $9, output_tokens = $10, error_summary = $11, log = $12::jsonb
        WHERE id = $1`,
       [
         run.id,
@@ -317,6 +327,7 @@ export async function runHarvest(
         itemsNew,
         itemsDuplicate,
         itemsRejected,
+        knowledgeDocsCreated,
         inputTokens,
         outputTokens,
         errorSummary,
@@ -333,6 +344,7 @@ export async function runHarvest(
       itemsNew,
       itemsDuplicate,
       itemsRejected,
+      knowledgeDocsCreated,
       inputTokens,
       outputTokens,
       errorSummary,
@@ -367,13 +379,21 @@ export async function runHarvest(
     log.push({ kind: "info", title: "一覧から候補アイテムを抽出できませんでした（ページ構造の変化の可能性）" });
   }
 
+  const isPdfToKnowledge = adapter.mode === "pdf_to_knowledge";
   const newItems: HarvestListItem[] = [];
   for (const item of items) {
     const sourceKey = makeAutoSourceKey(adapter.key, item.stableId);
-    const existing = await queryOne<{ id: string }>(
-      `SELECT id FROM corpus_evidence WHERE source_key = $1 OR source_key LIKE $1 || ':%' LIMIT 1`,
-      [sourceKey],
-    );
+    // 既知判定: アダプタAは corpus_evidence、アダプタBは knowledge_documents（原本保全済みか）
+    const existing = isPdfToKnowledge
+      ? await queryOne<{ id: string }>(
+          `SELECT id FROM knowledge_documents
+           WHERE harvest_source_key = $1 OR harvest_source_key LIKE $1 || ':%' LIMIT 1`,
+          [sourceKey],
+        )
+      : await queryOne<{ id: string }>(
+          `SELECT id FROM corpus_evidence WHERE source_key = $1 OR source_key LIKE $1 || ':%' LIMIT 1`,
+          [sourceKey],
+        );
     if (existing) {
       itemsDuplicate++;
       continue;
@@ -390,10 +410,20 @@ export async function runHarvest(
     });
   }
 
-  // 3. 各アイテム: 本文取得 → AI抽出 → sanitize → pending 投入
+  // 3. 各アイテムの処理
+  //    アダプタA: 本文取得 → AI抽出 → sanitize → pending 投入
+  //    アダプタB: PDF取得 → S3原本保全 → Tier1ナレッジ自動登録（AI抽出は既存X3フローで）
   const insertedIds: string[] = [];
   for (const item of capped) {
     try {
+      if (isPdfToKnowledge) {
+        const r = await processPdfItem(adapter, item, run.id, log);
+        pagesFetched += r.pagesFetched;
+        knowledgeDocsCreated += r.created;
+        itemsNew += r.created;
+        itemsDuplicate += r.duplicates;
+        continue;
+      }
       const body = await fetchItemText(item.url);
       pagesFetched++;
       if (!body.text.trim()) {
@@ -564,6 +594,114 @@ async function insertHarvestEvidence(
     ],
   );
   return inserted?.id ?? null;
+}
+
+// ─── アダプタB: PDF→S3原本保全→Tier1ナレッジ自動登録 ─────
+
+/**
+ * アイテム（課題ページ or PDF直リンク）からPDFを取得し、
+ * S3（knowledge/corpus-harvest/<adapter>/<sha256>.pdf）へ原本保全して
+ * Tier1ナレッジに自動登録する。以降は既存のX3フロー
+ * （ナレッジ抽出タブ→AI抽出proposed→担当者選別→intake）に合流する —
+ * 既存フローは一切変更しない。変わるのは「文書を人手で登録していた」箇所だけ。
+ */
+async function processPdfItem(
+  adapter: HarvestAdapterDef,
+  item: HarvestListItem,
+  runId: string,
+  log: LogEntry[],
+): Promise<{ pagesFetched: number; created: number; duplicates: number }> {
+  let pagesFetched = 0;
+  let created = 0;
+  let duplicates = 0;
+
+  // 1. PDFのURLを解決（item.url がPDFならそのまま。HTMLページならページ内から探す）
+  let pdfUrls: string[] = [];
+  if (/\.pdf(\?|$)/i.test(item.url)) {
+    pdfUrls = [item.url];
+  } else {
+    const res = await fetchWithTimeout(item.url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    pagesFetched++;
+    const contentType = res.headers.get("content-type") ?? "";
+    if (contentType.includes("pdf")) {
+      pdfUrls = [item.url];
+    } else {
+      const html = await res.text();
+      pdfUrls = adapter.resolvePdfUrls
+        ? adapter.resolvePdfUrls(html, item.url)
+        : extractPdfLinks(html, item.url);
+    }
+  }
+  if (pdfUrls.length === 0) {
+    log.push({ kind: "info", title: item.title, url: item.url, note: "ページに報告書PDFが見つかりませんでした" });
+    return { pagesFetched, created, duplicates };
+  }
+  if (pdfUrls.length > MAX_PDFS_PER_ITEM) {
+    log.push({
+      kind: "info",
+      title: item.title,
+      url: item.url,
+      note: `PDF${pdfUrls.length}件のうち先頭${MAX_PDFS_PER_ITEM}件のみ保全（総括報告書を優先。残りは必要に応じて手動登録）`,
+    });
+  }
+
+  // 2. 各PDF: 取得 → S3保全 → ナレッジ登録（冪等: harvest_source_key）
+  let seq = 0;
+  for (const pdfUrl of pdfUrls.slice(0, MAX_PDFS_PER_ITEM)) {
+    seq++;
+    const baseKey = makeAutoSourceKey(adapter.key, item.stableId);
+    const sourceKey = seq === 1 ? baseKey : `${baseKey}:${seq}`;
+
+    const res = await fetchWithTimeout(pdfUrl);
+    if (!res.ok) {
+      log.push({ kind: "error", title: item.title, url: pdfUrl, note: `PDF取得に失敗（HTTP ${res.status}）` });
+      throw new Error(`PDF取得に失敗: HTTP ${res.status}`);
+    }
+    pagesFetched++;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.byteLength > MAX_PDF_BYTES) {
+      log.push({
+        kind: "rejected",
+        title: item.title,
+        url: pdfUrl,
+        note: `PDFが大きすぎるためスキップ（${Math.round(buffer.byteLength / 1024 / 1024)}MB > 上限${MAX_PDF_BYTES / 1024 / 1024}MB。必要なら手動登録を）`,
+      });
+      continue;
+    }
+
+    const hash = createHash("sha256").update(buffer).digest("hex");
+    const storagePath = `corpus-harvest/${adapter.key}/${hash}.pdf`;
+    await uploadToStorage("knowledge", storagePath, buffer, "application/pdf");
+
+    const title =
+      pdfUrls.length > 1 && seq > 1 ? `${item.title}（${seq}）`.slice(0, 300) : item.title.slice(0, 300);
+    const inserted = await queryOne<{ id: string }>(
+      `INSERT INTO knowledge_documents
+         (tier, title, description, file_name, s3_key, file_size_bytes, file_type,
+          status, harvest_source_key, harvest_run_id)
+       VALUES (1, $1, $2, $3, $4, $5, 'pdf', 'pending', $6, $7)
+       ON CONFLICT (harvest_source_key) DO NOTHING
+       RETURNING id`,
+      [
+        title,
+        `自動収集（${adapter.sourceOrg}）/ 取得日 ${new Date().toISOString().slice(0, 10)} / 出所: ${item.url}`,
+        `${hash}.pdf`,
+        storagePath,
+        buffer.byteLength,
+        sourceKey,
+        runId,
+      ],
+    );
+    if (inserted) {
+      created++;
+      log.push({ kind: "new", title, url: pdfUrl, note: "Tier1ナレッジへ自動登録（抽出は既存のナレッジ抽出タブから）" });
+    } else {
+      duplicates++;
+      log.push({ kind: "known", title, url: pdfUrl, note: "既存の harvest_source_key（スキップ）" });
+    }
+  }
+  return { pagesFetched, created, duplicates };
 }
 
 /**

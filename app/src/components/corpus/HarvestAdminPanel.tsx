@@ -38,6 +38,7 @@ interface LastRun {
   items_new: number;
   items_duplicate: number;
   items_rejected_by_sanitize: number;
+  knowledge_docs_created?: number;
   error_summary: string | null;
 }
 
@@ -249,7 +250,14 @@ export default function HarvestAdminPanel(props: {
         body: JSON.stringify({ source_id: s.id }),
       });
       const json = (await res.json()) as {
-        data: { status: string; itemsFound: number; itemsNew: number; itemsDuplicate: number; itemsRejected: number } | null;
+        data: {
+          status: string;
+          itemsFound: number;
+          itemsNew: number;
+          itemsDuplicate: number;
+          itemsRejected: number;
+          knowledgeDocsCreated?: number;
+        } | null;
         error: string | null;
       };
       if (!res.ok || !json.data) {
@@ -258,8 +266,9 @@ export default function HarvestAdminPanel(props: {
         return;
       }
       const d = json.data;
+      const kd = d.knowledgeDocsCreated ?? 0;
       onInfo(
-        `${s.name}: 収集${d.status === "succeeded" ? "完了" : d.status === "partial" ? "完了（一部失敗）" : "失敗"} — 候補${d.itemsFound}件 / 新規${d.itemsNew}件（検収待ちへ）/ 既知${d.itemsDuplicate}件 / 機械防御で却下${d.itemsRejected}件`,
+        `${s.name}: 収集${d.status === "succeeded" ? "完了" : d.status === "partial" ? "完了（一部失敗）" : "失敗"} — 候補${d.itemsFound}件 / 新規${d.itemsNew}件${kd > 0 ? `（うちTier1ナレッジ登録${kd}件 — 抽出はナレッジ抽出タブから）` : "（検収待ちへ）"} / 既知${d.itemsDuplicate}件 / 機械防御で却下${d.itemsRejected}件`,
       );
       await loadSources();
       await loadRuns();
@@ -742,6 +751,9 @@ export default function HarvestAdminPanel(props: {
                   <span>
                     候補{r.items_found} / 新規{r.items_new} / 既知{r.items_duplicate} / 却下{r.items_rejected_by_sanitize}
                   </span>
+                  {(r.knowledge_docs_created ?? 0) > 0 && (
+                    <span style={{ color: "#93c5fd" }}>📄 ナレッジ{r.knowledge_docs_created}件</span>
+                  )}
                   {pending > 0 && (
                     <span
                       className="px-1.5 py-0.5 rounded"
