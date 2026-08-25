@@ -283,17 +283,22 @@ try {
   check("mhlw_grants: mode=pdf_to_knowledge・resolvePdfUrls あり", adapters.HARVEST_ADAPTERS.mhlw_grants.mode === "pdf_to_knowledge" && typeof adapters.HARVEST_ADAPTERS.mhlw_grants.resolvePdfUrls === "function");
   check("アダプタA系は mode 未指定（extract 既定）", adapters.HARVEST_ADAPTERS.jages_press.mode == null && adapters.HARVEST_ADAPTERS.env_best.mode == null);
 
-  // jages_press: NetCommonsダウンロードリンクの抽出
+  // jages_press: 多目的DB記事＋ダウンロードリンクの抽出
+  // （プレスリリースページの年度フォルダはJS駆動で拾えない — 047で収集面を更新履歴一覧に差し替え）
   const jagesHtml = `
+    <a href="/index.php?active_action=multidatabase_view_main_detail&content_id=1281&multidatabase_id=1&block_id=65">健康寿命の社会的決定要因についての研究成果を発表しました</a>
+    <a href="/index.php?active_action=multidatabase_view_main_detail&content_id=1281&multidatabase_id=1&block_id=65#_65">健康寿命の社会的決定要因についての研究成果を発表しました</a>
     <a href="/?action=common_download_main&upload_id=13321">仮設住宅への転居でうつ発症リスク2倍（プレスリリース）</a>
     <a href="https://www.jages.net/?action=common_download_main&upload_id=3411">地域サロン参加と認知症発症: 7年追跡で0.7倍</a>
     <a href="/?action=common_download_main&upload_id=99999">プレスリリースタグ_220901.xlsx</a>
-    <a href="/?action=common_download_main&upload_id=13321">仮設住宅への転居でうつ発症リスク2倍（プレスリリース）</a>
     <a href="/library/pressrelease/2024/">2024年度</a>`;
-  const jagesItems = adapters.HARVEST_ADAPTERS.jages_press.listItems(jagesHtml, "https://www.jages.net/library/pressrelease/");
-  check("jages_press: upload_id リンクだけを重複なしで拾う", jagesItems.length === 2);
+  const jagesItems = adapters.HARVEST_ADAPTERS.jages_press.listItems(jagesHtml, "https://www.jages.net/");
+  check("jages_press: 記事詳細＋upload_id を重複なしで拾う（3件）", jagesItems.length === 3);
+  check("jages_press: 記事詳細は content_id ベースの安定ID", jagesItems[0].stableId === "content-1281");
   check("jages_press: xlsx等のデータファイルは拾わない", jagesItems.every((i) => !i.title.includes(".xlsx")));
-  check("jages_press: stableId が upload_id 由来で安定", jagesItems[0].stableId === "upload-13321");
+  check("jages_press: upload_id リンクも引き続き対象", jagesItems.some((i) => i.stableId === "upload-13321"));
+  const mig047Path = join(MIG_DIR, "047_jages_source_fix.sql");
+  check("047: JAGES収集面の差し替え（更新履歴一覧・hash再収集リセット）", existsSync(mig047Path) && readFileSync(mig047Path, "utf-8").includes("multidatabase_view_main_init") && readFileSync(mig047Path, "utf-8").includes("last_content_hash = NULL"));
 
   // mhlw_grants: /project/{id} リンクの抽出とPDF解決
   const mhlwHtml = `

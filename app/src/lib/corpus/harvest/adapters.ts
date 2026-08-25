@@ -278,14 +278,19 @@ const nudgeShare: HarvestAdapterDef = {
 };
 
 /**
- * jages_press — JAGES（日本老年学的評価研究）プレスリリース — X7b
- * NetCommons形式: `?action=common_download_main&upload_id=NNNN` の直接ダウンロード
- * （実体は主にPDF。エンジンが content-type で判別して本文抽出する）。
- * webseed第1弾（JAGES介護予防）の継続供給源。
+ * jages_press — JAGES（日本老年学的評価研究）研究成果・プレスリリース — X7b/X7e改
+ *
+ * 収集面はNetCommonsの**多目的DB（更新履歴）一覧ページ**（サーバー描画・記事リンクあり）。
+ * ⚠ /library/pressrelease/ の年度フォルダはJavaScript駆動でHTMLにリンクが出ないため
+ *   一覧面として使えない（2026-08-25 実地確認 — 過去分バックログはwebseedで補う）。
+ * 拾う対象:
+ *  - 記事詳細: index.php?active_action=multidatabase_view_main_detail&content_id=NNNN…
+ *    （研究成果の発表記事。開催案内等の非研究記事はAI抽出が空配列を返すだけ）
+ *  - ファイル直リンク: ?action=common_download_main&upload_id=NNNN（PDF等。xlsx等は除外）
  */
 const jagesPress: HarvestAdapterDef = {
   key: "jages_press",
-  label: "JAGES プレスリリース",
+  label: "JAGES 研究成果・プレスリリース",
   sourceOrg: "JAGES（日本老年学的評価研究）",
   overseas: false,
   itemLimitPerRun: 5,
@@ -295,22 +300,38 @@ const jagesPress: HarvestAdapterDef = {
     for (const a of extractAnchors(html)) {
       const url = absolutizeUrl(a.href, baseUrl);
       if (!url || !sameHost(url, baseUrl)) continue;
-      // NetCommonsのファイルダウンロードリンクだけを対象にする
+
+      // (a) 多目的DBの記事詳細リンク
+      const contentId = /multidatabase_view_main_detail/.test(url)
+        ? url.match(/[?&]content_id=(\d+)/)?.[1]
+        : undefined;
+      if (contentId) {
+        if (isNavText(a.text)) continue;
+        const key = `content-${contentId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push({ stableId: key, title: a.text.slice(0, 200), url });
+        continue;
+      }
+
+      // (b) NetCommonsのファイルダウンロードリンク
       const uploadId = url.match(/[?&]upload_id=(\d+)/)?.[1];
       if (!uploadId || !/common_download_main/.test(url)) continue;
       // 表・タグ一覧等のデータファイルは対象外（本文抽出できない）
       if (/\.(xlsx?|zip|csv|pptx?)\s*$/i.test(a.text)) continue;
       if (isNavText(a.text)) continue;
-      if (seen.has(uploadId)) continue;
-      seen.add(uploadId);
-      items.push({ stableId: `upload-${uploadId}`, title: a.text.slice(0, 200), url });
+      const key = `upload-${uploadId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push({ stableId: key, title: a.text.slice(0, 200), url });
     }
     return items;
   },
   promptHint:
-    "JAGES（日本老年学的評価研究）のプレスリリースです。高齢者の社会参加・介護予防に関する" +
-    "縦断研究・地域相関研究が中心です。多くは観察研究（qed または prepost）— 無作為割付の明記が" +
-    "無い限り rct にしないこと。効果量（OR/RR/HR/IRR）・追跡年数・対象自治体数と標本規模を丁寧に転記してください。",
+    "JAGES（日本老年学的評価研究）の更新履歴・研究成果ページです。高齢者の社会参加・介護予防に関する" +
+    "縦断研究・地域相関研究が中心です。多くは観察研究（qed または case）— 無作為割付の明記が" +
+    "無い限り rct にしないこと。効果量（OR/RR/HR/IRR）・追跡年数・対象自治体数と標本規模を丁寧に転記してください。" +
+    "開催案内・ニューズレター発行・受賞報告など**研究の効果検証でないページは空配列**で返すこと（無理に拾わない）。",
 };
 
 /**
