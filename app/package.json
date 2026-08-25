@@ -9,7 +9,7 @@
     "lint": "next lint",
     "check:vocab": "node scripts/check-status-vocab.mjs",
     "check:logicmodel": "node scripts/check-logicmodel-elements.mjs",
-    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch",
+    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest",
     "check:consistency": "node scripts/check-logicmodel-consistency.mjs",
     "check:diff": "node scripts/check-logicmodel-diff.mjs",
     "check:revise": "node scripts/check-logicmodel-revise.mjs",
@@ -18,7 +18,8 @@
     "check:aigateway": "node scripts/check-ai-gateway.mjs",
     "check:expresults": "node scripts/check-experiment-results.mjs",
     "check:corpus": "node scripts/check-corpus.mjs",
-    "check:corpusmatch": "node scripts/check-corpus-match.mjs"
+    "check:corpusmatch": "node scripts/check-corpus-match.mjs",
+    "check:harvest": "node scripts/check-harvest.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

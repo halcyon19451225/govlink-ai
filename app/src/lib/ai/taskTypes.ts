@@ -32,6 +32,7 @@ export const AI_TASK_TYPES = [
   { key: "knowledge.dict_edit", label: "ナレッジ辞書のAI編集", domain: "knowledge" },
   { key: "knowledge.summarize", label: "資料の要約", domain: "knowledge" },
   { key: "knowledge.extract", label: "ナレッジからの施策・エビデンス抽出", domain: "knowledge" },
+  { key: "knowledge.harvest", label: "自動収集ソースからの構造化抽出", domain: "knowledge" },
 ] as const;
 
 export type AiTaskType = (typeof AI_TASK_TYPES)[number]["key"];

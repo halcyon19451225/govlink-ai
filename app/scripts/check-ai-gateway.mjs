@@ -12,7 +12,7 @@
  *   node scripts/check-ai-gateway.mjs
  */
 
-import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -93,7 +93,10 @@ try {
 
   // ── 2. DB種付け（マイグレーション）と語彙の一致 ──────────
   // 種付けは 038 以降どのマイグレーションでもよい（追加分は後続で種付け）
-  const migDir = join(APP_ROOT, "_migrations");
+  // 通常はリポジトリ直下（govlink-ai/infra/migrations）。app/_migrations へ
+  // コピーして検証する場合も拾う（check-status-vocab と同じ流儀 — X7aで統一）
+  const migCandidates = [join(APP_ROOT, "..", "infra", "migrations"), join(APP_ROOT, "_migrations")];
+  const migDir = migCandidates.find((p) => existsSync(p)) ?? migCandidates[0];
   const mig = readdirSync(migDir)
     .filter((f) => f.endsWith(".sql"))
     .map((f) => readFileSync(join(migDir, f), "utf-8"))

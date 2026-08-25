@@ -8,10 +8,12 @@
  *    承認された行だけが横断参照（X4のコーパス接地）の対象になる。
  *  - ナレッジ抽出: Tier1ナレッジ文書からAIで施策・エビデンスを拾い上げ、
  *    担当者が確認・選別して取り込む（無確認の自動登録はしない）。
+ *  - 自動収集（X7a）: 収集ソースの稼働状況・履歴。収集は pending 投入まで。
  *  - 同意管理: 自治体ごとのオプトイン。オプトアウトは供出済み行を全削除する。
  */
 
 import { useCallback, useEffect, useState } from "react";
+import HarvestAdminPanel from "@/components/corpus/HarvestAdminPanel";
 import {
   CORPUS_STATUS_META,
   POPULATION_BANDS,
@@ -91,10 +93,26 @@ const SOURCE_KIND_LABEL: Record<string, string> = {
 };
 
 export default function CorpusAdminClient() {
-  const [tab, setTab] = useState<"review" | "extract" | "consents">("review");
+  const [tab, setTab] = useState<"review" | "extract" | "harvest" | "consents">("review");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+
+  // 自動収集の失敗run有無（タブの⚠バッジ用・軽量呼び出し）
+  const [harvestAlert, setHarvestAlert] = useState(false);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/ordo-admin/corpus/harvest-runs?lite=1");
+        const json = (await res.json()) as {
+          data: { summary?: { failed_runs?: number } } | null;
+        };
+        setHarvestAlert(Boolean(res.ok && (json.data?.summary?.failed_runs ?? 0) > 0));
+      } catch {
+        // バッジは装飾。取得失敗で画面を汚さない
+      }
+    })();
+  }, []);
 
   // ── 検収 ─────────────────────────────────────
   const [kind, setKind] = useState<"measures" | "evidence">("measures");
@@ -337,6 +355,7 @@ export default function CorpusAdminClient() {
           [
             ["review", "🧐 検収"],
             ["extract", "📄 ナレッジ抽出"],
+            ["harvest", harvestAlert ? "🛰 自動収集 ⚠" : "🛰 自動収集"],
             ["consents", "🤝 同意管理"],
           ] as const
         ).map(([key, label]) => (
@@ -696,6 +715,9 @@ export default function CorpusAdminClient() {
           )}
         </div>
       )}
+
+      {/* ── 自動収集タブ（X7a） ── */}
+      {tab === "harvest" && <HarvestAdminPanel onError={setError} onInfo={setInfo} />}
 
       {/* ── 同意管理タブ ── */}
       {tab === "consents" && (
