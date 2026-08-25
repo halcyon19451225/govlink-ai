@@ -79,6 +79,29 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
   const [mcRunning, setMcRunning] = useState(false);
   const [mcError, setMcError] = useState<string | null>(null);
 
+  // X7e: 類似施策の財政効果率分布（横断コーパス。2件未満はサーバーが null を返す）
+  const [corpusRates, setCorpusRates] = useState<{
+    n: number;
+    median: number;
+    min: number;
+    max: number;
+    has_overseas: boolean;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/admin/projects/${projectId}/cost-efficiency/corpus-rates`)
+      .then((r) => r.json())
+      .then((json: { data: { n: number; median: number; min: number; max: number; has_overseas: boolean } | null }) => {
+        if (!cancelled) setCorpusRates(json.data ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setCorpusRates(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
   // ---- 既存の効率性評価を取得 ----
   useEffect(() => {
     let cancelled = false;
@@ -243,6 +266,25 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
           </button>
         </PermissionGate>
       </div>
+
+      {/* X7e: 類似施策の財政効果率（横断コーパス・2件未満は非表示） */}
+      {corpusRates && (
+        <div
+          className="rounded-xl px-4 py-3 text-xs"
+          style={{ background: "#10b98112", border: "1px solid #10b98133", color: "var(--text-secondary)" }}
+        >
+          <span className="font-semibold" style={{ color: "#34d399" }}>
+            🌐 類似施策の財政効果率（横断コーパス・{corpusRates.n}件）:
+          </span>{" "}
+          中央値 {Math.round(corpusRates.median * 100) / 100}（{Math.round(corpusRates.min * 100) / 100}〜
+          {Math.round(corpusRates.max * 100) / 100}）
+          <span className="ml-2">
+            ※ 財政効果率＝年換算財政効果額÷事業費（コスト比率の逆数に相当）。
+            {corpusRates.has_overseas && "海外由来の値を含む（参考値）。"}
+            出典は 📚 コーパス一覧（/ordo-admin は運営のみ）で確認できます
+          </span>
+        </div>
+      )}
 
       {/* 既存レコード一覧 */}
       {loading ? (

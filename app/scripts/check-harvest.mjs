@@ -390,6 +390,114 @@ try {
   check("engine: rct申告のLv保守判定（-1段＋注記）", engineSrc.includes("conservativeLevel") && engineSrc.includes("Lv保守判定"));
   check("engine: 本文確認済み（PDF/追撃成功）なら保守判定しない", engineSrc.includes("fullTextConfirmed"));
   check("engine: OA本文の追撃は1回だけ", engineSrc.includes("fullTextChase") && engineSrc.includes("findFullTextUrl"));
+
+  // ── 9. X7e: アダプタD（機械転記）と接地配線 ──────────────
+  const match = await import(bundle(work, ["src", "lib", "corpus", "match.ts"], "match.mjs"));
+
+  const mig046Path = join(MIG_DIR, "046_machine_transcribe.sql");
+  check("046_machine_transcribe.sql が存在する", existsSync(mig046Path));
+  const mig046 = existsSync(mig046Path) ? readFileSync(mig046Path, "utf-8") : "";
+  check("046: corpus_measures に govreview を追加（CHECK張り替え）", mig046.includes("'govreview'"));
+  check("046: ai_grounding_logs に corpus_context_ids を追加", mig046.includes("corpus_context_ids"));
+  for (const key of ["e_stat", "gyosei_review"]) {
+    const a = adapters.HARVEST_ADAPTERS[key];
+    check(`046のシードアダプタが実装済み: ${key}`, mig046.includes(`'${key}'`) && a != null);
+    check(`${key}: mode=transcribe・transcribe実装あり（AI不介在）`, a?.mode === "transcribe" && typeof a?.transcribe === "function");
+  }
+  check("046: アダプタDは light 検収でseed", (mig046.match(/'light'/g) ?? []).length >= 2);
+  check(
+    "046: 追加ソースはすべて enabled=false",
+    !/,\s*true\s*,\s*'(full|light|spot)'/.test(mig046.slice(mig046.indexOf("INSERT INTO corpus_sources"))),
+  );
+
+  // e-Stat 転記のフィクスチャ
+  const estatJson = JSON.stringify({
+    GET_STATS_DATA: {
+      STATISTICAL_DATA: {
+        TABLE_INF: { "@id": "0000020201", TITLE: { $: "社会・人口統計体系" } },
+        CLASS_INF: {
+          CLASS_OBJ: [
+            { "@id": "area", CLASS: [{ "@code": "43443", "@name": "御船町" }, { "@code": "00000", "@name": "全国" }, { "@code": "43000", "@name": "熊本県" }] },
+            { "@id": "time", CLASS: { "@code": "2020", "@name": "2020年度" } },
+            { "@id": "cat01", CLASS: { "@code": "A01", "@name": "高齢化率" } },
+          ],
+        },
+        DATA_INF: {
+          VALUE: [
+            { "@area": "43443", "@time": "2020", "@cat01": "A01", "@unit": "%", $: "38.2" },
+            { "@area": "43000", "@time": "2020", "@cat01": "A01", "@unit": "%", $: "31.1" },
+            { "@area": "00000", "@time": "2020", "@cat01": "A01", "@unit": "%", $: "28.7" },
+          ],
+        },
+      },
+    },
+  });
+  const et = adapters.transcribeEstat(estatJson, { pestle_tag: "S", field_category: "高齢化" });
+  check("e_stat: 全国行を除く2行を regional_stat として転記", et.contextRows.length === 2 && et.contextRows.every((r) => r.kind === "regional_stat"));
+  const funamachi = et.contextRows.find((r) => r.region_code === "43443");
+  check("e_stat: 市区町村スコープと地域コードを持つ", funamachi?.region_scope === "municipality");
+  check("e_stat: 本文に自地域値と全国値の比較が入る（テンプレート・推測なし）", funamachi?.body.includes("38.2%") === true && funamachi?.body.includes("全国値: 28.7%") === true);
+  check("e_stat: 県コード（下3桁000）は prefecture", et.contextRows.find((r) => r.region_code === "43000")?.region_scope === "prefecture");
+  check("e_stat: 出典（e-Stat・statsDataId）必須", et.contextRows.every((r) => r.source_org.includes("e-Stat") && r.source_note?.includes("0000020201")));
+  const etErr = adapters.transcribeEstat(JSON.stringify({ GET_STATS_DATA: { RESULT: { ERROR_MSG: "appIdが不正です" } } }), null);
+  check("e_stat: APIエラーは理由つきで rejected", etErr.contextRows.length === 0 && etErr.rejected[0]?.reason.includes("appId"));
+  const prep = adapters.HARVEST_ADAPTERS.e_stat.prepareUrl("https://api.e-stat.go.jp/x?statsDataId=1", { ESTAT_APP_ID: "KEY" });
+  check("e_stat: prepareUrl が appId を付与", "url" in prep && prep.url.includes("appId=KEY"));
+  const prepErr = adapters.HARVEST_ADAPTERS.e_stat.prepareUrl("https://api.e-stat.go.jp/x", {});
+  check("e_stat: ESTAT_APP_ID 未設定は明示エラー", "error" in prepErr && prepErr.error.includes("ESTAT_APP_ID"));
+
+  // CSVパースと行政事業レビュー転記のフィクスチャ
+  check(
+    "parseCsv: クォート・カンマ・改行内包に対応",
+    JSON.stringify(adapters.parseCsv('a,"b,1"\n"c""d",e')) === JSON.stringify([["a", "b,1"], ['c"d', "e"]]),
+  );
+  const csv = [
+    "事業ID,事業名,府省庁,事業年度,当初予算（百万円）,執行額（百万円）,成果指標,事業の目的",
+    '1234,介護予防・日常生活支援総合事業,厚生労働省,2025,"1,234",980,通いの場参加率,高齢者の介護予防を推進する',
+    ",,,,,,,",
+  ].join("\n");
+  const gr = adapters.transcribeGyoseiReview(csv, { budget_unit_yen: 1000000 });
+  check("gyosei_review: 事業行を govreview 参照行として転記", gr.measureRefRows.length === 1);
+  const g0 = gr.measureRefRows[0];
+  check("gyosei_review: 予算を円換算（百万円×1e6）", g0?.total_budget === 1_234_000_000);
+  check("gyosei_review: 府省庁・成果指標・出典注記を持つ", g0?.funding === "厚生労働省" && g0?.outcome_notes[0]?.includes("通いの場参加率") === true && g0?.source_note.includes("国事業の参考値") === true);
+  check("gyosei_review: 単価は捏造しない（unit_cost=null）", g0?.unit_cost === null);
+  const grErr = adapters.transcribeGyoseiReview("<html>一覧ページ</html>", null);
+  check("gyosei_review: CSVでない入力は理由つき rejected", grErr.measureRefRows.length === 0 && grErr.rejected.length === 1);
+
+  // match.ts: context適合・財政効果率分布（純関数）
+  const ctxRow = (over) => ({
+    id: "x", kind: "regional_stat", title: "高齢化率 — 御船町", body: "御船町の高齢化率は38.2%。全国値: 28.7%",
+    pestle_tag: "S", seven_s_tag: null, swot_hint: "neutral", region_scope: "municipality",
+    region_code: "43443", population_band: null, field_category: "高齢化",
+    source_org: "e-Stat", source_url: null, published_at: null, effective_until: null, ...over,
+  });
+  const qctx = match.bigrams("高齢化率 介護予防");
+  const sExact = match.scoreContext(qctx, ctxRow({}), { regionCode: "43443", prefecture: "熊本県" });
+  const sPref = match.scoreContext(qctx, ctxRow({ region_code: "43000", title: "高齢化率 — 熊本県", body: "熊本県の高齢化率は31.1%" }), { regionCode: "43443", prefecture: "熊本県" });
+  const sNat = match.scoreContext(qctx, ctxRow({ region_code: null, region_scope: "national", title: "高齢化率 — 全国", body: "全国の高齢化率" }), { regionCode: "43443", prefecture: "熊本県" });
+  check("scoreContext: region_code一致 > 都道府県 > 全国 の順に加点", sExact > sPref && sPref > sNat);
+  check("fiscalRateStats: 2件未満は null（1件を相場に見せない）", match.fiscalRateStats([1.2]) === null && match.fiscalRateStats([]) === null);
+  const frs = match.fiscalRateStats([0.8, 1.2, 2.0]);
+  check("fiscalRateStats: 中央値・範囲", frs?.n === 3 && frs?.median === 1.2 && frs?.min === 0.8 && frs?.max === 2.0);
+  check("formatFiscalRateBlock: null は出さない", match.formatFiscalRateBlock(null) === null);
+  check("formatFiscalRateBlock: 定義（年換算財政効果額÷事業費）を明記", match.formatFiscalRateBlock(frs)?.includes("年換算財政効果額÷事業費") === true);
+  const ctxBlock = match.formatContextBlock([{ row: ctxRow({ source_url: "https://www.e-stat.go.jp/dbview?sid=1", effective_until: "2027-03-31" }), score: 9 }]);
+  check("formatContextBlock: 出典・URL・適用期限を必ず添える", ctxBlock?.includes("出典: e-Stat") === true && ctxBlock?.includes("適用期限 2027-03-31") === true);
+
+  // エンジン・接地配線の静的検査
+  check("engine: transcribe 分岐（AI呼び出しを挟まない）", engineSrc.includes('adapter.mode === "transcribe"'));
+  check("engine: context転記は pending・冪等", engineSrc.includes("INSERT INTO corpus_context") && engineSrc.includes("ON CONFLICT (source_key) DO NOTHING"));
+  check("engine: govreview 参照行として投入", engineSrc.includes("'govreview'"));
+  check("engine: context の重複も付けるだけ", engineSrc.includes("markContextDuplicates"));
+  const retrievalSrc = readFileSync(join(APP_ROOT, "src", "lib", "corpus", "retrieval.ts"), "utf-8");
+  check("retrieval: context接地は期限内のみ（effective_until 超過を自動除外）", retrievalSrc.includes("effective_until IS NULL OR effective_until >= CURRENT_DATE"));
+  check("retrieval: context接地を ai_grounding_logs に記録", retrievalSrc.includes("corpus_context_ids"));
+  check("retrieval: 財政効果率分布を costブロックへ注入", retrievalSrc.includes("formatFiscalRateBlock"));
+  const asisChatSrc = readFileSync(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "asis-analysis", "[asisId]", "chat", "route.ts"), "utf-8");
+  check("As-Is対話: corpus_context を注入（フェーズ別・地域つき）", asisChatSrc.includes("retrieveContextGrounding") && asisChatSrc.includes("municipalityName"));
+  const ratesRouteSrc = readFileSync(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "cost-efficiency", "corpus-rates", "route.ts"), "utf-8");
+  check("効率性評価: 財政効果率分布API（2件未満はnull＝非表示）", ratesRouteSrc.includes("fiscalRateStats") && ratesRouteSrc.includes("status = 'approved'"));
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

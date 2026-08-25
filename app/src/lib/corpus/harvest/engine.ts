@@ -9,8 +9,10 @@ import {
   findFullTextUrl,
   getAdapter,
   htmlToText,
+  type ContextRowInput,
   type HarvestAdapterDef,
   type HarvestListItem,
+  type MeasureRefInput,
 } from "@/lib/corpus/harvest/adapters";
 import {
   makeAutoSourceKey,
@@ -367,6 +369,7 @@ interface SourceRow {
   enabled: boolean;
   license_note: string;
   last_content_hash: string | null;
+  query_config: Record<string, unknown> | null;
 }
 
 type LogEntry = {
@@ -402,7 +405,7 @@ export async function runHarvest(
   trigger: "scheduled" | "manual",
 ): Promise<HarvestSummary> {
   const source = await queryOne<SourceRow>(
-    `SELECT id, name, kind, base_url, adapter, enabled, license_note, last_content_hash
+    `SELECT id, name, kind, base_url, adapter, enabled, license_note, last_content_hash, query_config
      FROM corpus_sources WHERE id = $1`,
     [sourceId],
   );
@@ -470,9 +473,18 @@ export async function runHarvest(
   };
 
   // 1. 一覧ページ取得 → 差分検知
+  let requestUrl = source.base_url;
+  if (adapter.prepareUrl) {
+    const prep = adapter.prepareUrl(source.base_url, process.env);
+    if ("error" in prep) {
+      errorSummary = prep.error;
+      return finalize("failed");
+    }
+    requestUrl = prep.url;
+  }
   let listHtml: string;
   try {
-    const res = await fetchWithTimeout(source.base_url);
+    const res = await fetchWithTimeout(requestUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     listHtml = await res.text();
     pagesFetched++;
@@ -487,6 +499,72 @@ export async function runHarvest(
     await query(`UPDATE corpus_sources SET last_crawled_at = now(), updated_at = now() WHERE id = $1`, [
       source.id,
     ]);
+    return finalize("succeeded");
+  }
+
+  // 1'. アダプタD（transcribe・X7e）: AI不介在の機械転記 —
+  //     応答本文から corpus_context / corpus_measures(govreview) へ直接 pending 投入する
+  if (adapter.mode === "transcribe") {
+    if (!adapter.transcribe) {
+      errorSummary = "transcribe が未実装のアダプタです";
+      return finalize("failed");
+    }
+    const t = adapter.transcribe(listHtml, source.query_config);
+    itemsFound = t.contextRows.length + t.measureRefRows.length + t.rejected.length;
+    itemsRejected = t.rejected.length;
+    for (const r of t.rejected) log.push({ kind: "rejected", title: r.title, note: r.reason });
+
+    const insertedContextIds: string[] = [];
+    for (const row of t.contextRows) {
+      try {
+        const id = await insertContextRow(row, adapter.key, run.id);
+        if (id) {
+          itemsNew++;
+          insertedContextIds.push(id);
+          log.push(
+            row.source_url
+              ? { kind: "new", title: row.title, url: row.source_url }
+              : { kind: "new", title: row.title },
+          );
+        } else {
+          itemsDuplicate++;
+        }
+      } catch (e) {
+        itemErrors++;
+        log.push({ kind: "error", title: row.title, note: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    for (const row of t.measureRefRows) {
+      try {
+        const id = await insertMeasureRef(row, adapter.key, run.id);
+        if (id) {
+          itemsNew++;
+          log.push({ kind: "new", title: row.title, note: "govreview参照行（国事業の参考値）" });
+        } else {
+          itemsDuplicate++;
+        }
+      } catch (e) {
+        itemErrors++;
+        log.push({ kind: "error", title: row.title, note: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
+    // 重複スキャン（contextはタイトル類似・付けるだけ）
+    try {
+      for (const id of insertedContextIds) await markContextDuplicates(id);
+    } catch (e) {
+      log.push({ kind: "error", title: "重複スキャンに失敗", note: e instanceof Error ? e.message : String(e) });
+    }
+
+    await query(
+      `UPDATE corpus_sources SET last_crawled_at = now(), last_content_hash = $2, updated_at = now()
+       WHERE id = $1`,
+      [source.id, contentHash],
+    );
+    if (itemErrors > 0) {
+      errorSummary = `${itemErrors}行の転記に失敗（明細はログ参照）`;
+      return finalize("partial");
+    }
     return finalize("succeeded");
   }
 
@@ -859,6 +937,92 @@ async function processPdfItem(
     }
   }
   return { pagesFetched, created, duplicates };
+}
+
+// ─── アダプタD: 機械転記のDB書き込み（X7e）─────────────────
+
+async function insertContextRow(
+  row: ContextRowInput,
+  adapterKey: string,
+  runId: string,
+): Promise<string | null> {
+  const inserted = await queryOne<{ id: string }>(
+    `INSERT INTO corpus_context
+       (status, source_key, harvest_run_id, kind, title, body,
+        pestle_tag, seven_s_tag, swot_hint, region_scope, region_code,
+        population_band, field_category, source_org, source_url, published_at, source_note)
+     VALUES ('pending', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     ON CONFLICT (source_key) DO NOTHING
+     RETURNING id`,
+    [
+      makeAutoSourceKey(adapterKey, row.stableId),
+      runId,
+      row.kind,
+      row.title,
+      row.body,
+      row.pestle_tag,
+      row.seven_s_tag,
+      row.swot_hint,
+      row.region_scope,
+      row.region_code,
+      row.population_band,
+      row.field_category,
+      row.source_org,
+      row.source_url,
+      row.published_at,
+      row.source_note,
+    ],
+  );
+  return inserted?.id ?? null;
+}
+
+async function insertMeasureRef(
+  row: MeasureRefInput,
+  adapterKey: string,
+  runId: string,
+): Promise<string | null> {
+  const inserted = await queryOne<{ id: string }>(
+    `INSERT INTO corpus_measures
+       (status, title, field_category, intervention, outcome_notes,
+        total_budget, unit_cost, cost_per_outcome_note, funding,
+        source_kind, source_key, contributor_key, source_note, harvest_run_id)
+     VALUES ('pending', $1, $2, $3, $4::jsonb, $5, $6, $7, $8,
+             'govreview', $9, NULL, $10, $11)
+     ON CONFLICT (source_key) DO NOTHING
+     RETURNING id`,
+    [
+      row.title,
+      row.field_category,
+      row.intervention,
+      JSON.stringify(row.outcome_notes),
+      row.total_budget,
+      row.unit_cost,
+      row.cost_per_outcome_note,
+      row.funding,
+      makeAutoSourceKey(adapterKey, row.stableId),
+      row.source_note,
+      runId,
+    ],
+  );
+  return inserted?.id ?? null;
+}
+
+/** corpus_context の重複疑い（タイトル類似 0.6 以上・付けるだけ） */
+async function markContextDuplicates(contextId: string): Promise<void> {
+  await query(
+    `UPDATE corpus_context e SET dup_of = d.id, dup_score = d.score
+     FROM (
+       SELECT c.id, similarity(c.title, s.title) AS score
+       FROM corpus_context c, corpus_context s
+       WHERE s.id = $1 AND c.id <> $1
+         AND c.status <> 'rejected'
+         AND similarity(c.title, s.title) >= $2
+       ORDER BY score DESC
+       LIMIT 1
+     ) d
+     WHERE e.id = $1`,
+    [contextId, DUP_THRESHOLD],
+  );
 }
 
 /**

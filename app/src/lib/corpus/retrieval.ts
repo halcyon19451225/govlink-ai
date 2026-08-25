@@ -6,14 +6,20 @@ import {
   bigrams,
   rank,
   scoreEvidence,
+  scoreContext,
   rankMeasuresSmart,
   estimateBudget,
+  fiscalRateStats,
   formatMeasureBlock,
   formatEvidenceBlock,
+  formatContextBlock,
   formatCostBlock,
   formatBudgetEstimateBlock,
+  formatFiscalRateBlock,
   type CorpusMeasureForMatch,
   type CorpusEvidenceForMatch,
+  type CorpusContextForMatch,
+  type ContextMatchOpts,
 } from "@/lib/corpus/match";
 
 /**
@@ -98,7 +104,8 @@ export async function retrieveGrounding(opts: {
       ),
       query<CorpusEvidenceForMatch>(
         `SELECT id, title, field_category, source, year, design,
-                evidence_level, population, effect_summary, transferability
+                evidence_level, population, effect_summary, transferability,
+                fiscal_effect_rate::float AS fiscal_effect_rate
          FROM corpus_evidence WHERE status = 'approved'
          ORDER BY updated_at DESC LIMIT 300`,
       ),
@@ -177,8 +184,12 @@ export async function retrieveGrounding(opts: {
       estimateBudget(rankedMeasures, opts.targetSize ?? null),
     );
     const costBlockBase = formatCostBlock(rankedMeasures);
+    // X7e: 適合したエビデンスの財政効果率分布（2件未満は出さない）
+    const fiscalBlock = formatFiscalRateBlock(
+      fiscalRateStats(rankedEvidence.map(({ row }) => row.fiscal_effect_rate)),
+    );
     const costBlock =
-      [costBlockBase, estimateBlock].filter(Boolean).join("\n\n") || null;
+      [costBlockBase, estimateBlock, fiscalBlock].filter(Boolean).join("\n\n") || null;
 
     return {
       mode,
@@ -190,6 +201,100 @@ export async function retrieveGrounding(opts: {
   } catch (e) {
     console.warn("コーパス接地に失敗（接地なしで続行）:", e);
     return NO_GROUNDING;
+  }
+}
+
+// ─── corpus_context の接地（X7e — As-Is対話への環境情報注入）──
+
+export interface ContextGroundingResult {
+  mode: "claude" | "shadow" | "assist" | "primary";
+  contextBlock: string | null;
+  hits: number;
+}
+
+const NO_CONTEXT: ContextGroundingResult = { mode: "claude", contextBlock: null, hits: 0 };
+
+/**
+ * SWOT素材（policy_package/legal_system/subsidy_program/regional_stat/trend）の接地。
+ * - 対象は approved かつ **期限内**（effective_until 超過は自動除外 — 制度改廃で嘘をつかない）
+ * - フェーズで種別を絞る: external(O/T)=政策・制度・公募・トレンド / internal(S/W)=地域統計
+ * - 地域の加点は match.ts scoreContext（region_code一致 > 都道府県 > 規模帯 > 全国）
+ * - 適合度しきい値未満は出さない（接地の大原則）
+ */
+export async function retrieveContextGrounding(opts: {
+  taskType: AiTaskType;
+  projectId: string | null;
+  contextId?: string | null;
+  queryText: string;
+  /** As-Isのフェーズ。external=外部環境(O/T) / internal=内部環境(S/W) / null=両方 */
+  phase?: "external" | "internal" | null;
+  region?: ContextMatchOpts;
+}): Promise<ContextGroundingResult> {
+  try {
+    const routing = await getTaskRouting(opts.taskType);
+    const mode = resolveEffectiveMode(routing.mode);
+    if (mode === "claude") return NO_CONTEXT;
+
+    const q = bigrams(opts.queryText);
+    if (q.size === 0) return NO_CONTEXT;
+
+    const kinds =
+      opts.phase === "external"
+        ? ["policy_package", "legal_system", "subsidy_program", "trend"]
+        : opts.phase === "internal"
+          ? ["regional_stat"]
+          : ["policy_package", "legal_system", "subsidy_program", "trend", "regional_stat"];
+
+    const t0 = Date.now();
+    const rows = await query<CorpusContextForMatch>(
+      `SELECT id, kind, title, body, pestle_tag, seven_s_tag, swot_hint,
+              region_scope, region_code, population_band, field_category,
+              source_org, source_url, published_at::text AS published_at,
+              effective_until::text AS effective_until
+       FROM corpus_context
+       WHERE status = 'approved'
+         AND kind = ANY($1::text[])
+         AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
+       ORDER BY updated_at DESC LIMIT 300`,
+      [kinds],
+    );
+
+    const ranked = rank(rows, (r) => scoreContext(q, r, opts.region), {
+      limit: 5,
+      minScore: 3,
+    });
+    const latency = Date.now() - t0;
+    const injected = mode !== "shadow";
+
+    try {
+      await queryOne(
+        `INSERT INTO ai_grounding_logs
+           (task_type, mode, project_id, context_id, query_summary,
+            corpus_context_ids, injected, latency_ms)
+         VALUES ($1, $2, $3, $4, $5, $6::uuid[], $7, $8) RETURNING id`,
+        [
+          opts.taskType,
+          mode,
+          opts.projectId,
+          opts.contextId ?? null,
+          opts.queryText.slice(0, 300),
+          ranked.map((r) => r.row.id),
+          injected,
+          latency,
+        ],
+      );
+    } catch (e) {
+      console.warn("context接地ログの記録に失敗:", e);
+    }
+
+    return {
+      mode,
+      contextBlock: injected ? formatContextBlock(ranked) : null,
+      hits: ranked.length,
+    };
+  } catch (e) {
+    console.warn("context接地に失敗（接地なしで続行）:", e);
+    return NO_CONTEXT;
   }
 }
 

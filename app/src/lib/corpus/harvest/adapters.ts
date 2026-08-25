@@ -132,8 +132,21 @@ export interface HarvestAdapterDef {
    * 処理系統。省略時は 'extract'（アダプタA）。
    * 'pdf_to_knowledge'（アダプタB）は item のページ/PDFを S3 に原本保全し
    * Tier1ナレッジへ自動登録する（コーパスへの直接投入はしない）。
+   * 'transcribe'（アダプタD）は**AIの生成を挟まない機械転記** —
+   * API/CSVの数値・名称・出典をそのまま構造化し、要約文はテンプレート生成する
+   * （推測混入リスクが構造的にゼロ → light 検収に適合。§3-4）。
    */
-  mode?: "extract" | "pdf_to_knowledge";
+  mode?: "extract" | "pdf_to_knowledge" | "transcribe";
+  /**
+   * transcribe 用: 取得した応答本文（JSON/CSV）から corpus_context 行・
+   * corpus_measures 参照行を機械転記する（純関数）。
+   */
+  transcribe?(body: string, queryConfig: Record<string, unknown> | null): TranscribeResult;
+  /**
+   * 取得URLの前処理（APIキーの付与など）。env 未設定などで実行できない場合は
+   * error を返す（エンジンが run を failed にして明示する）。
+   */
+  prepareUrl?(baseUrl: string, env: Record<string, string | undefined>): { url: string } | { error: string };
   /** 1回のrunで処理する新規アイテムの上限（Amplifyタイムアウト対策。超過分は次回） */
   itemLimitPerRun: number;
   /** 一覧HTMLから候補アイテムを抽出する（純関数） */
@@ -395,6 +408,51 @@ const communityGuide: HarvestAdapterDef = {
     "**transferability（外的妥当性メモ）に米国の文脈・対象の前提を必ず書く**こと（無い行は取り込まれません）。",
 };
 
+// ─── アダプタD: 機械転記の型（X7e）────────────────────────
+
+/** corpus_context への転記行（kind='regional_stat' 等） */
+export interface ContextRowInput {
+  /** source_key の末尾（webseed:auto:<adapter>: に続く安定ID） */
+  stableId: string;
+  kind: "policy_package" | "legal_system" | "subsidy_program" | "regional_stat" | "trend";
+  title: string;
+  body: string;
+  pestle_tag: string;
+  seven_s_tag: string | null;
+  swot_hint: "opportunity" | "threat" | "strength" | "weakness" | "neutral";
+  region_scope: "national" | "prefecture" | "municipality";
+  region_code: string | null;
+  population_band: string | null;
+  field_category: string | null;
+  source_org: string;
+  source_url: string | null;
+  published_at: string | null; // YYYY-MM-DD
+  source_note: string | null;
+}
+
+/** corpus_measures への参照行（source_kind='govreview'。国事業の参考単価） */
+export interface MeasureRefInput {
+  stableId: string;
+  title: string;
+  field_category: string | null;
+  intervention: string | null;
+  outcome_notes: string[];
+  total_budget: number | null;
+  unit_cost: number | null;
+  cost_per_outcome_note: string | null;
+  funding: string | null;
+  source_note: string;
+}
+
+export interface TranscribeResult {
+  contextRows: ContextRowInput[];
+  measureRefRows: MeasureRefInput[];
+  rejected: { title: string; reason: string }[];
+}
+
+/** 1回のrunで転記する行の上限（light検収のまとめ承認単位に収める） */
+export const MAX_TRANSCRIBE_ROWS = 100;
+
 // ─── アダプタC: 学術API（X7d）─────────────────────────────
 // base_url に検索クエリ込みのAPI URLを設定する（別分野は同じアダプタで
 // base_url を変えたソース行を追加すればよい）。listItems はAPI応答
@@ -513,6 +571,272 @@ const cinii: HarvestAdapterDef = {
     "効果量を推測しないでください（レベルと要約のみで登録される）。",
 };
 
+// ─── アダプタD: e-Stat（統計API・機械転記）— X7e ──────────
+
+type Rec = Record<string, unknown>;
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : v == null ? [] : [v]);
+const str$ = (v: unknown): string | null => {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object" && typeof (v as Rec)["$"] === "string") return (v as Rec)["$"] as string;
+  return null;
+};
+
+/** e-Stat getStatsData(JSON) 応答から regional_stat 行を機械転記する（純関数） */
+export function transcribeEstat(
+  body: string,
+  queryConfig: Record<string, unknown> | null,
+): TranscribeResult {
+  const out: TranscribeResult = { contextRows: [], measureRefRows: [], rejected: [] };
+  let root: Rec;
+  try {
+    root = JSON.parse(body) as Rec;
+  } catch {
+    out.rejected.push({ title: "e-Stat応答", reason: "JSONとして解釈できない" });
+    return out;
+  }
+  const statData = ((root["GET_STATS_DATA"] as Rec | undefined)?.["STATISTICAL_DATA"] ?? null) as Rec | null;
+  if (!statData) {
+    // 典型: appId 未設定・不正（RESULT.ERROR_MSG が返る）
+    const result = (root["GET_STATS_DATA"] as Rec | undefined)?.["RESULT"] as Rec | undefined;
+    const msg = typeof result?.["ERROR_MSG"] === "string" ? (result["ERROR_MSG"] as string) : "STATISTICAL_DATA が無い";
+    out.rejected.push({ title: "e-Stat応答", reason: msg.slice(0, 200) });
+    return out;
+  }
+
+  const tableInf = (statData["TABLE_INF"] ?? {}) as Rec;
+  const statsDataId = typeof tableInf["@id"] === "string" ? (tableInf["@id"] as string) : "unknown";
+  const statName =
+    str$(tableInf["TITLE"]) ?? str$(tableInf["STATISTICS_NAME"]) ?? "統計表";
+
+  // 分類マップ（area / time / cat01 → コード→名称）
+  const classMaps = new Map<string, Map<string, string>>();
+  for (const obj of asArray(((statData["CLASS_INF"] ?? {}) as Rec)["CLASS_OBJ"])) {
+    const o = obj as Rec;
+    const id = typeof o["@id"] === "string" ? (o["@id"] as string) : null;
+    if (!id) continue;
+    const m = new Map<string, string>();
+    for (const c of asArray(o["CLASS"])) {
+      const cc = c as Rec;
+      if (typeof cc["@code"] === "string" && typeof cc["@name"] === "string") {
+        m.set(cc["@code"] as string, cc["@name"] as string);
+      }
+    }
+    classMaps.set(id, m);
+  }
+  const nameOf = (cls: string, code: string | null): string | null =>
+    code ? (classMaps.get(cls)?.get(code) ?? code) : null;
+
+  const values = asArray(((statData["DATA_INF"] ?? {}) as Rec)["VALUE"]).map((v) => v as Rec);
+
+  // 全国値（area=00000）を {time|cat} で引けるようにする
+  const nationalByKey = new Map<string, { value: string; unit: string | null }>();
+  for (const v of values) {
+    if (v["@area"] !== "00000") continue;
+    const key = `${v["@time"] ?? ""}|${v["@cat01"] ?? ""}`;
+    const val = str$(v["$"] ?? v);
+    if (val != null) {
+      nationalByKey.set(key, { value: val, unit: typeof v["@unit"] === "string" ? (v["@unit"] as string) : null });
+    }
+  }
+
+  const pestle = typeof queryConfig?.["pestle_tag"] === "string" ? (queryConfig["pestle_tag"] as string) : "S";
+  const category =
+    typeof queryConfig?.["field_category"] === "string" ? (queryConfig["field_category"] as string) : "地域統計";
+  const sourceUrl = `https://www.e-stat.go.jp/dbview?sid=${statsDataId}`;
+
+  for (const v of values) {
+    if (out.contextRows.length >= MAX_TRANSCRIBE_ROWS) break;
+    const area = typeof v["@area"] === "string" ? (v["@area"] as string) : null;
+    const val = str$(v["$"] ?? v);
+    if (!area || area === "00000" || val == null) continue; // 全国行は比較値としてだけ使う
+    const time = typeof v["@time"] === "string" ? (v["@time"] as string) : null;
+    const cat = typeof v["@cat01"] === "string" ? (v["@cat01"] as string) : null;
+    const unit = typeof v["@unit"] === "string" ? (v["@unit"] as string) : "";
+    const areaName = nameOf("area", area) ?? area;
+    const timeName = nameOf("time", time);
+    const catName = nameOf("cat01", cat);
+    const nat = nationalByKey.get(`${time ?? ""}|${cat ?? ""}`);
+    const indicator = catName ?? statName;
+
+    // 事実のみのテンプレート文（推測・評価を含めない — 設計 §1-3）
+    const body_ =
+      `${areaName}の${indicator}は ${val}${unit}${timeName ? `（${timeName}）` : ""}。` +
+      (nat ? ` 全国値: ${nat.value}${nat.unit ?? unit}。` : "") +
+      ` 出典: e-Stat（statsDataId ${statsDataId}）`;
+
+    out.contextRows.push({
+      stableId: `${statsDataId}:${area}:${time ?? "t"}:${cat ?? "c"}`,
+      kind: "regional_stat",
+      title: `${indicator} — ${areaName}${timeName ? `（${timeName}）` : ""}`.slice(0, 200),
+      body: body_.slice(0, 1000),
+      pestle_tag: pestle,
+      seven_s_tag: null,
+      swot_hint: "neutral",
+      region_scope: /000$/.test(area) ? "prefecture" : "municipality",
+      region_code: area,
+      population_band: null,
+      field_category: category,
+      source_org: "政府統計の総合窓口（e-Stat）",
+      source_url: sourceUrl,
+      published_at: null,
+      source_note: `${statName} / statsDataId ${statsDataId}（機械転記・AI不介在）`,
+    });
+  }
+  return out;
+}
+
+const eStat: HarvestAdapterDef = {
+  key: "e_stat",
+  label: "e-Stat 統計API",
+  sourceOrg: "政府統計の総合窓口（e-Stat）",
+  overseas: false,
+  mode: "transcribe",
+  itemLimitPerRun: 1, // transcribe は行単位でなくrun単位（MAX_TRANSCRIBE_ROWS で制御）
+  listItems() {
+    return [];
+  },
+  prepareUrl(baseUrl, env) {
+    if (/[?&]appId=/.test(baseUrl)) return { url: baseUrl };
+    const appId = env["ESTAT_APP_ID"];
+    if (!appId) {
+      return { error: "ESTAT_APP_ID が設定されていません（e-Stat APIの利用登録とenv追加が必要）" };
+    }
+    return { url: `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}appId=${encodeURIComponent(appId)}` };
+  },
+  transcribe: transcribeEstat,
+  promptHint: "（アダプタD: AI不介在の機械転記）",
+};
+
+// ─── アダプタD: 行政事業レビュー（CSV・機械転記）— X7e ────
+
+/** 簡易CSVパース（ダブルクォート・改行内包に対応・純関数） */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+  const src = text.replace(/^﻿/, "");
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (src[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && src[i + 1] === "\n") i++;
+      row.push(cell);
+      cell = "";
+      if (row.some((c) => c.trim() !== "")) rows.push(row);
+      row = [];
+    } else {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some((c) => c.trim() !== "")) rows.push(row);
+  return rows;
+}
+
+const numFromCell = (s: string | undefined): number | null => {
+  if (!s) return null;
+  const n = Number(s.replace(/[,，\s円]/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * 行政事業レビュー（RSシステム）CSVから govreview 参照行を機械転記する（純関数）。
+ * 列はヘッダ名のゆるい一致で自動検出する（列構成の年度差異に耐える）:
+ *   事業名 / 事業ID / 府省庁(所管) / 当初予算(予算額) / 執行額 / 成果指標 / 活動指標 / 事業の目的(概要)
+ * query_config.budget_unit_yen … 予算列の単位（既定 1,000,000 = 百万円）
+ */
+export function transcribeGyoseiReview(
+  body: string,
+  queryConfig: Record<string, unknown> | null,
+): TranscribeResult {
+  const out: TranscribeResult = { contextRows: [], measureRefRows: [], rejected: [] };
+  const rows = parseCsv(body);
+  if (rows.length < 2) {
+    out.rejected.push({ title: "行政事業レビューCSV", reason: "CSVとして行を読めない（一覧ページのURLのままの可能性）" });
+    return out;
+  }
+  const header = rows[0]!.map((h) => h.trim());
+  const findCol = (...words: string[]): number =>
+    header.findIndex((h) => words.some((w) => h.includes(w)));
+
+  const cName = findCol("事業名");
+  if (cName < 0) {
+    out.rejected.push({ title: "行政事業レビューCSV", reason: `ヘッダに「事業名」列が見つからない（先頭行: ${header.slice(0, 8).join(",")}）` });
+    return out;
+  }
+  const cId = findCol("事業ID", "事業番号");
+  const cMinistry = findCol("府省庁", "所管", "府省");
+  const cYear = findCol("事業年度", "年度");
+  const cBudget = findCol("当初予算", "予算額", "歳出予算");
+  const cExec = findCol("執行額", "執行率");
+  const cPurpose = findCol("事業の目的", "事業概要", "事業の概要");
+  const cOutcome = findCol("成果指標");
+  const cActivity = findCol("活動指標");
+
+  const unitYen =
+    typeof queryConfig?.["budget_unit_yen"] === "number" && queryConfig["budget_unit_yen"] > 0
+      ? (queryConfig["budget_unit_yen"] as number)
+      : 1_000_000;
+
+  for (const r of rows.slice(1)) {
+    if (out.measureRefRows.length >= MAX_TRANSCRIBE_ROWS) break;
+    const name = r[cName]?.trim();
+    if (!name) continue;
+    const id = cId >= 0 ? r[cId]?.trim() : null;
+    const year = cYear >= 0 ? r[cYear]?.trim() : null;
+    const budgetRaw = cBudget >= 0 ? numFromCell(r[cBudget]) : null;
+    const execRaw = cExec >= 0 ? numFromCell(r[cExec]) : null;
+    const outcomes: string[] = [];
+    if (cOutcome >= 0 && r[cOutcome]?.trim()) outcomes.push(`成果指標: ${r[cOutcome]!.trim()}`.slice(0, 300));
+    if (cActivity >= 0 && r[cActivity]?.trim()) outcomes.push(`活動指標: ${r[cActivity]!.trim()}`.slice(0, 300));
+
+    out.measureRefRows.push({
+      stableId: (id ? `${id}` : `${name}-${year ?? ""}`).replace(/\s+/g, "-").slice(0, 100),
+      title: `${name}${year ? `（${year}）` : ""}`.slice(0, 200),
+      field_category: null, // 検収（light）で必要に応じて補完
+      intervention: cPurpose >= 0 ? (r[cPurpose]?.trim() || null)?.slice(0, 2000) ?? null : null,
+      outcome_notes: outcomes,
+      total_budget: budgetRaw != null ? Math.round(budgetRaw * unitYen) : null,
+      unit_cost: null, // 単価は積算側で 事業費÷活動量 として扱う（ここでは捏造しない）
+      cost_per_outcome_note:
+        execRaw != null ? `執行額 ${Math.round(execRaw * unitYen).toLocaleString("ja-JP")}円（行政事業レビュー）` : null,
+      funding: cMinistry >= 0 ? r[cMinistry]?.trim() || null : null,
+      source_note: `行政事業レビュー（RSシステム）${id ? ` / 事業ID ${id}` : ""}（国事業の参考値・機械転記・AI不介在）`,
+    });
+  }
+  return out;
+}
+
+const gyoseiReview: HarvestAdapterDef = {
+  key: "gyosei_review",
+  label: "行政事業レビュー（RSシステム）",
+  sourceOrg: "行政事業レビュー 見える化サイト（RSシステム）",
+  overseas: false,
+  mode: "transcribe",
+  itemLimitPerRun: 1,
+  listItems() {
+    return [];
+  },
+  transcribe: transcribeGyoseiReview,
+  promptHint: "（アダプタD: AI不介在の機械転記）",
+};
+
 // ─── レジストリ ───────────────────────────────────────────
 
 export const HARVEST_ADAPTERS: Record<string, HarvestAdapterDef> = {
@@ -525,6 +849,8 @@ export const HARVEST_ADAPTERS: Record<string, HarvestAdapterDef> = {
   [jStage.key]: jStage,
   [pubmed.key]: pubmed,
   [cinii.key]: cinii,
+  [eStat.key]: eStat,
+  [gyoseiReview.key]: gyoseiReview,
 };
 
 export function getAdapter(key: string): HarvestAdapterDef | null {

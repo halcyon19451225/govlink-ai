@@ -11,7 +11,7 @@ import { queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
 import { requireModulePermission } from "@/lib/permissions";
 import { buildSystemPrompt, RECORD_TURN_TOOL, type KpiContext } from "@/lib/asis/prompt";
-import { retrieveGrounding } from "@/lib/corpus/retrieval";
+import { retrieveGrounding, retrieveContextGrounding } from "@/lib/corpus/retrieval";
 import {
   isPestleKey,
   isSevenSKey,
@@ -281,6 +281,40 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   } catch {
     corpusBlock = null;
+  }
+
+  // 環境情報（corpus_context）の接地（X7e）。
+  // 探索順序は ①ナレッジ → ①' corpus_context → ②web_search（設計 §1-3）。
+  // external(O/T)=政策・制度・公募・トレンド / internal(S/W)=地域統計（自地域 vs 全国）
+  try {
+    const muni = await queryOne<{ name: string; prefecture: string }>(
+      `SELECT m.name, m.prefecture
+       FROM projects p JOIN municipalities m ON m.id = p.municipality_id
+       WHERE p.id = $1`,
+      [params.id],
+    );
+    const phase =
+      asis.current_step === "external"
+        ? ("external" as const)
+        : asis.current_step === "internal"
+          ? ("internal" as const)
+          : null;
+    const ctx = await retrieveContextGrounding({
+      taskType: "dialogue.asis",
+      projectId: params.id,
+      contextId: params.asisId,
+      queryText: `${asis.project_title} ${asis.kpi_label ?? ""}`.slice(0, 600),
+      phase,
+      region: {
+        municipalityName: muni?.name ?? null,
+        prefecture: muni?.prefecture ?? null,
+      },
+    });
+    if ((ctx.mode === "assist" || ctx.mode === "primary") && ctx.contextBlock) {
+      corpusBlock = [corpusBlock, ctx.contextBlock].filter(Boolean).join("\n\n") || null;
+    }
+  } catch {
+    // 環境情報の接地失敗は対話を壊さない
   }
 
   const systemText = buildSystemPrompt({
