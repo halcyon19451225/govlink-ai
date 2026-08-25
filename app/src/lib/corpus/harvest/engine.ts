@@ -6,6 +6,7 @@ import { aiCreateMessage } from "@/lib/ai/gateway";
 import { uploadToStorage } from "@/lib/storage";
 import {
   extractPdfLinks,
+  findFullTextUrl,
   getAdapter,
   htmlToText,
   type HarvestAdapterDef,
@@ -15,6 +16,7 @@ import {
   makeAutoSourceKey,
   sanitizeHarvestEvidence,
   type HarvestEvidenceInput,
+  type HarvestRejection,
 } from "@/lib/corpus/harvest/types";
 
 /**
@@ -114,7 +116,9 @@ async function fetchWithTimeout(url: string): Promise<Response> {
 }
 
 /** アイテム本文をテキスト化（HTML / PDF。PDFは pdf-parse — 既存の抽出ルートと同方式） */
-async function fetchItemText(url: string): Promise<{ text: string; kind: "html" | "pdf" }> {
+async function fetchItemText(
+  url: string,
+): Promise<{ text: string; kind: "html" | "pdf"; html: string | null }> {
   const res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const contentType = res.headers.get("content-type") ?? "";
@@ -124,10 +128,10 @@ async function fetchItemText(url: string): Promise<{ text: string; kind: "html" 
     const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: buffer });
     const result = await parser.getText();
-    return { text: result.text.slice(0, MAX_BODY_CHARS), kind: "pdf" };
+    return { text: result.text.slice(0, MAX_BODY_CHARS), kind: "pdf", html: null };
   }
   const html = await res.text();
-  return { text: htmlToText(html).slice(0, MAX_BODY_CHARS), kind: "html" };
+  return { text: htmlToText(html).slice(0, MAX_BODY_CHARS), kind: "html", html };
 }
 
 // ─── AI抽出（ゲートウェイ経由・knowledge.harvest） ─────────
@@ -236,6 +240,120 @@ function buildSystemPrompt(sourceOrg: string, promptHint: string): string {
 
 【このソースの特記】
 ${promptHint}`;
+}
+
+// ─── 抽出・スクリーニングの実行単位（X7d でアダプタCと共用） ──
+
+interface ExtractionResult {
+  rows: HarvestEvidenceInput[];
+  rejected: HarvestRejection[];
+  parseError: boolean;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/** 1アイテム分の構造化抽出（追撃取得時に同じ処理を再実行できるよう関数化） */
+async function runExtraction(
+  adapter: HarvestAdapterDef,
+  title: string,
+  url: string,
+  text: string,
+  kind: "html" | "pdf",
+): Promise<ExtractionResult> {
+  const message = await aiCreateMessage(
+    { taskType: "knowledge.harvest" },
+    {
+      max_tokens: 4000,
+      system: [
+        {
+          type: "text",
+          text: buildSystemPrompt(adapter.sourceOrg, adapter.promptHint),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      tools: [HARVEST_TOOL],
+      tool_choice: { type: "tool", name: "record_harvest" },
+      messages: [
+        {
+          role: "user",
+          content: `資料名: ${title}\nURL: ${url}\n\n----- 資料本文（${kind}） -----\n${text}`,
+        },
+      ],
+    },
+  );
+  const inputTokens = message.usage?.input_tokens ?? 0;
+  const outputTokens = message.usage?.output_tokens ?? 0;
+  const toolUse = message.content.find(
+    (c): c is Anthropic.ToolUseBlock => c.type === "tool_use" && c.name === "record_harvest",
+  );
+  if (!toolUse) {
+    return { rows: [], rejected: [], parseError: true, inputTokens, outputTokens };
+  }
+  const { rows, rejected } = sanitizeHarvestEvidence(toolUse.input, { overseas: adapter.overseas });
+  return { rows, rejected, parseError: false, inputTokens, outputTokens };
+}
+
+// ─── 抄録スクリーニング（アダプタC・X7d §2） ──────────────
+
+const SCREEN_TOOL: Anthropic.Tool = {
+  name: "screen_item",
+  description: "この文献をコーパス収集の対象にするかを判定します。",
+  input_schema: {
+    type: "object",
+    properties: {
+      pass: {
+        type: "boolean",
+        description: "①と②の両方を満たすときだけ true",
+      },
+      reason: { type: "string", description: "判定理由（1文・日本語）" },
+    },
+    required: ["pass", "reason"],
+  },
+};
+
+const SCREEN_SYSTEM = `あなたは政策エビデンスの司書です。文献のタイトル・抄録・書誌情報から、
+次の2条件を**両方**満たすかだけを判定し、screen_item ツールで返してください。
+
+① 日本の自治体施策に翻訳可能な**介入・施策の効果検証**であること
+   （落とす例: 総説・解説・学会抄録集・研究プロトコル・基礎研究・動物実験・
+     尺度開発・単なる実態調査や関連要因分析で介入を伴わないもの）
+② 検証デザインの記載があること（RCT / 準実験・対照群あり / 前後比較 / 縦断追跡のいずれか）
+
+判定に迷う場合は false（ここで捨てても、検索クエリの改善で再収集できる。
+誤って通すと下流の抽出・検収のコストを浪費する）。`;
+
+const SCREEN_TEXT_CHARS = 6_000;
+
+async function screenItem(
+  adapter: HarvestAdapterDef,
+  item: HarvestListItem,
+  text: string,
+): Promise<{ pass: boolean; reason: string; inputTokens: number; outputTokens: number }> {
+  const message = await aiCreateMessage(
+    { taskType: "knowledge.harvest" },
+    {
+      max_tokens: 300,
+      system: [{ type: "text", text: SCREEN_SYSTEM, cache_control: { type: "ephemeral" } }],
+      tools: [SCREEN_TOOL],
+      tool_choice: { type: "tool", name: "screen_item" },
+      messages: [
+        {
+          role: "user",
+          content: `収集元: ${adapter.sourceOrg}\n文献: ${item.title}\nURL: ${item.url}\n\n----- 冒頭テキスト -----\n${text.slice(0, SCREEN_TEXT_CHARS)}`,
+        },
+      ],
+    },
+  );
+  const inputTokens = message.usage?.input_tokens ?? 0;
+  const outputTokens = message.usage?.output_tokens ?? 0;
+  const toolUse = message.content.find(
+    (c): c is Anthropic.ToolUseBlock => c.type === "tool_use" && c.name === "screen_item",
+  );
+  const input = (toolUse?.input ?? {}) as Record<string, unknown>;
+  // 解析不能時は安全側（不通過）
+  const pass = input["pass"] === true;
+  const reason = typeof input["reason"] === "string" ? input["reason"].slice(0, 200) : "判定不能（安全側で不通過）";
+  return { pass, reason, inputTokens, outputTokens };
 }
 
 // ─── 実行本体 ─────────────────────────────────────────────
@@ -432,42 +550,81 @@ export async function runHarvest(
         continue;
       }
 
-      const message = await aiCreateMessage(
-        { taskType: "knowledge.harvest" },
-        {
-          max_tokens: 4000,
-          system: [
-            {
-              type: "text",
-              text: buildSystemPrompt(adapter.sourceOrg, adapter.promptHint),
-              cache_control: { type: "ephemeral" },
-            },
-          ],
-          tools: [HARVEST_TOOL],
-          tool_choice: { type: "tool", name: "record_harvest" },
-          messages: [
-            {
-              role: "user",
-              content: `資料名: ${item.title}\nURL: ${item.url}\n\n----- 資料本文（${body.kind}） -----\n${body.text}`,
-            },
-          ],
-        },
-      );
-      inputTokens += message.usage?.input_tokens ?? 0;
-      outputTokens += message.usage?.output_tokens ?? 0;
+      // 抄録スクリーニング（アダプタC — X7d）: 軽量足切りで大半を捨ててから抽出する
+      if (adapter.screening) {
+        const screen = await screenItem(adapter, item, body.text);
+        inputTokens += screen.inputTokens;
+        outputTokens += screen.outputTokens;
+        if (!screen.pass) {
+          itemsRejected++;
+          log.push({
+            kind: "rejected",
+            title: item.title,
+            url: item.url,
+            note: `スクリーニング足切り: ${screen.reason}`,
+          });
+          continue;
+        }
+      }
 
-      const toolUse = message.content.find(
-        (c): c is Anthropic.ToolUseBlock => c.type === "tool_use" && c.name === "record_harvest",
-      );
-      if (!toolUse) {
+      const first = await runExtraction(adapter, item.title, item.url, body.text, body.kind);
+      inputTokens += first.inputTokens;
+      outputTokens += first.outputTokens;
+      if (first.parseError) {
         log.push({ kind: "error", title: item.title, url: item.url, note: "AI応答の解析に失敗" });
         itemErrors++;
         continue;
       }
 
-      const { rows, rejected } = sanitizeHarvestEvidence(toolUse.input, {
-        overseas: adapter.overseas,
-      });
+      let rows = first.rows;
+      let rejected = first.rejected;
+      let fullTextConfirmed = body.kind === "pdf"; // PDF原文を読んだ場合は本文確認済み扱い
+
+      // 効果量が取れなかったらOA本文（PMC/J-STAGE全文）を1回だけ追撃取得（X7d）
+      if (
+        adapter.fullTextChase &&
+        rows.length > 0 &&
+        rows.every((r) => r.effect_size_value == null) &&
+        body.html
+      ) {
+        const fullUrl = findFullTextUrl(body.html, item.url);
+        if (fullUrl) {
+          try {
+            const fullBody = await fetchItemText(fullUrl);
+            pagesFetched++;
+            if (fullBody.text.trim()) {
+              const second = await runExtraction(adapter, item.title, fullUrl, fullBody.text, fullBody.kind);
+              inputTokens += second.inputTokens;
+              outputTokens += second.outputTokens;
+              if (!second.parseError && second.rows.length > 0) {
+                rows = second.rows;
+                rejected = second.rejected;
+                fullTextConfirmed = true;
+                log.push({ kind: "info", title: item.title, url: fullUrl, note: "OA本文を追撃取得して抽出し直しました" });
+              }
+            }
+          } catch (e) {
+            log.push({
+              kind: "info",
+              title: item.title,
+              url: fullUrl,
+              note: `OA本文の追撃取得に失敗（抄録ベースの抽出を使用）: ${e instanceof Error ? e.message : String(e)}`,
+            });
+          }
+        }
+      }
+
+      // 保守的Lv判定（X7d）: 抄録・記事ページだけで rct を名乗る行は本文確認まで1段下げる
+      if (adapter.conservativeLevel && !fullTextConfirmed) {
+        for (const row of rows) {
+          if (row.design === "rct" && row.evidence_level > 1) {
+            row.evidence_level = (row.evidence_level - 1) as typeof row.evidence_level;
+            const mark = "【抄録ベース・本文未確認のためLv保守判定（本文確認後に検収で戻してよい）】";
+            row.source_note = row.source_note ? `${row.source_note} ${mark}`.slice(0, 300) : mark;
+          }
+        }
+      }
+
       itemsRejected += rejected.length;
       for (const r of rejected) {
         log.push({ kind: "rejected", title: r.title, url: item.url, note: r.reason });

@@ -143,8 +143,44 @@ export interface HarvestAdapterDef {
    * item.url 自体がPDFの場合は不要。
    */
   resolvePdfUrls?(html: string, pageUrl: string): string[];
+  /**
+   * アダプタC（学術ソース）用の判定規律（X7d）:
+   * - screening: 構造化抽出の前に軽量スクリーニングで足切りする
+   *   （「日本の自治体施策に翻訳可能な介入研究か / 検証デザインの明記があるか」— ここで大半を捨てる）
+   * - conservativeLevel: 抄録・記事ページだけで rct を名乗る行は本文確認まで Lv を1段保守的に
+   * - fullTextChase: 効果量が取れなかったとき、OA本文（PMC / J-STAGE全文）を1回だけ追撃取得
+   */
+  screening?: boolean;
+  conservativeLevel?: boolean;
+  fullTextChase?: boolean;
   /** 抽出プロンプトへのソース特記（判定規律の追加指示） */
   promptHint: string;
+}
+
+/**
+ * 記事ページのHTMLからOA本文へのリンクを探す（追撃取得用・純関数）。
+ * PMC（PubMed Central）と J-STAGE の全文ページ（…/_article/…）を対象にする。
+ */
+export function findFullTextUrl(html: string, baseUrl: string): string | null {
+  for (const a of extractAnchors(html)) {
+    const url = absolutizeUrl(a.href, baseUrl);
+    if (!url) continue;
+    if (/ncbi\.nlm\.nih\.gov\/pmc\/articles\/PMC\d+|pmc\.ncbi\.nlm\.nih\.gov\/articles\/PMC\d+/i.test(url)) {
+      return url;
+    }
+    if (/jstage\.jst\.go\.jp\/article\/.+\/_article/i.test(url)) return url;
+  }
+  return null;
+}
+
+/** XMLからタグ内テキストを取り出す簡易ヘルパー（アダプタCのAPI応答パース用） */
+function xmlText(block: string, tag: string): string | null {
+  const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+  return m ? htmlToText(m[1] ?? "").trim() || null : null;
+}
+
+function xmlBlocks(xml: string, tag: string): string[] {
+  return xml.match(new RegExp(`<${tag}[\\s\\S]*?</${tag}>`, "gi")) ?? [];
 }
 
 /** HTMLからPDFへのリンクを列挙する（pdf_to_knowledge の既定ヘルパー） */
@@ -359,6 +395,124 @@ const communityGuide: HarvestAdapterDef = {
     "**transferability（外的妥当性メモ）に米国の文脈・対象の前提を必ず書く**こと（無い行は取り込まれません）。",
 };
 
+// ─── アダプタC: 学術API（X7d）─────────────────────────────
+// base_url に検索クエリ込みのAPI URLを設定する（別分野は同じアダプタで
+// base_url を変えたソース行を追加すればよい）。listItems はAPI応答
+// （XML/RSS/JSON）をパースする — エンジンの流れ（取得→ハッシュ差分→
+// 新規のみ本文取得）はアダプタAと同じ。
+
+const SCREENING_DISCIPLINE =
+  "学術データベースの検索結果由来です。スクリーニングを通過した論文だけが来ます。" +
+  "抄録・記事ページの記載だけで判定し、**本文に無い数値を作らない**こと。";
+
+/**
+ * j_stage — J-STAGE WebAPI（論文検索・Atom XML）
+ * 例: https://api.jstage.jst.go.jp/searchapi/do?service=3&article=介護予防
+ * entry: <article_title><ja>…</ja>… / <article_link><ja>URL</ja> / <prism:doi> / <pubyear>
+ */
+const jStage: HarvestAdapterDef = {
+  key: "j_stage",
+  label: "J-STAGE（論文検索API）",
+  sourceOrg: "J-STAGE（科学技術振興機構）",
+  overseas: false,
+  screening: true,
+  conservativeLevel: true,
+  fullTextChase: true,
+  itemLimitPerRun: 5,
+  listItems(xml) {
+    const items: HarvestListItem[] = [];
+    const seen = new Set<string>();
+    for (const entry of xmlBlocks(xml, "entry")) {
+      const title = xmlText(entry, "article_title") ?? xmlText(entry, "title");
+      const link = xmlText(entry, "article_link") ?? xmlText(entry, "link");
+      if (!title || !link || !/^https?:\/\//.test(link)) continue;
+      const doi = xmlText(entry, "prism:doi");
+      const stableId = doi ? `doi-${doi.replace(/[^\w.\-/]/g, "_")}` : stableIdOf(link);
+      if (seen.has(stableId)) continue;
+      seen.add(stableId);
+      items.push({ stableId: stableId.slice(-100), title: title.slice(0, 200), url: link });
+    }
+    return items;
+  },
+  promptHint:
+    SCREENING_DISCIPLINE +
+    "J-STAGE掲載の日本語論文の記事ページです。抄録から効果量（OR/RR/差分）・標本規模・追跡期間を転記してください。",
+};
+
+/**
+ * pubmed — PubMed E-utilities（esearch JSON → 記事ページ）
+ * 例: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&retmax=20&sort=pub_date&term=…
+ * 応答: {"esearchresult":{"idlist":["12345678",…]}}
+ * 海外扱い（overseas=true）: 日本発の論文も含まれるが、外的妥当性メモを常に必須にして安全側に倒す。
+ */
+const pubmed: HarvestAdapterDef = {
+  key: "pubmed",
+  label: "PubMed（E-utilities）",
+  sourceOrg: "PubMed（米国国立医学図書館）",
+  overseas: true,
+  screening: true,
+  conservativeLevel: true,
+  fullTextChase: true,
+  itemLimitPerRun: 5,
+  listItems(body) {
+    const items: HarvestListItem[] = [];
+    try {
+      const json = JSON.parse(body) as { esearchresult?: { idlist?: unknown } };
+      const ids = Array.isArray(json.esearchresult?.idlist) ? json.esearchresult.idlist : [];
+      for (const id of ids) {
+        if (typeof id !== "string" || !/^\d+$/.test(id)) continue;
+        items.push({
+          stableId: `pmid-${id}`,
+          title: `PMID ${id}`, // 実タイトルは記事ページ取得後にAI抽出が書く（これはログ表示用）
+          url: `https://pubmed.ncbi.nlm.nih.gov/${id}/`,
+        });
+      }
+    } catch {
+      return [];
+    }
+    return items;
+  },
+  promptHint:
+    SCREENING_DISCIPLINE +
+    "PubMedの記事ページです（英語）。日本語で構造化し、**transferability（外的妥当性メモ）に" +
+    "研究実施国・対象・制度の前提を必ず書く**こと（無い行は取り込まれません）。",
+};
+
+/**
+ * cinii — CiNii Research OpenSearch（RSS/RDF）
+ * 例: https://cir.nii.ac.jp/opensearch/articles?format=rss&count=20&q=…
+ * item: <title>…</title> <link>https://cir.nii.ac.jp/crid/…</link>
+ */
+const cinii: HarvestAdapterDef = {
+  key: "cinii",
+  label: "CiNii Research（論文検索API）",
+  sourceOrg: "CiNii Research（国立情報学研究所）",
+  overseas: false,
+  screening: true,
+  conservativeLevel: true,
+  fullTextChase: true,
+  itemLimitPerRun: 5,
+  listItems(xml) {
+    const items: HarvestListItem[] = [];
+    const seen = new Set<string>();
+    for (const block of xmlBlocks(xml, "item")) {
+      const title = xmlText(block, "title");
+      const link = xmlText(block, "link");
+      if (!title || !link || !/^https?:\/\//.test(link)) continue;
+      const crid = link.match(/\/crid\/(\d+)/)?.[1];
+      const stableId = crid ? `crid-${crid}` : stableIdOf(link);
+      if (seen.has(stableId)) continue;
+      seen.add(stableId);
+      items.push({ stableId, title: title.slice(0, 200), url: link });
+    }
+    return items;
+  },
+  promptHint:
+    SCREENING_DISCIPLINE +
+    "CiNii Researchの文献ページです。抄録が無い場合は書誌情報から分かる範囲だけを記録し、" +
+    "効果量を推測しないでください（レベルと要約のみで登録される）。",
+};
+
 // ─── レジストリ ───────────────────────────────────────────
 
 export const HARVEST_ADAPTERS: Record<string, HarvestAdapterDef> = {
@@ -368,6 +522,9 @@ export const HARVEST_ADAPTERS: Record<string, HarvestAdapterDef> = {
   [mhlwGrants.key]: mhlwGrants,
   [wsipp.key]: wsipp,
   [communityGuide.key]: communityGuide,
+  [jStage.key]: jStage,
+  [pubmed.key]: pubmed,
+  [cinii.key]: cinii,
 };
 
 export function getAdapter(key: string): HarvestAdapterDef | null {

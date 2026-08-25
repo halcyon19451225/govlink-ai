@@ -326,6 +326,70 @@ try {
   check("engine: ナレッジ登録は Tier1・pending・冪等", engineSrc.includes("ON CONFLICT (harvest_source_key) DO NOTHING") && /VALUES \(1, \$1/.test(engineSrc));
   check("engine: PDFサイズ上限ガードがある", engineSrc.includes("MAX_PDF_BYTES"));
   check("engine: run に knowledge_docs_created を記録", engineSrc.includes("knowledge_docs_created = $8"));
+
+  // ── 8. X7d: アダプタC（学術API・スクリーニング・保守Lv・追撃） ──
+  const mig045Path = join(MIG_DIR, "045_academic_sources.sql");
+  check("045_academic_sources.sql が存在する", existsSync(mig045Path));
+  const mig045 = existsSync(mig045Path) ? readFileSync(mig045Path, "utf-8") : "";
+  for (const key of ["j_stage", "pubmed", "cinii"]) {
+    check(`045のシードアダプタが実装済み: ${key}`, mig045.includes(`'${key}'`) && key in adapters.HARVEST_ADAPTERS);
+    const a = adapters.HARVEST_ADAPTERS[key];
+    check(`${key}: 判定規律フラグ（screening/保守Lv/追撃）が全て有効`, a.screening === true && a.conservativeLevel === true && a.fullTextChase === true);
+  }
+  check(
+    "045: 追加ソースはすべて enabled=false",
+    !/,\s*true\s*,\s*'(full|light|spot)'/.test(mig045.slice(mig045.indexOf("INSERT INTO corpus_sources"))),
+  );
+  check("pubmed は overseas=true（外的妥当性メモを常に必須）", adapters.HARVEST_ADAPTERS.pubmed.overseas === true);
+  check("j_stage・cinii は国内ソース", adapters.HARVEST_ADAPTERS.j_stage.overseas === false && adapters.HARVEST_ADAPTERS.cinii.overseas === false);
+
+  // j_stage: Atom XML のパース
+  const jstageXml = `<feed><entry>
+      <article_title><ja>介護予防事業の効果検証: 準実験による評価</ja></article_title>
+      <article_link><ja>https://www.jstage.jst.go.jp/article/xx/1/1/xx_1/_article/-char/ja</ja></article_link>
+      <prism:doi>10.1234/test.1</prism:doi><pubyear>2025</pubyear>
+    </entry><entry>
+      <article_title><ja>介護予防事業の効果検証: 準実験による評価</ja></article_title>
+      <article_link><ja>https://www.jstage.jst.go.jp/article/xx/1/1/xx_1/_article/-char/ja</ja></article_link>
+      <prism:doi>10.1234/test.1</prism:doi><pubyear>2025</pubyear>
+    </entry></feed>`;
+  const jstageItems = adapters.HARVEST_ADAPTERS.j_stage.listItems(jstageXml, "https://api.jstage.jst.go.jp/searchapi/do");
+  check("j_stage: entryをDOIベースの安定IDで重複なしに拾う", jstageItems.length === 1 && jstageItems[0].stableId.startsWith("doi-10.1234"));
+  check("j_stage: タイトル・記事URLを取り出す", jstageItems[0].title.includes("介護予防") && jstageItems[0].url.includes("jstage.jst.go.jp/article"));
+
+  // pubmed: esearch JSON のパース
+  const pmItems = adapters.HARVEST_ADAPTERS.pubmed.listItems(
+    JSON.stringify({ esearchresult: { idlist: ["12345678", "x'; DROP TABLE--"] } }),
+    "https://eutils.ncbi.nlm.nih.gov/",
+  );
+  check("pubmed: idlist から数値PMIDだけを拾う", pmItems.length === 1 && pmItems[0].stableId === "pmid-12345678");
+  check("pubmed: 記事ページURLを組み立てる", pmItems[0].url === "https://pubmed.ncbi.nlm.nih.gov/12345678/");
+  check("pubmed: 不正JSONは空配列", adapters.HARVEST_ADAPTERS.pubmed.listItems("not-json", "x").length === 0);
+
+  // cinii: RSS のパース
+  const ciniiItems = adapters.HARVEST_ADAPTERS.cinii.listItems(
+    `<rdf:RDF><item rdf:about="x"><title>通いの場参加の効果検証に関する縦断研究</title><link>https://cir.nii.ac.jp/crid/1520000000000000000</link></item></rdf:RDF>`,
+    "https://cir.nii.ac.jp/opensearch/articles",
+  );
+  check("cinii: item から CRID ベースの安定IDで拾う", ciniiItems.length === 1 && ciniiItems[0].stableId === "crid-1520000000000000000");
+
+  // 追撃取得: OA本文リンクの検出
+  check(
+    "findFullTextUrl: PMCリンクを検出",
+    adapters.findFullTextUrl('<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC1234567/">Free PMC article</a>', "https://pubmed.ncbi.nlm.nih.gov/1/")?.includes("PMC1234567") === true,
+  );
+  check(
+    "findFullTextUrl: J-STAGE全文リンクを検出",
+    adapters.findFullTextUrl('<a href="/article/jjrm/61/6/61_826/_article/-char/ja">全文を読むリンク</a>', "https://www.jstage.jst.go.jp/")?.includes("_article") === true,
+  );
+  check("findFullTextUrl: 無ければ null", adapters.findFullTextUrl('<a href="/about">機関の紹介ページ</a>', "https://example.com/") === null);
+
+  // エンジンのアダプタC経路（静的検査）
+  check("engine: スクリーニング分岐（足切り理由をログに残す）", engineSrc.includes("adapter.screening") && engineSrc.includes("スクリーニング足切り"));
+  check("engine: スクリーニングは迷ったら不通過（安全側）", engineSrc.includes("判定に迷う場合は false"));
+  check("engine: rct申告のLv保守判定（-1段＋注記）", engineSrc.includes("conservativeLevel") && engineSrc.includes("Lv保守判定"));
+  check("engine: 本文確認済み（PDF/追撃成功）なら保守判定しない", engineSrc.includes("fullTextConfirmed"));
+  check("engine: OA本文の追撃は1回だけ", engineSrc.includes("fullTextChase") && engineSrc.includes("findFullTextUrl"));
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
