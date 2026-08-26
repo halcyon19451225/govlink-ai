@@ -10,6 +10,8 @@ import { requireModulePermission } from "@/lib/permissions";
 import { uploadToStorage } from "@/lib/storage";
 import { normalizeSections, PLAN_DOC_VARIANTS, type PlanDocVariant } from "@/lib/plan/document";
 import { EVAL_REPORT_VARIANT } from "@/lib/plan/evalReport";
+import { DECK_VARIANT, sectionsToSlides } from "@/lib/plan/deck";
+import { buildAudienceDeck, type DeckLayout } from "@/lib/plan/pptx";
 import { gatherEvalTables } from "@/lib/plan/evalData";
 import {
   buildEvalReportDocx,
@@ -26,19 +28,21 @@ type Params = { params: { id: string } };
 const MODULE = "logic_model";
 
 /**
- * docx 出力（PL2 P③ / PL3 A①）
- *   full / simple / digest … 計画書（variant='full' の文書から3体裁）
- *   evaluation_report      … 評価報告書（variant='evaluation_report' の文書）
+ * 出力（PL2 P③ / PL3 A① / PL4 P④)
+ *   full / simple / digest … 計画書 docx（variant='full' の文書から3体裁）
+ *   evaluation_report      … 評価報告書 docx（variant='evaluation_report' の文書）
+ *   deck                   … 受益者向け説明資料 pptx（variant='deck'。ノート欄=読み原稿）
  * - 数値の表（KPI・施策・工程・達成状況・改善一覧）は出力時に実データから自動挿入
  * - S3 `plan-documents/` に保存して plan_document_exports に履歴を残し、
  *   本体バイナリをそのまま返す（ブラウザは即ダウンロード）
  */
 
 const bodySchema = z.object({
-  variant: z.enum(["full", "simple", "digest", "evaluation_report"]),
+  variant: z.enum(["full", "simple", "digest", "evaluation_report", "deck"]),
 });
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
@@ -56,6 +60,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: null, error: "出力形式が不正です" }, { status: 400 });
   }
   const isEval = parsed.data.variant === EVAL_REPORT_VARIANT;
+  const isDeck = parsed.data.variant === DECK_VARIANT;
 
   const doc = await queryOne<{
     id: string;
@@ -65,7 +70,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }>(
     `SELECT id, title, sections, layout FROM plan_documents
      WHERE project_id = $1 AND variant = $2`,
-    [params.id, isEval ? EVAL_REPORT_VARIANT : "full"],
+    [params.id, isEval ? EVAL_REPORT_VARIANT : isDeck ? DECK_VARIANT : "full"],
   );
   if (!doc) {
     return NextResponse.json(
@@ -159,7 +164,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     };
     let buffer: Buffer;
     let variantLabel: string;
-    if (isEval) {
+    let ext = "docx";
+    let mime = DOCX_MIME;
+    if (isDeck) {
+      // 説明資料 pptx — ノート欄に読み原稿（summary）
+      buffer = await buildAudienceDeck(
+        {
+          title: doc.title,
+          municipalityName: project.municipality,
+          generatedOn: today,
+        },
+        sectionsToSlides(normalizeSections(doc.sections)),
+        layout as DeckLayout,
+      );
+      variantLabel = "説明資料";
+      ext = "pptx";
+      mime = PPTX_MIME;
+    } else if (isEval) {
       // 評価報告書 — 達成状況・評価・改善の表は統一計算・実データから
       const tables = await gatherEvalTables(params.id);
       buffer = await buildEvalReportDocx({
@@ -185,12 +206,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const variant = parsed.data.variant;
-    const fileName = `${doc.title}（${variantLabel}）${today}.docx`;
-    const s3Path = `${doc.id}/${variant}-${Date.now()}.docx`;
+    const fileName = `${doc.title}（${variantLabel}）${today}.${ext}`;
+    const s3Path = `${doc.id}/${variant}-${Date.now()}.${ext}`;
     // S3保存は履歴用 — 失敗してもダウンロード自体は返す（保存できた場合のみ履歴に残す）
     let exportId: string | null = null;
     try {
-      await uploadToStorage("plan-documents", s3Path, buffer, DOCX_MIME);
+      await uploadToStorage("plan-documents", s3Path, buffer, mime);
       const row = await queryOne<{ id: string }>(
         `INSERT INTO plan_document_exports (plan_document_id, variant, s3_key, file_name, file_size_bytes)
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -204,7 +225,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        "Content-Type": DOCX_MIME,
+        "Content-Type": mime,
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         "Content-Length": String(buffer.length),
         ...(exportId ? { "X-Export-Id": exportId } : {}),

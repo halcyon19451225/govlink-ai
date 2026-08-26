@@ -50,15 +50,23 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (kind === "eval") {
     tables = await gatherEvalTables(params.id);
   }
+  // 説明資料は対象選択（取組別）用に施策の一覧を同梱する
+  let measures: unknown = null;
+  if (kind === "deck") {
+    measures = await query(
+      `SELECT id, title FROM measure_designs WHERE project_id = $1 ORDER BY sort_order, created_at LIMIT 50`,
+      [params.id],
+    );
+  }
 
   return NextResponse.json({
-    data: { doc: doc ?? null, exports, chapters: chaptersOfDocKind(kind), tables },
+    data: { doc: doc ?? null, exports, chapters: chaptersOfDocKind(kind), tables, measures },
     error: null,
   });
 }
 
 const patchSchema = z.object({
-  doc: z.enum(["plan", "eval"]).optional(),
+  doc: z.enum(["plan", "eval", "deck"]).optional(),
   title: z.string().min(1).max(200).optional(),
   sections: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
   finalize: z.boolean().optional(),

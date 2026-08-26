@@ -57,21 +57,39 @@ export const EVAL_CHAPTERS: readonly PlanChapterDef[] = [
 export const DOC_KINDS = [
   { key: "plan", label: "計画書", variant: "full" },
   { key: "eval", label: "評価報告書", variant: EVAL_REPORT_VARIANT },
+  { key: "deck", label: "説明資料", variant: "deck" },
 ] as const;
 
 export type DocKind = (typeof DOC_KINDS)[number]["key"];
 
 export function docKindOf(raw: unknown): DocKind {
-  return raw === "eval" ? "eval" : "plan";
+  if (raw === "eval") return "eval";
+  if (raw === "deck") return "deck";
+  return "plan";
 }
 
 /** doc パラメタ → plan_documents.variant */
-export function variantOfDocKind(kind: DocKind): "full" | typeof EVAL_REPORT_VARIANT {
-  return kind === "eval" ? EVAL_REPORT_VARIANT : "full";
+export function variantOfDocKind(kind: DocKind): "full" | typeof EVAL_REPORT_VARIANT | "deck" {
+  if (kind === "eval") return EVAL_REPORT_VARIANT;
+  if (kind === "deck") return "deck";
+  return "full";
+}
+
+/** doc パラメタ → ゲートウェイのタスク種別（taskTypes.ts の語彙と同一） */
+export function taskTypeOfDocKind(
+  kind: DocKind,
+): "generation.plan_doc" | "generation.eval_report" | "generation.audience_deck" {
+  if (kind === "eval") return "generation.eval_report";
+  if (kind === "deck") return "generation.audience_deck";
+  return "generation.plan_doc";
 }
 
 /** doc パラメタ → 章構成（generate/rewrite/merge で使う）。
+ *  deck はスライド構成が対象選択（全体概要/取組別）で動的に決まるため空を返し、
+ *  generate ルートが deck.ts の定義から都度組む。
  *  依存は一方向（evalReport → document）で、document.ts はこのファイルを知らない */
 export function chaptersOfDocKind(kind: DocKind): readonly PlanChapterDef[] {
-  return kind === "eval" ? EVAL_CHAPTERS : PLAN_CHAPTERS;
+  if (kind === "eval") return EVAL_CHAPTERS;
+  if (kind === "deck") return [];
+  return PLAN_CHAPTERS;
 }

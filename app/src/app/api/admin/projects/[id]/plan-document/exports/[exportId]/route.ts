@@ -12,8 +12,9 @@ type Params = { params: { id: string; exportId: string } };
 const MODULE = "logic_model";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-/** 出力履歴の再ダウンロード（PL2 P③）— S3 `plan-documents/` から取得して返す */
+/** 出力履歴の再ダウンロード（PL2 P③ / PL4 P④）— S3 `plan-documents/` から取得して返す */
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
   const deny = await requireModulePermission(session, params.id, MODULE, "view");
@@ -33,10 +34,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   try {
     const buffer = await downloadFromStorage("plan-documents", exp.s3_key);
+    const mime = exp.s3_key.endsWith(".pptx") ? PPTX_MIME : DOCX_MIME;
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        "Content-Type": DOCX_MIME,
+        "Content-Type": mime,
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(exp.file_name)}`,
         "Content-Length": String(buffer.length),
       },

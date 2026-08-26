@@ -24,7 +24,7 @@ export default async function PlanDocumentPage({ params }: { params: { id: strin
           📄 計画書の調製
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          {project.title} — 実データから章立てを起こし、編集・確定して出力します（計画書=docx3体裁 / 評価報告書=docx＋印刷）
+          {project.title} — 実データから章立てを起こし、編集・確定して出力します（計画書=docx3体裁 / 評価報告書=docx＋印刷 / 説明資料=pptx＋読み原稿）
         </p>
       </div>
       <DocumentTabs projectId={project.id} projectTitle={project.title} />

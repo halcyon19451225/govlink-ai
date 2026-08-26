@@ -158,6 +158,46 @@ try {
   );
   check("評価sanitize: 評価6章のIDだけ受け付ける", evSan.length === 1 && evSan[0].id === "overview");
 
+  // ── 1c. 説明資料（PL4）の純関数 ─────────────────────────
+  const deckFile = join(work, "deck.mjs");
+  execFileSync(
+    "npx",
+    ["--no-install", "esbuild", join(APP_ROOT, "src", "lib", "plan", "deck.ts"),
+     "--bundle", "--format=esm", "--target=es2020", "--platform=neutral",
+     `--alias:@=${join(APP_ROOT, "src")}`, `--outfile=${deckFile}`],
+    { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT },
+  );
+  const dk = await import(pathToFileURL(deckFile).href);
+
+  const ovIds = dk.OVERVIEW_SLIDES.map((c) => c.id);
+  check("説明資料: 全体概要は6枚（表紙〜問い合わせ）",
+    JSON.stringify(ovIds) === '["cover","why","vision","measures","schedule","contact"]');
+  const uuid = "12345678-1234-1234-1234-123456789012";
+  const uuid2 = "12345678-1234-1234-1234-123456789099";
+  const mdefs = dk.measureSlideDefs([{ id: uuid, title: "受診勧奨" }, { id: uuid2, title: "通いの場" }]);
+  check("説明資料: 取組別は表紙＋4枚/取組・IDにUUIDを含み60字以内",
+    mdefs.length === 1 + 2 * 4 && mdefs[1].id === `m:${uuid}:benefit` && mdefs.every((d2) => d2.id.length <= 60));
+  check("説明資料: deckTargetOf は不正値を overview に防御",
+    dk.deckTargetOf("measures") === "measures" && dk.deckTargetOf("junk") === "overview");
+
+  // 動的スライド構成でも merge の locked 保護が効く
+  const dkMerged = d.mergeGeneratedSections(
+    [{ id: "why", heading: "なぜこの計画か", body_md: "- 手動編集", summary: "手動原稿", source_refs: [], locked: true }],
+    [{ id: "why", body_md: "- AI上書き", summary: "AI原稿" }, { id: "cover", body_md: "- 表紙", summary: "こんにちは。" }],
+    dk.OVERVIEW_SLIDES,
+  );
+  check("説明資料merge: 6枚・lockedスライドの本文と読み原稿を守る",
+    dkMerged.length === 6 &&
+    dkMerged.find((s) => s.id === "why").summary === "手動原稿" &&
+    dkMerged.find((s) => s.id === "cover").summary === "こんにちは。");
+
+  // PlanSection → スライド変換（「- 」「・」箇条書き・見出し/素の行も1項目に）
+  const slides = dk.sectionsToSlides([
+    { id: "why", heading: "なぜこの計画か", body_md: "- 項目A\n・項目B\n## 見出しも項目に\n素の行も項目に\n", summary: "読み原稿です。", source_refs: [], locked: false },
+  ]);
+  check("説明資料: 本文→箇条書き変換（-/・/見出し/素の行）と読み原稿の対応",
+    slides[0].bullets.length === 4 && slides[0].bullets[0] === "項目A" && slides[0].bullets[1] === "項目B" && slides[0].note === "読み原稿です。");
+
   // ── 2. docx生成（3形式ともZIPを返す）────────────────────
   const stub = join(work, "server-only-stub.mjs");
   writeFileSync(stub, "export default {};\n");
@@ -210,6 +250,30 @@ try {
     sections: [], layout: {}, kpis: [], evaluations: [], improvements: [],
   });
   check("docx: 評価報告書は空データでも生成できる", Buffer.isBuffer(evalEmpty) && evalEmpty[0] === 0x50);
+
+  // ── 2b. pptx生成（PL4 — ノート欄=読み原稿つきでZIPを返す）──
+  const pptxFile = join(work, "pptx.mjs");
+  execFileSync(
+    "npx",
+    ["--no-install", "esbuild", join(APP_ROOT, "src", "lib", "plan", "pptx.ts"),
+     "--bundle", "--format=esm", "--target=es2020", "--platform=node",
+     `--alias:server-only=${stub}`, `--alias:@=${join(APP_ROOT, "src")}`, `--outfile=${pptxFile}`],
+    { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT },
+  );
+  const px = await import(pathToFileURL(pptxFile).href);
+  const deckBuf = await px.buildAudienceDeck(
+    { title: "検証計画のご案内", municipalityName: "検証市", generatedOn: "2026-08-26" },
+    [
+      { id: "cover", title: "表紙", bullets: ["市民のみなさまへ"], note: "こんにちは。ご説明します。" },
+      { id: "why", title: "なぜこの計画か", bullets: ["健診を受ける人が減っています"], note: "理由からお話しします。" },
+    ],
+    {},
+  );
+  check("pptx: 説明資料が有効なZIP（PK）", Buffer.isBuffer(deckBuf) && deckBuf.length > 3000 && deckBuf[0] === 0x50 && deckBuf[1] === 0x4b);
+  const deckEmpty = await px.buildAudienceDeck(
+    { title: "空", municipalityName: "市", generatedOn: "2026-08-26" }, [], {},
+  );
+  check("pptx: 空データでも生成できる（表紙のみ）", Buffer.isBuffer(deckEmpty) && deckEmpty[0] === 0x50);
 
   // ── 3. 配線（テキスト検査）──────────────────────────────
   const migDirA = join(APP_ROOT, "_migrations");
@@ -269,6 +333,28 @@ try {
     join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "plan-document", "DocumentTabs.tsx"), "utf8");
   check("画面: 評価報告書タブが同居（新メニューを立てない — 設計A①）",
     tabs.includes("評価報告書") && tabs.includes('"eval"'));
+
+  // ── 3c. PL4の配線 ───────────────────────────────────────
+  const mig051Path = existsSync(join(migDirA, "051_audience_deck.sql"))
+    ? join(migDirA, "051_audience_deck.sql")
+    : join(migDirB, "051_audience_deck.sql");
+  const mig051 = readFileSync(mig051Path, "utf8");
+  check("051: variantのCHECKをsupersetで張り替え（deck追加・050までの値を全部残す）",
+    ["'full'", "'simple'", "'digest'", "'evaluation_report'", "'deck'"].every((v) => mig051.includes(v)));
+  check("051: generation.audience_deck の種付け", mig051.includes("generation.audience_deck"));
+  check("生成ルート: deckは対象選択（overview/measures）でスライド構成を動的に組む",
+    genSrc.includes("measureSlideDefs") && genSrc.includes("OVERVIEW_SLIDES") && genSrc.includes("taskTypeOfDocKind"));
+  check("出力ルート: deck → pptx（buildAudienceDeck・PPTX MIME）",
+    exSrc.includes("buildAudienceDeck") && exSrc.includes("presentationml"));
+  const evalReportSrc = readFileSync(join(APP_ROOT, "src", "lib", "plan", "evalReport.ts"), "utf8");
+  check("taskTypeの対応: plan/eval/deck の3種がゲートウェイ語彙で解決",
+    evalReportSrc.includes("generation.audience_deck") && evalReportSrc.includes("generation.eval_report"));
+  const deckClient = readFileSync(
+    join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "plan-document", "DeckClient.tsx"), "utf8");
+  check("画面: 説明資料タブ（対象選択・読み原稿編集・pptxダウンロード）",
+    tabs.includes("説明資料") && deckClient.includes("読み原稿") && deckClient.includes('"deck"'));
+  const pkgDeps = JSON.parse(readFileSync(join(APP_ROOT, "package.json"), "utf8"));
+  check("package.json: pptxgenjs 依存", Boolean(pkgDeps.dependencies?.pptxgenjs));
 
   const sidebar = readFileSync(join(APP_ROOT, "src", "components", "ProjectSidebar.tsx"), "utf8");
   check("サイドバー: 計画書の調製（P区分・plan-document）",

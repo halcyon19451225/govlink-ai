@@ -10,7 +10,7 @@ import { queryOne } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { aiCreateMessage } from "@/lib/ai/gateway";
 import { normalizeSections } from "@/lib/plan/document";
-import { chaptersOfDocKind, docKindOf, variantOfDocKind } from "@/lib/plan/evalReport";
+import { chaptersOfDocKind, docKindOf, taskTypeOfDocKind, variantOfDocKind } from "@/lib/plan/evalReport";
 
 type Params = { params: { id: string } };
 
@@ -41,7 +41,7 @@ const REWRITE_TOOL: Anthropic.Tool = {
 };
 
 const bodySchema = z.object({
-  doc: z.enum(["plan", "eval"]).optional(),
+  doc: z.enum(["plan", "eval", "deck"]).optional(),
   section_id: z.string().min(1).max(60),
   instruction: z.string().min(1).max(2000),
 });
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { section_id, instruction } = parsed.data;
   const kind = docKindOf(parsed.data.doc);
   const variant = variantOfDocKind(kind);
-  const taskType = kind === "eval" ? ("generation.eval_report" as const) : ("generation.plan_doc" as const);
+  const taskType = taskTypeOfDocKind(kind);
 
   const doc = await queryOne<{ id: string; status: string; sections: unknown }>(
     `SELECT id, status, sections FROM plan_documents WHERE project_id = $1 AND variant = $2`,
@@ -105,9 +105,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const chapterDef = chaptersOfDocKind(kind).find((c) => c.id === section_id);
-  const docLabel = kind === "eval" ? "評価結果報告書" : "行政計画書";
-  const system = `あなたは日本の地方自治体の${kind === "eval" ? "政策評価" : "計画策定"}を支援するアナリストです。
-${docLabel}の一つの章を、利用者の指示に従って書き直し、record_rewritten_section ツールで返してください。
+  const system =
+    kind === "deck"
+      ? `あなたは日本の地方自治体の住民向け広報を支援するコミュニケーションの専門家です。
+受益者向け説明資料の一つのスライドを、利用者の指示に従って書き直し、record_rewritten_section ツールで返してください。
+
+【厳守】
+- **元の内容にある数値・名称・日付は変えない**。新しい事実を创作しない（不明はプレースホルダのまま）。
+- body_md は「- 」の箇条書きのみ（1枚6項目以内・1項目40字以内目安）。受益者向けの平易な言葉。
+- summary は**読み原稿（ノート欄）**: 話し言葉（です・ます調）・250〜350字（45〜60秒）。
+  スライド本文に合わせて読み原稿も書き直す。`
+      : `あなたは日本の地方自治体の${kind === "eval" ? "政策評価" : "計画策定"}を支援するアナリストです。
+${kind === "eval" ? "評価結果報告書" : "行政計画書"}の一つの章を、利用者の指示に従って書き直し、record_rewritten_section ツールで返してください。
 
 【厳守】
 - **元本文にある数値・指標名・施策名・到達度・出典は変えない**。新しい事実を创作しない。
@@ -115,12 +124,13 @@ ${docLabel}の一つの章を、利用者の指示に従って書き直し、rec
 - 文体は行政文書（である調・簡潔）。書式は Markdown軽量（## 小見出し / - 箇条書き / 1. 番号付き / 段落）。
 - summary（2〜3文の要約）も本文に合わせて書き直す。`;
 
-  const userContent = `【章】${target.heading}${chapterDef ? `（この章の狙い: ${chapterDef.brief}）` : ""}
+  const summaryLabel = kind === "deck" ? "現在の読み原稿（ノート欄）" : "現在の要約";
+  const userContent = `【${kind === "deck" ? "スライド" : "章"}】${target.heading}${chapterDef ? `（狙い: ${chapterDef.brief}）` : ""}
 
 【現在の本文】
 ${target.body_md}
 
-【現在の要約】
+【${summaryLabel}】
 ${target.summary || "（未作成）"}
 
 【書き直しの指示】
