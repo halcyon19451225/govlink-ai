@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import PermissionGate from "@/components/PermissionGate";
+import { PRINT_BASE_CSS } from "@/lib/print/printCss";
 
 // ---- 型定義 ----
 
@@ -143,26 +144,7 @@ function printSheet(sheet: SheetRow, entries: EntryRow[], projectTitle: string) 
 
   win.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8">
 <title>${esc(sheet.title)}</title>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
-         color: #111; margin: 0; padding: 24px 28px; line-height: 1.7; font-size: 13px; }
-  .proj { font-size: 11px; color: #666; }
-  h1 { font-size: 20px; margin: 4px 0 18px; border-bottom: 2px solid #333; padding-bottom: 8px; }
-  h2 { font-size: 14px; margin: 22px 0 8px; padding-left: 8px; border-left: 4px solid #555; }
-  h3 { font-size: 13px; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #ccc;
-       display: flex; justify-content: space-between; align-items: baseline; }
-  .rating { font-size: 11px; font-weight: normal; border: 1px solid #666; padding: 1px 8px; border-radius: 10px; }
-  .f { display: grid; grid-template-columns: 130px 1fr; gap: 10px; margin-bottom: 7px;
-       page-break-inside: avoid; }
-  .l { font-size: 11px; color: #555; }
-  .v { font-size: 12px; white-space: pre-wrap; }
-  .entry { margin-bottom: 20px; page-break-inside: avoid; }
-  .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid #ccc;
-          font-size: 10px; color: #777; }
-  @page { size: A4; margin: 14mm; }
-  @media print { body { padding: 0; } }
-</style></head><body>
+<style>${PRINT_BASE_CSS}</style></head><body>
   <p class="proj">${esc(projectTitle)}</p>
   <h1>${esc(sheet.title)}</h1>
   <h2>取組の概要</h2>

@@ -23,6 +23,7 @@ const NAV_ITEMS = [
       { id: "evidences",       label: "エビデンス管理",      icon: "🔍", path: "evidences" },
       { id: "schedule",        label: "スケジュール設定",    icon: "📅", path: "schedule" },
       { id: "pdca",            label: "PDCAサイクル全体図",  icon: "🔄", path: "pdca" },
+      { id: "plan-document",   label: "計画書の調製",        icon: "📄", path: "plan-document" },
     ],
   },
   {
