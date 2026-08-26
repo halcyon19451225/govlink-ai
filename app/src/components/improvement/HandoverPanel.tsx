@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import AiThinkingIndicator from "@/components/AiThinkingIndicator";
+import CloneNextPeriodButton from "@/components/plan/CloneNextPeriodButton";
 import { OUTCOME_TIER_META, type OutcomeTier } from "@/lib/outcome/tiers";
 
 interface HandoverPackage {
@@ -263,6 +264,10 @@ export default function HandoverPanel({ projectId, otherProjects }: Props) {
 
   return (
     <div className="space-y-5">
+      {/* PL1 P①: 次期計画のたたき台作成（複製）。finalized な引き継ぎは複製時に自動で結線される */}
+      <div className="flex justify-end">
+        <CloneNextPeriodButton projectId={projectId} />
+      </div>
       {error && (
         <div
           className="rounded-lg border px-4 py-2 text-sm"

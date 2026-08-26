@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import ModuleGraphClient from "./ModuleGraphClient";
+import CloneNextPeriodButton from "@/components/plan/CloneNextPeriodButton";
 
 interface PlanModule {
   id: string;
@@ -16,8 +17,16 @@ export default async function ModulesSettingsPage({
 }: {
   params: { id: string };
 }) {
-  const project = await queryOne<{ id: string }>(
-    "SELECT id FROM projects WHERE id = $1",
+  const project = await queryOne<{
+    id: string;
+    title: string;
+    plan_start_date: string | null;
+    plan_end_date: string | null;
+  }>(
+    `SELECT id, title,
+            to_char(plan_start_date, 'YYYY-MM-DD') AS plan_start_date,
+            to_char(plan_end_date, 'YYYY-MM-DD') AS plan_end_date
+     FROM projects WHERE id = $1`,
     [params.id],
   );
   if (!project) notFound();
@@ -44,11 +53,20 @@ export default async function ModulesSettingsPage({
 
   return (
     <div className="max-w-5xl space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-slate-100">モジュール設定</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          このプロジェクトで使用するモジュールと依存関係を確認できます。
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-100">モジュール設定</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            このプロジェクトで使用するモジュールと依存関係を確認できます。
+          </p>
+        </div>
+        {/* PL1 P①: 次期計画のたたき台作成（前期計画の複製） */}
+        <CloneNextPeriodButton
+          projectId={project.id}
+          sourceTitle={project.title}
+          planStart={project.plan_start_date}
+          planEnd={project.plan_end_date}
+        />
       </div>
       <ModuleGraphClient
         projectModules={projectModules}

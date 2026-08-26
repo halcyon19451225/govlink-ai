@@ -33,6 +33,7 @@ export const AI_TASK_TYPES = [
   { key: "knowledge.summarize", label: "資料の要約", domain: "knowledge" },
   { key: "knowledge.extract", label: "ナレッジからの施策・エビデンス抽出", domain: "knowledge" },
   { key: "knowledge.harvest", label: "自動収集ソースからの構造化抽出", domain: "knowledge" },
+  { key: "proposal.handover_intake", label: "前期引き継ぎの反映差分提案", domain: "proposal" },
 ] as const;
 
 export type AiTaskType = (typeof AI_TASK_TYPES)[number]["key"];

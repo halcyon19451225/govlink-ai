@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import ProjectOverviewClient from "./ProjectOverviewClient";
+import HandoverIntakeBanner from "@/components/plan/HandoverIntakeBanner";
 
 interface ProjectRow {
   id: string;
@@ -109,11 +110,15 @@ export default async function AdminProjectDetailPage({
   const logicModel = logicModelRows[0] ?? null;
 
   return (
-    <ProjectOverviewClient
-      project={project}
-      initialGoals={goals}
-      initialKpis={kpis}
-      logicModel={logicModel}
-    />
+    <>
+      {/* PL1: 前期からの引き継ぎがあるときだけ表示（P②の入口） */}
+      <HandoverIntakeBanner projectId={project.id} />
+      <ProjectOverviewClient
+        project={project}
+        initialGoals={goals}
+        initialKpis={kpis}
+        logicModel={logicModel}
+      />
+    </>
   );
 }
