@@ -8,7 +8,7 @@
 // auto ステップでは選択したKPIの到達度からシステムが判定を提示し、
 // 担当者が実態と異なると考えれば上書きできる（上書きしたことも記録される）。
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AiThinkingIndicator from "@/components/AiThinkingIndicator";
 import {
   FLOWS,
@@ -126,6 +126,32 @@ export default function EvaluationWizard({
   const [error, setError] = useState<string | null>(null);
   const [contributors, setContributors] = useState<Contributor[] | null>(null);
   const [loadingRollup, setLoadingRollup] = useState(false);
+  /** 受領済み実績報告の所見・課題（S2 C① — 選んだ施策の参考情報） */
+  const [reportNotes, setReportNotes] = useState<
+    { request_title: string; fiscal_year: number | null; items: { label: string; value: string }[] }[]
+  >([]);
+
+  useEffect(() => {
+    if (!pickedMeasureId) {
+      setReportNotes([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/projects/${projectId}/report-requests/answers?measureId=${pickedMeasureId}`,
+        );
+        const json = (await res.json()) as { data: typeof reportNotes | null };
+        if (!cancelled && res.ok && json.data) setReportNotes(json.data);
+      } catch {
+        /* 参考情報のため失敗は握りつぶす */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pickedMeasureId, projectId]);
 
   const flow: EvaluationFlow | null = flowKey ? FLOWS[flowKey] : null;
   const step: FlowStep | null = flow && stepId ? (flow.steps[stepId] ?? null) : null;
@@ -454,6 +480,32 @@ export default function EvaluationWizard({
               施策を選ぶと、その施策のKPI（このフローの評価スパン分）が下で選択され、
               評価レコードに「どの施策の評価か」が記録されます。
             </p>
+
+            {/* 受領済み実績報告の所見・課題（S2 C① — 現場からの報告を評価の参考に） */}
+            {pickedMeasureId && reportNotes.length > 0 && (
+              <div
+                className="mt-2 rounded-lg border p-3 space-y-2"
+                style={{ background: "#06b6d40d", borderColor: "#06b6d430" }}
+              >
+                <p className="text-[11px] font-semibold" style={{ color: "#22d3ee" }}>
+                  📮 実績報告の所見・課題（受領済みの回答より）
+                </p>
+                {reportNotes.map((r, i) => (
+                  <div key={i} className="space-y-1">
+                    <p className="text-[10px] text-slate-500">
+                      {r.request_title}
+                      {r.fiscal_year && `（${r.fiscal_year}年度）`}
+                    </p>
+                    {r.items.map((item, j) => (
+                      <p key={j} className="text-[11px] text-slate-300 leading-relaxed">
+                        <span className="text-slate-500">{item.label}: </span>
+                        {item.value}
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

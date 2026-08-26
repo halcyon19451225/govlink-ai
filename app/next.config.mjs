@@ -6,6 +6,15 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // M1: マニュアル正本（src/content/manual/*.md）は実行時に読み込むため、
+  // standalone のファイルトレースに明示的に含める（無いと本番で「準備中」になる）
+  experimental: {
+    outputFileTracingIncludes: {
+      '/manual': ['./src/content/manual/**/*'],
+      '/manual/[topicId]': ['./src/content/manual/**/*'],
+      '/api/manual/[topicId]': ['./src/content/manual/**/*'],
+    },
+  },
   transpilePackages: ['three'],
   serverExternalPackages: ['pdf-parse', 'mammoth', 'pdfjs-dist'],
   images: {

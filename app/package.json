@@ -9,7 +9,7 @@
     "lint": "next lint",
     "check:vocab": "node scripts/check-status-vocab.mjs",
     "check:logicmodel": "node scripts/check-logicmodel-elements.mjs",
-    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest && npm run check:clone && npm run check:plandoc && npm run check:schedule",
+    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest && npm run check:clone && npm run check:plandoc && npm run check:schedule && npm run check:report && npm run check:manual",
     "check:consistency": "node scripts/check-logicmodel-consistency.mjs",
     "check:diff": "node scripts/check-logicmodel-diff.mjs",
     "check:revise": "node scripts/check-logicmodel-revise.mjs",
@@ -22,7 +22,9 @@
     "check:harvest": "node scripts/check-harvest.mjs",
     "check:clone": "node scripts/check-clone.mjs",
     "check:plandoc": "node scripts/check-plandoc.mjs",
-    "check:schedule": "node scripts/check-schedule.mjs"
+    "check:schedule": "node scripts/check-schedule.mjs",
+    "check:report": "node scripts/check-report.mjs",
+    "check:manual": "node scripts/check-manual.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
@@ -47,6 +49,8 @@
     "googleapis": "^171.4.0",
     "jspdf": "^4.2.1",
     "mammoth": "^1.12.0",
+    "marked": "^18.0.11",
+    "mermaid": "^11.17.2",
     "next": "14.2.35",
     "next-auth": "^4.24.14",
     "nodemailer": "^8.0.7",

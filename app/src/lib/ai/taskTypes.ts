@@ -27,6 +27,7 @@ export const AI_TASK_TYPES = [
   { key: "generation.plan_doc", label: "計画書の章立て生成・リライト", domain: "generation" },
   { key: "generation.eval_report", label: "評価報告書の章立て生成・リライト", domain: "generation" },
   { key: "generation.audience_deck", label: "受益者向け説明資料のスライド生成・リライト", domain: "generation" },
+  { key: "generation.report_request", label: "実績報告依頼の設問自動組成", domain: "generation" },
   { key: "analysis.gap", label: "ギャップ分析", domain: "analysis" },
   { key: "analysis.gap_values", label: "ギャップ分析の値提案", domain: "analysis" },
   { key: "analysis.stats", label: "統計データの解釈", domain: "analysis" },

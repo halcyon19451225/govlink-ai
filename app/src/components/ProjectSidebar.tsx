@@ -41,6 +41,7 @@ const NAV_ITEMS = [
     label: "評価",
     color: "#0f6e56",
     items: [
+      { id: "report-requests", label: "実績報告依頼",       icon: "📮", path: "report-requests" },
       { id: "program-evaluation", label: "プログラム評価",   icon: "✅", path: "program-evaluation" },
       { id: "ebpm",               label: "EBPMダッシュボード",icon: "📉", path: "ebpm" },
       { id: "lineage",            label: "リネージグラフ",   icon: "🕸️", path: "lineage" },
