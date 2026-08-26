@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import GradientBackground from "@/components/GradientBackground";
+import AutoHelpButton from "@/components/help/AutoHelpButton";
 import type { ReactNode } from "react";
 
 const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
@@ -40,6 +41,8 @@ export default async function OrdoAdminLayout({ children }: { children: ReactNod
         </header>
         <main className="max-w-7xl mx-auto px-6 py-8">{children}</main>
       </div>
+      {/* M3: コーパス管理・独自AI管理のヘルプを自動設置（右下） */}
+      <AutoHelpButton />
     </div>
   );
 }

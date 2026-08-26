@@ -69,10 +69,10 @@ export const SECTION_LABELS: Record<HelpTopic["section"], string> = {
 
 /**
  * マニュアルが「必須」のトピック（check:manual が不在を失敗にする集合）。
- * M1では基盤のモデルとして schedule のみ。M2で主要8メニュー、M3で全メニューへ広げる
- * （未整備は画面に「準備中」と出る — 書き漏れはこの集合を広げることで機械検出になる）。
+ * M3で**全トピック必須**になった — 以後、新しいメニューを HELP_TOPICS に足すと
+ * マニュアルを書くまで check が失敗する（DoD: 実装とマニュアルは同じコミットで揃える）。
  */
-export const REQUIRED_MANUALS: readonly string[] = ["schedule"];
+export const REQUIRED_MANUALS: readonly string[] = HELP_TOPICS.map((t) => t.id);
 
 const SAFE_ID = /^[a-z0-9-]+$/;
 

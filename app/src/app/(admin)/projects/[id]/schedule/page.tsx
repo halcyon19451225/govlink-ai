@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 import ScheduleClient, { PhaseRow, TaskRow } from "./ScheduleClient";
-import HelpButton from "@/components/help/HelpButton";
 
 interface ProjectRow {
   id: string;
@@ -109,9 +108,9 @@ export default async function SchedulePage({
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-3">
+      {/* ヘルプはレイアウトの AutoHelpButton（右下）が自動設置する — M3 */}
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-slate-100">スケジュール管理</h2>
-        <HelpButton topicId="schedule" />
       </div>
 
       {pdcaCheckpoints.length > 0 && (

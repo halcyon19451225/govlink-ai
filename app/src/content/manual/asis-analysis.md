@@ -1,0 +1,75 @@
+---
+module: asis-analysis
+title: 現状整理（As-Is）
+menu_path: /projects/[id]/asis-analysis
+tables: [asis_analyses, corpus_context, knowledge_documents]
+apis: [/api/admin/projects/[id]/asis-analysis, /api/admin/projects/[id]/asis-analysis/[asisId]/chat]
+ai_tasks: [dialogue.asis]
+checks: [check:corpusmatch]
+migrations: [020s, 046]
+upstream: [gap-analysis, datasets]
+downstream: [issue-hypothesis]
+updated: 2026-08-26
+---
+
+# 現状整理（As-Is）
+
+## ① このメニューは何をするか
+
+SWOT・PESTLE・7S などの枠組みで地域と組織の現状を整理します。
+AIとの対話で環境情報を集めながら、外部環境（機会・脅威）と内部環境（強み・弱み）を
+構造化し、課題仮説の材料にします。
+
+## ② 位置づけ
+
+```mermaid
+flowchart LR
+  P1(ギャップ分析) --> P2(現状整理):::here --> P3(課題仮説) --> P4(施策構築) --> P5(ロジックモデル)
+  P5 --> D1(実行・進捗) --> C1(評価) --> A1(改善) --> P1
+  classDef here fill:#6366f1,color:#fff,stroke:#818cf8
+```
+
+## ③ データフロー
+
+```mermaid
+flowchart TD
+  KN[(knowledge_documents<br/>自治体ナレッジ)] -.①参照.-> AI{{As-Is対話<br/>dialogue.asis}}
+  CC[(corpus_context<br/>横断コーパス: 制度・統計・トレンド)] -.①'適合検索で参照.-> AI
+  WEB(Web検索) -.②補完.-> AI
+  AI --> H{担当者が確認・採用}
+  H --> AS[(asis_analyses<br/>SWOT/PESTLE/7S)]
+  AS -.-> NEXT(課題仮説設定へ)
+```
+
+対話AIの情報源は **①ナレッジ → ①' 横断コーパス（PESTLE/7Sタグ・地域・人口規模で
+適合検索）→ ②Web検索** の順（X7eで①'を追加）。外部環境（O/T）には政策パッケージ・
+制度改正・トレンドが、内部環境（S/W）には自地域と全国値の比較が注入されます。
+コーパスの環境情報は**期限切れ（effective_until超過）を自動除外** — 改廃済みの制度で
+嘘をつきません。
+
+## ④ 状態
+
+分析行は編集自由（承認フローなし）。対話ログは asis 対話として保存されます。
+
+## ⑤ 操作手順
+
+1. 枠組み（SWOT / PESTLE / 7S）を選んで分析を作成
+2. AI対話で「この地域の外部環境は？」等を聞きながら要素を集める
+   （提案は確認して採用 — 出典つきの情報はそのまま根拠になる）
+3. 採用した要素を編集・並べ替えて現状整理を完成させる
+4. ギャップ分析の結果と併せて、課題仮説設定の材料になる
+
+## ⑥ 用語と判定基準
+
+- **PESTLE**: 政治/経済/社会/技術/法制度/環境 — 外部環境の分類タグ（コーパスと同語彙）
+- **7S**: 戦略/組織/システム/価値観/スキル/人材/スタイル — 内部環境の分類タグ
+
+## ⑦ 実装メモ
+
+- テーブル: asis_analyses ／ 対話は issue_dialogues と同型の対話テーブル
+- コーパス接地の適合度: 市区町村一致 > 都道府県 > 人口規模帯 > 全国（しきい値未満は出さない）
+- 関連する実装記録: `claude/coe-x7e.md`（コーパス注入）・`claude/coe-govlink.md`
+
+## ⑧ 更新履歴
+
+- 2026-08-26 v1 — M2 初版（X7eのコーパス接地を反映）
