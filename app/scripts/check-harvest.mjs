@@ -300,6 +300,21 @@ try {
   const mig047Path = join(MIG_DIR, "047_jages_source_fix.sql");
   check("047: JAGES収集面の差し替え（更新履歴一覧・hash再収集リセット）", existsSync(mig047Path) && readFileSync(mig047Path, "utf-8").includes("multidatabase_view_main_init") && readFileSync(mig047Path, "utf-8").includes("last_content_hash = NULL"));
 
+  // href の HTMLエンティティ（実HTMLでは & が &amp; になる — 候補0件の実バグの再発防止）
+  check("decodeHtmlAttr: &amp; を & に戻す", adapters.decodeHtmlAttr("a?x=1&amp;y=2&#38;z=3") === "a?x=1&y=2&z=3");
+  const escAnchors = adapters.extractAnchors(
+    '<a href="/index.php?active_action=multidatabase_view_main_detail&amp;content_id=1281&amp;multidatabase_id=1&amp;block_id=65">研究成果の発表について（エスケープ済みhref）</a>',
+  );
+  check("extractAnchors: href内の &amp; をデコードして返す", escAnchors[0]?.href.includes("&content_id=1281") === true);
+  const jagesEscItems = adapters.HARVEST_ADAPTERS.jages_press.listItems(
+    '<a href="/index.php?active_action=multidatabase_view_main_detail&amp;content_id=1281&amp;multidatabase_id=1&amp;block_id=65">健康寿命の社会的決定要因についての研究成果を発表しました</a>' +
+      '<a href="/?action=common_download_main&amp;upload_id=3411">地域サロン参加と認知症発症: 7年追跡で0.7倍</a>',
+    "https://www.jages.net/",
+  );
+  check("jages_press: エスケープ済みhrefでも記事・ファイルを拾う（実HTML相当）", jagesEscItems.length === 2 && jagesEscItems[0].stableId === "content-1281" && jagesEscItems[1].stableId === "upload-3411");
+  check("jages_press: parserVersion をv2に更新（修正の再処理が効く）", (adapters.HARVEST_ADAPTERS.jages_press.parserVersion ?? 1) >= 2);
+  check("engine: 差分ハッシュにパーサ版数を混ぜる（アダプタ修正で再処理）", engineSrc.includes("adapter.parserVersion ?? 1"));
+
   // mhlw_grants: /project/{id} リンクの抽出とPDF解決
   const mhlwHtml = `
     <a href="/project/180181">介護予防の効果検証に関する研究（令和5年度 総括研究報告書）</a>

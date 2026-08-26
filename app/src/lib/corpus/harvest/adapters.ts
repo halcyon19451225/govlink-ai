@@ -51,13 +51,28 @@ export interface AnchorInfo {
   text: string;
 }
 
+/**
+ * href属性内のHTMLエンティティを実文字へ戻す。
+ * 実HTMLではクエリの「&」が「&amp;」でエスケープされるため、これを戻さないと
+ * `[?&]content_id=` 等のパラメータ照合が全て失敗する（JAGES候補0件の実バグ・2026-08-25）。
+ */
+export function decodeHtmlAttr(value: string): string {
+  return value
+    .replace(/&amp;/gi, "&")
+    .replace(/&#0*38;/g, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
 /** aタグの href とテキストを列挙する */
 export function extractAnchors(html: string): AnchorInfo[] {
   const out: AnchorInfo[] = [];
   const re = /<a\b[^>]*?href\s*=\s*["']([^"'#][^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
-    const href = m[1]?.trim() ?? "";
+    const href = decodeHtmlAttr(m[1]?.trim() ?? "");
     const text = htmlToText(m[2] ?? "");
     if (href) out.push({ href, text });
   }
@@ -128,6 +143,12 @@ export interface HarvestAdapterDef {
   sourceOrg: string;
   /** 海外ソースか（外的妥当性メモ必須・金額は参考値扱い） */
   overseas: boolean;
+  /**
+   * パーサの版数（省略時1）。エンジンの差分ハッシュに混ぜられるため、
+   * **アダプタの抽出ロジックを修正したら必ず上げる** — ページ内容が同じでも
+   * 「変化なし」の早期終了をせず再処理される（修正が反映されない事故の防止）。
+   */
+  parserVersion?: number;
   /**
    * 処理系統。省略時は 'extract'（アダプタA）。
    * 'pdf_to_knowledge'（アダプタB）は item のページ/PDFを S3 に原本保全し
@@ -293,6 +314,7 @@ const jagesPress: HarvestAdapterDef = {
   label: "JAGES 研究成果・プレスリリース",
   sourceOrg: "JAGES（日本老年学的評価研究）",
   overseas: false,
+  parserVersion: 2, // v2: multidatabase記事対応＋href &amp; デコード（2026-08-25）
   itemLimitPerRun: 5,
   listItems(html, baseUrl) {
     const seen = new Set<string>();

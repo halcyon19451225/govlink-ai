@@ -493,7 +493,12 @@ export async function runHarvest(
     return finalize("failed");
   }
 
-  const contentHash = createHash("sha256").update(htmlToText(listHtml)).digest("hex");
+  // 差分ハッシュにはアダプタのパーサ版数を混ぜる —
+  // 抽出ロジックの修正時（parserVersion更新）にページ内容が同じでも再処理される
+  const contentHash = createHash("sha256")
+    .update(`${adapter.key}:v${adapter.parserVersion ?? 1}:`)
+    .update(htmlToText(listHtml))
+    .digest("hex");
   if (contentHash === source.last_content_hash) {
     log.push({ kind: "info", title: "一覧ページに変化なし（トークン消費ゼロで終了）" });
     await query(`UPDATE corpus_sources SET last_crawled_at = now(), updated_at = now() WHERE id = $1`, [
