@@ -68,12 +68,16 @@ function PhaseLabel({ phase }: { phase: string }) {
 }
 
 // 計画期間のプログレスバー
+// S1: 日数経過率だけでなく**チェックポイント完了率**を併記する（CA監査の残課題の解消 —
+//     「時間は過ぎているのに節目を消化できていない」ずれが見えるように）
 function PlanProgress({
   planStartDate,
   planEndDate,
+  checkpoints,
 }: {
   planStartDate: string | null;
   planEndDate: string | null;
+  checkpoints: PdcaCheckpoint[];
 }) {
   if (!planStartDate) {
     return (
@@ -128,6 +132,30 @@ function PlanProgress({
         <span>{planStartDate}</span>
         {planEndDate && <span>{planEndDate}</span>}
       </div>
+      {(() => {
+        const target = checkpoints.filter((c) => c.status !== "skipped");
+        if (target.length === 0) return null;
+        const done = target.filter((c) => c.status === "completed").length;
+        const ckptPct = Math.round((done / target.length) * 100);
+        const behind = pct !== null && ckptPct < pct - 15;
+        return (
+          <>
+            <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+              <span>チェックポイント完了率</span>
+              <span>
+                {done} / {target.length}（{ckptPct}%）
+                {behind && <span className="ml-1 text-amber-400">⚠ 期間の経過に対して遅れ気味</span>}
+              </span>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${ckptPct}%`, background: "linear-gradient(90deg, #f59e0b, #10b981)" }}
+              />
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -370,10 +398,11 @@ export default function PdcaDashboardClient({ project, checkpoints, projectId }:
         <h2 className="text-2xl font-bold text-slate-100 mt-1">PDCAダッシュボード</h2>
       </div>
 
-      {/* A. 計画期間プログレスバー */}
+      {/* A. 計画期間プログレスバー（＋チェックポイント完了率 — S1） */}
       <PlanProgress
         planStartDate={project.plan_start_date}
         planEndDate={project.plan_end_date}
+        checkpoints={checkpoints}
       />
 
       {/* B. 次のチェックポイントカード */}

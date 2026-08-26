@@ -40,7 +40,7 @@ export default async function SchedulePage({
   const project = projects[0];
   if (!project) notFound();
 
-  const [kpis, phases, tasks, pdcaCheckpoints] = await Promise.all([
+  const [kpis, phases, tasks, pdcaCheckpoints, measures, improvementLinks, checkpointStats] = await Promise.all([
     query<KpiRow>(
       "SELECT label, target::float AS target, unit FROM kpis WHERE project_id = $1 ORDER BY created_at",
       [params.id],
@@ -61,7 +61,8 @@ export default async function SchedulePage({
               document_required,
               to_char(document_deadline, 'YYYY-MM-DD') AS document_deadline,
               gcal_event_id,
-              completed_at::text AS completed_at
+              completed_at::text AS completed_at,
+              measure_design_id, owner_department
        FROM schedule_tasks
        WHERE project_id = $1
        ORDER BY due_date NULLS LAST`,
@@ -81,7 +82,29 @@ export default async function SchedulePage({
        ORDER BY ppc.scheduled_date`,
       [params.id],
     ).catch(() => [] as PdcaCheckpointRow[]),
+    // 進捗ボードの施策軸（S1 D①）
+    query<{ id: string; title: string; owner_department: string | null }>(
+      `SELECT id, title, owner_department FROM measure_designs
+       WHERE project_id = $1 ORDER BY sort_order, created_at LIMIT 50`,
+      [params.id],
+    ),
+    // 改善アクション由来のタスク（🔧バッジ）
+    query<{ reflect_schedule_task_id: string }>(
+      `SELECT reflect_schedule_task_id FROM improvement_actions
+       WHERE project_id = $1 AND reflect_schedule_task_id IS NOT NULL`,
+      [params.id],
+    ),
+    // チェックポイント完了率（CA監査の残課題 — 日数経過率だけにしない）
+    query<{ total: number; completed: number }>(
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE status = 'completed')::int AS completed
+       FROM project_pdca_checkpoints WHERE project_id = $1 AND status <> 'skipped'`,
+      [params.id],
+    ),
   ]);
+
+  const improvementTaskIds = improvementLinks.map((r) => r.reflect_schedule_task_id);
+  const ckpt = checkpointStats[0] ?? { total: 0, completed: 0 };
 
   return (
     <div>
@@ -136,6 +159,9 @@ export default async function SchedulePage({
         kpis={kpis}
         phases={phases}
         tasks={tasks}
+        measures={measures}
+        improvementTaskIds={improvementTaskIds}
+        checkpointStats={ckpt}
       />
     </div>
   );

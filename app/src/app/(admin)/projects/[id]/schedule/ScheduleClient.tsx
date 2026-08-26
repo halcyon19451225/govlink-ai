@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import UpgradeModal from "@/components/UpgradeModal";
+import { fiscalQuarterKey, quarterLabel, quarterRange, taskState } from "@/lib/schedule/board";
 
 export interface PhaseRow {
   id: string;
@@ -22,12 +23,21 @@ export interface TaskRow {
   document_deadline: string | null;
   gcal_event_id: string | null;
   completed_at: string | null;
+  /** S1: どの施策の工程か（一括生成でAIが紐付け。手動タスクはnull） */
+  measure_design_id: string | null;
+  owner_department: string | null;
 }
 
 interface Kpi {
   label: string;
   target: number;
   unit: string;
+}
+
+export interface MeasureRef {
+  id: string;
+  title: string;
+  owner_department: string | null;
 }
 
 interface Props {
@@ -37,6 +47,9 @@ interface Props {
   kpis: Kpi[];
   phases: PhaseRow[];
   tasks: TaskRow[];
+  measures: MeasureRef[];
+  improvementTaskIds: string[];
+  checkpointStats: { total: number; completed: number };
 }
 
 const PHASE_META = {
@@ -166,6 +179,305 @@ function GanttChart({ phases, tasks }: { phases: PhaseRow[]; tasks: TaskRow[] })
   );
 }
 
+// ─── 進捗ボード（S1 D①）────────────────────────────────────
+//
+// 施策別×四半期（年度区切り: Q1=4〜6月）の簡易ガント。依存は表現しない。
+// ステータス: 完了（completed_at）/ 期限超過（期限を過ぎて未完了 — isOverdueと同じ判定）/ 未着手。
+// チェックポイント完了率を併記（CA監査の残課題「日数経過率のみ」の解消）。
+// 計算の正本は lib/schedule/board.ts（check:schedule が検証）。
+
+const STATE_META = {
+  done:    { icon: "✓", color: "#34d399", label: "完了" },
+  overdue: { icon: "⚠", color: "#f87171", label: "期限超過" },
+  pending: { icon: "○", color: "#94a3b8", label: "未着手" },
+} as const;
+
+function ProgressBoard({
+  tasks,
+  measures,
+  improvementTaskIds,
+  checkpointStats,
+}: {
+  tasks: TaskRow[];
+  measures: MeasureRef[];
+  improvementTaskIds: string[];
+  checkpointStats: { total: number; completed: number };
+}) {
+  const improvementSet = new Set(improvementTaskIds);
+  const dated = tasks.filter((t) => t.due_date);
+  const counts = { done: 0, overdue: 0, pending: 0 };
+  for (const t of tasks) counts[taskState(t)]++;
+  const ckptPct =
+    checkpointStats.total > 0
+      ? Math.round((checkpointStats.completed / checkpointStats.total) * 100)
+      : null;
+
+  const quarters =
+    dated.length > 0
+      ? quarterRange(
+          dated.reduce((a, t) => (t.due_date! < a ? t.due_date! : a), dated[0]!.due_date!),
+          dated.reduce((a, t) => (t.due_date! > a ? t.due_date! : a), dated[0]!.due_date!),
+        )
+      : [];
+
+  // 行 = タスクを持つ施策 ＋ 「全体・共通」（measure_design_id なし）
+  const rows: { key: string; label: string; owner: string | null; rowTasks: TaskRow[] }[] = [];
+  for (const m of measures) {
+    const rowTasks = dated.filter((t) => t.measure_design_id === m.id);
+    if (rowTasks.length > 0) rows.push({ key: m.id, label: m.title, owner: m.owner_department, rowTasks });
+  }
+  const commonTasks = dated.filter((t) => !t.measure_design_id || !measures.some((m) => m.id === t.measure_design_id));
+  if (commonTasks.length > 0) rows.push({ key: "__common", label: "全体・共通（行政実務）", owner: null, rowTasks: commonTasks });
+
+  return (
+    <div
+      className="rounded-2xl border p-5 space-y-4"
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
+    >
+      <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+        進捗ボード
+      </h3>
+
+      {/* ステータス集計＋チェックポイント完了率 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {(Object.keys(STATE_META) as (keyof typeof STATE_META)[]).map((k) => (
+          <div key={k} className="rounded-xl border px-3 py-2" style={{ borderColor: "var(--border)" }}>
+            <div className="text-xs text-slate-500">{STATE_META[k].label}</div>
+            <div className="text-xl font-bold" style={{ color: STATE_META[k].color }}>
+              {counts[k]}
+              <span className="text-xs font-normal text-slate-500 ml-1">件</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border px-3 py-2" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center justify-between text-xs text-slate-400">
+          <span>チェックポイント完了率（PDCAの節目をどこまで消化したか）</span>
+          <span>
+            {checkpointStats.completed} / {checkpointStats.total}
+            {ckptPct !== null && `（${ckptPct}%）`}
+          </span>
+        </div>
+        <div className="mt-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${ckptPct ?? 0}%`, background: "linear-gradient(90deg, #f59e0b, #10b981)" }}
+          />
+        </div>
+      </div>
+
+      {/* 施策別×四半期 */}
+      {rows.length > 0 && quarters.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="text-xs" style={{ minWidth: 640 }}>
+            <thead>
+              <tr>
+                <th className="text-left text-slate-500 font-medium px-2 py-1.5 whitespace-nowrap">施策 / 担当</th>
+                {quarters.map((q) => (
+                  <th key={q} className="text-left text-slate-500 font-medium px-2 py-1.5 whitespace-nowrap">
+                    {quarterLabel(q)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.key} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td className="px-2 py-2 align-top whitespace-nowrap">
+                    <div className="text-slate-200 font-medium max-w-[180px] truncate">{row.label}</div>
+                    {row.owner && <div className="text-slate-500">{row.owner}</div>}
+                  </td>
+                  {quarters.map((q) => {
+                    const cell = row.rowTasks.filter((t) => fiscalQuarterKey(t.due_date!) === q);
+                    return (
+                      <td key={q} className="px-2 py-2 align-top">
+                        <div className="space-y-0.5">
+                          {cell.map((t) => {
+                            const st = taskState(t);
+                            return (
+                              <div
+                                key={t.id}
+                                className="flex items-center gap-1 whitespace-nowrap"
+                                title={`${t.title}（期限 ${t.due_date}${t.owner_department ? ` / ${t.owner_department}` : ""}）`}
+                              >
+                                <span style={{ color: STATE_META[st].color }}>{STATE_META[st].icon}</span>
+                                <span
+                                  className="max-w-[120px] truncate"
+                                  style={{ color: st === "done" ? "#64748b" : "var(--text-primary, #e2e8f0)" }}
+                                >
+                                  {t.title}
+                                </span>
+                                {improvementSet.has(t.id) && <span title="改善アクション由来のタスク">🔧</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">
+          期日つきのタスクがまだありません。施策を確定してから「AIでスケジュールを生成」すると、
+          施策別の年間工程表がここに表示されます。
+        </p>
+      )}
+      <p className="text-xs text-slate-600">
+        ✓完了 / ⚠期限超過 / ○未着手 ・ 🔧=改善アクション由来のタスク ・ 四半期は年度区切り（Q1=4〜6月）
+      </p>
+    </div>
+  );
+}
+
+// ─── カレンダー連携（S1 D②段1 — ICSフィード）───────────────
+
+interface FeedTokenRow {
+  id: string;
+  label: string;
+  token: string;
+  created_at: string;
+  revoked_at: string | null;
+}
+
+function CalendarFeedCard({ projectId }: { projectId: string }) {
+  const [tokens, setTokens] = useState<FeedTokenRow[]>([]);
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/schedule-feed`);
+      const json = (await res.json()) as { data: FeedTokenRow[] | null };
+      if (res.ok && json.data) setTokens(json.data);
+    } catch {
+      /* noop */
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const feedUrl = (token: string): string =>
+    `${typeof window !== "undefined" ? window.location.origin : ""}/api/public/schedule-feed/${token}.ics`;
+
+  const issue = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/schedule-feed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim() }),
+      });
+      const json = (await res.json()) as { data: FeedTokenRow | null; error: string | null };
+      if (!res.ok || !json.data) {
+        setMsg(json.error ?? "発行に失敗しました");
+        return;
+      }
+      setLabel("");
+      setMsg("フィードURLを発行しました。購読先（Google/Outlook/Liberaのカレンダー）に登録してください");
+      await load();
+    } catch {
+      setMsg("通信エラーが発生しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (t: FeedTokenRow) => {
+    if (!window.confirm(`「${t.label || "無題"}」のフィードを失効します。配布先のカレンダーは更新されなくなります。よろしいですか？`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/schedule-feed/${t.id}`, { method: "DELETE" });
+      if (res.ok) await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (t: FeedTokenRow) => {
+    try {
+      await navigator.clipboard.writeText(feedUrl(t.token));
+      setMsg("URLをコピーしました");
+    } catch {
+      setMsg("コピーできませんでした（URLを選択して手動でコピーしてください）");
+    }
+  };
+
+  const active = tokens.filter((t) => !t.revoked_at);
+
+  return (
+    <div
+      className="rounded-2xl border p-5 space-y-3"
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
+    >
+      <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+        📆 カレンダー連携（ICSフィード）
+      </h3>
+      <p className="text-xs text-slate-500">
+        タスクとPDCAチェックポイントを iCalendar 形式で配信します。発行したURLを
+        Google / Outlook / Libera のカレンダーに「URLで追加（購読）」すると、更新が自動反映されます。
+        配布先ごとに発行し、不要になったら失効してください。
+      </p>
+      {msg && <p className="text-xs text-cyan-400">{msg}</p>}
+      <div className="flex flex-wrap gap-2 items-center">
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="ラベル（例: 健康推進課用）"
+          maxLength={100}
+          className="rounded-lg border px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500"
+          style={{ background: "#12151f", borderColor: "var(--border)" }}
+        />
+        <button
+          onClick={() => void issue()}
+          disabled={busy}
+          className="text-xs font-semibold text-cyan-400 border rounded-lg px-3 py-1.5 hover:bg-cyan-400/10 disabled:opacity-40"
+          style={{ borderColor: "#06b6d430" }}
+        >
+          ＋ フィードURLを発行
+        </button>
+      </div>
+      {active.length > 0 && (
+        <div className="space-y-1.5">
+          {active.map((t) => (
+            <div key={t.id} className="flex items-center gap-2 text-xs">
+              <span className="text-slate-300 shrink-0">{t.label || "（無題）"}</span>
+              <code
+                className="flex-1 truncate text-slate-500 rounded px-2 py-1"
+                style={{ background: "#12151f" }}
+              >
+                {feedUrl(t.token)}
+              </code>
+              <button
+                onClick={() => void copy(t)}
+                className="text-cyan-400 border rounded px-2 py-0.5 hover:bg-cyan-400/10"
+                style={{ borderColor: "#06b6d430" }}
+              >
+                コピー
+              </button>
+              <button
+                onClick={() => void revoke(t)}
+                disabled={busy}
+                className="text-red-400 border rounded px-2 py-0.5 hover:bg-red-400/10 disabled:opacity-40"
+                style={{ borderColor: "#ef444430" }}
+              >
+                失効
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ScheduleClient({
   projectId,
   projectTitle,
@@ -173,6 +485,9 @@ export default function ScheduleClient({
   kpis,
   phases: initialPhases,
   tasks: initialTasks,
+  measures,
+  improvementTaskIds,
+  checkpointStats,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -381,6 +696,14 @@ export default function ScheduleClient({
 
       {phases.length > 0 && (
         <>
+          {/* 進捗ボード（S1 D① — 施策別×四半期・集計・チェックポイント完了率） */}
+          <ProgressBoard
+            tasks={tasks}
+            measures={measures}
+            improvementTaskIds={improvementTaskIds}
+            checkpointStats={checkpointStats}
+          />
+
           {/* ガントチャート */}
           <GanttChart phases={phases} tasks={tasks} />
 
@@ -420,7 +743,7 @@ export default function ScheduleClient({
               <table className="w-full text-sm min-w-[700px]">
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    {["フェーズ", "タスク名", "期限", "資料要否", "資料期限", "状態", ""].map((h) => (
+                    {["フェーズ", "タスク名", "期限", "担当", "資料要否", "資料期限", "状態", ""].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500">
                         {h}
                       </th>
@@ -459,11 +782,17 @@ export default function ScheduleClient({
                           {task.gcal_event_id && (
                             <span className="ml-2 text-xs text-cyan-500">📅</span>
                           )}
+                          {improvementTaskIds.includes(task.id) && (
+                            <span className="ml-2 text-xs" title="改善アクション由来のタスク">🔧</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
                           {task.due_date
                             ? new Date(task.due_date).toLocaleDateString("ja-JP")
                             : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
+                          {task.owner_department ?? "—"}
                         </td>
                         <td className="px-4 py-3 text-center">
                           {task.document_required ? (
@@ -478,15 +807,21 @@ export default function ScheduleClient({
                             : "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
-                              task.completed_at
-                                ? STATUS_META.done.badge
-                                : STATUS_META.pending.badge
-                            }`}
-                          >
-                            {task.completed_at ? STATUS_META.done.label : STATUS_META.pending.label}
-                          </span>
+                          {taskState(task) === "overdue" ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-red-500/20 text-red-400 border-red-500/30">
+                              期限超過
+                            </span>
+                          ) : (
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+                                task.completed_at
+                                  ? STATUS_META.done.badge
+                                  : STATUS_META.pending.badge
+                              }`}
+                            >
+                              {task.completed_at ? STATUS_META.done.label : STATUS_META.pending.label}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <button
@@ -559,6 +894,9 @@ export default function ScheduleClient({
           </div>
         </>
       )}
+
+      {/* カレンダー連携（S1 D②段1 — タスクが無くても発行できる） */}
+      <CalendarFeedCard projectId={projectId} />
     </div>
     </>
   );
