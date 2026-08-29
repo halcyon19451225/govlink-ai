@@ -231,6 +231,31 @@ export default function ReportRequestsClient({
     }
   };
 
+  // Libera連携（S3）: 未回答の回答URLを送信先のLiberaタスクとして通知
+  const notifyLibera = async () => {
+    if (!detail) return;
+    setBusy("libera");
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/libera`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "notify_report", request_id: detail.request.id }),
+      });
+      const json = (await res.json()) as { data: { detail?: string } | null; error: string | null };
+      if (!res.ok) {
+        setError(json.error ?? "Libera通知に失敗しました");
+        return;
+      }
+      setNotice(json.data?.detail ?? "Liberaへ通知しました");
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const responseUrl = (token: string): string =>
     `${typeof window !== "undefined" ? window.location.origin : ""}/report/${token}`;
 
@@ -466,17 +491,28 @@ export default function ReportRequestsClient({
                 </>
               )}
               {detail.request.status === "sent" && (
-                <button
-                  onClick={() => {
-                    if (window.confirm("受付を締め切ります。以降、回答フォームは受付終了の表示になります。よろしいですか？"))
-                      void patchRequest({ action: "close" }, "受付を締め切りました");
-                  }}
-                  disabled={busy != null}
-                  className="neu-button px-3 py-1.5 text-xs font-semibold"
-                  style={{ color: "#b45309" }}
-                >
-                  ⏹ 受付を締め切る
-                </button>
+                <>
+                  <button
+                    onClick={() => void notifyLibera()}
+                    disabled={busy != null}
+                    className="neu-button px-3 py-1.5 text-xs font-semibold"
+                    style={{ color: "#6366f1" }}
+                    title="未回答・差し戻し中の対象の回答URLを、Libera連携の送信先へタスクとして届けます（送信先はスケジュール画面のLibera連携で登録）"
+                  >
+                    📱 Liberaで通知
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm("受付を締め切ります。以降、回答フォームは受付終了の表示になります。よろしいですか？"))
+                        void patchRequest({ action: "close" }, "受付を締め切りました");
+                    }}
+                    disabled={busy != null}
+                    className="neu-button px-3 py-1.5 text-xs font-semibold"
+                    style={{ color: "#b45309" }}
+                  >
+                    ⏹ 受付を締め切る
+                  </button>
+                </>
               )}
               {detail.request.status === "closed" && (
                 <button

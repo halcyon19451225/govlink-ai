@@ -11,6 +11,17 @@ import { getKnowledgeContext } from "@/lib/knowledge-context";
 import { requireModulePermission } from "@/lib/permissions";
 import { callDialogueTool, sanitizeStringArray } from "@/lib/ai/dialogueTurn";
 import {
+  BUSY_ERROR,
+  NOTHING_TO_RETRY_ERROR,
+  acceptedPayload,
+  beginTurn,
+  claimStep,
+  failTurn,
+  isStepRequest,
+  triggerTurnStep,
+  turnDoneSql,
+} from "@/lib/ai/asyncTurn";
+import {
   buildAsisContextText,
   buildIssueSystemPrompt,
   RECORD_ISSUE_TURN_TOOL,
@@ -21,7 +32,6 @@ import {
   calcIssueScore,
   isFactorKey,
   isProblemOrigin,
-  selectedProblemIds,
   type FishboneBone,
   type HypothesisItem,
   type IssueDialogueData,
@@ -38,10 +48,16 @@ type Params = { params: { id: string; dialogueId: string } };
 
 const bodySchema = z.object({
   message: z.string().trim().max(4000).nullish(),
+  /** "retry": 失敗したターンを（発言を追加せず）やり直す */
+  action: z.enum(["retry"]).nullish(),
 });
+
+const TURN_TABLE = "issue_dialogues" as const;
 
 interface DialogueRow {
   id: string;
+  turn_status: "idle" | "processing" | "error";
+  turn_error: string | null;
   kpi_id: string | null;
   gap_analysis_id: string | null;
   asis_analysis_id: string | null;
@@ -256,7 +272,62 @@ function guardPhase(requested: IssueStep, current: IssueStep, data: IssueDialogu
   return phase;
 }
 
+const ROW_SQL = `SELECT d.id, d.kpi_id, d.gap_analysis_id, d.asis_analysis_id,
+            d.status, d.current_step, d.messages,
+            d.problems, d.selection, d.root_causes, d.hypotheses,
+            d.turn_status, d.turn_error,
+            p.title AS project_title,
+            k.label AS kpi_label,
+            k.unit  AS kpi_unit,
+            k.target::float AS kpi_target,
+            to_char(k.target_deadline, 'YYYY年FMMM月') AS kpi_deadline,
+            g.current_value::float AS gap_current_value,
+            g.gap_value::float     AS gap_value,
+            g.trend                AS gap_trend,
+            a.swot                 AS asis_swot,
+            a.cross_analysis       AS asis_cross
+     FROM issue_dialogues d
+     JOIN projects p ON p.id = d.project_id
+     LEFT JOIN kpis k          ON k.id = d.kpi_id
+     LEFT JOIN gap_analyses g  ON g.id = d.gap_analysis_id
+     LEFT JOIN asis_analyses a ON a.id = d.asis_analysis_id
+     WHERE d.id = $1 AND d.project_id = $2`;
+
+/**
+ * POST /chat
+ *
+ * 2つの入口を持つ（lib/ai/asyncTurn.ts の方式）:
+ *  A. 利用者からの発言（セッション認証）: 発言を保存して processing にし、
+ *     自分自身を step_token 付きで呼び出して 202 で即応答する
+ *  B. step_token 付きの自己呼び出し（トークン認証・セッション不要）: AI処理を行い保存する
+ * Amplify の 30 秒応答上限を利用者の待ち時間から切り離すための構造。
+ */
 export async function POST(req: NextRequest, { params }: Params) {
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
+  }
+
+  // ── B. 自己呼び出し（AI処理の実体） ────────────────
+  if (isStepRequest(raw)) {
+    const ok = await claimStep(TURN_TABLE, params.dialogueId, params.id, raw.step_token);
+    if (!ok) {
+      return NextResponse.json({ data: null, error: "無効なステップ要求です" }, { status: 404 });
+    }
+    try {
+      await runTurn(params, raw.step_token);
+      return NextResponse.json({ data: { ok: true }, error: null });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "AI処理に失敗しました";
+      console.error("[issue-dialogue/chat step]", msg);
+      await failTurn(TURN_TABLE, params.dialogueId, raw.step_token, msg);
+      return NextResponse.json({ data: null, error: msg }, { status: 500 });
+    }
+  }
+
+  // ── A. 利用者からの発言 ─────────────────────────
   const session = await getServerSession(authOptions);
   const deny = await requireModulePermission(session, params.id, "issue_hypothesis", "edit");
   if (deny) return deny;
@@ -268,12 +339,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  let raw: unknown;
-  try {
-    raw = await req.json();
-  } catch {
-    return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
-  }
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
@@ -282,29 +347,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const row = await queryOne<DialogueRow>(
-    `SELECT d.id, d.kpi_id, d.gap_analysis_id, d.asis_analysis_id,
-            d.status, d.current_step, d.messages,
-            d.problems, d.selection, d.root_causes, d.hypotheses,
-            p.title AS project_title,
-            k.label AS kpi_label,
-            k.unit  AS kpi_unit,
-            k.target::float AS kpi_target,
-            to_char(k.target_deadline, 'YYYY年M月') AS kpi_deadline,
-            g.current_value::float AS gap_current_value,
-            g.gap_value::float     AS gap_value,
-            g.trend                AS gap_trend,
-            a.swot                 AS asis_swot,
-            a.cross_analysis       AS asis_cross
-     FROM issue_dialogues d
-     JOIN projects p ON p.id = d.project_id
-     LEFT JOIN kpis k          ON k.id = d.kpi_id
-     LEFT JOIN gap_analyses g  ON g.id = d.gap_analysis_id
-     LEFT JOIN asis_analyses a ON a.id = d.asis_analysis_id
-     WHERE d.id = $1 AND d.project_id = $2`,
-    [params.dialogueId, params.id],
-  );
-
+  const row = await queryOne<DialogueRow>(ROW_SQL, [params.dialogueId, params.id]);
   if (!row) {
     return NextResponse.json(
       { data: null, error: "課題仮説設定が見つかりません" },
@@ -312,9 +355,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  // 初回ブートストラップ: message 未指定ならシード済みの最初の質問を返す
+  const isRetry = parsed.data.action === "retry";
   const trimmedMessage = parsed.data.message?.trim() ?? "";
-  if (trimmedMessage === "") {
+
+  // 初回ブートストラップ: message 未指定ならシード済みの最初の質問を返す
+  if (trimmedMessage === "" && !isRetry) {
     const lastAssistant = [...row.messages].reverse().find((m) => m.role === "assistant");
     return NextResponse.json({
       data: {
@@ -326,14 +371,16 @@ export async function POST(req: NextRequest, { params }: Params) {
         root_causes: row.root_causes,
         hypotheses: row.hypotheses,
         messages: row.messages,
+        turn_status: row.turn_status,
+        turn_error: row.turn_error,
       },
       error: null,
     });
   }
 
-  // プラン上限チェック
+  // プラン上限チェック（再試行は消費しない）
   const munIdForLimit = session!.user?.municipalityId;
-  if (munIdForLimit) {
+  if (munIdForLimit && !isRetry) {
     const limitCheck = await checkLimit(munIdForLimit, "ai_calls");
     if (!limitCheck.allowed) {
       return NextResponse.json(
@@ -344,12 +391,41 @@ export async function POST(req: NextRequest, { params }: Params) {
     await incrementAiUsage(munIdForLimit);
   }
 
-  const userMessage: IssueMessage = {
-    role: "user",
-    content: trimmedMessage,
-    step: row.current_step,
-  };
-  const history = [...row.messages, userMessage];
+  const userMessage: IssueMessage | null = isRetry
+    ? null
+    : { role: "user", content: trimmedMessage, step: row.current_step };
+
+  const begun = await beginTurn<IssueMessage>(TURN_TABLE, params.dialogueId, params.id, userMessage);
+  if (!begun.ok) {
+    const error =
+      begun.reason === "busy"
+        ? BUSY_ERROR
+        : begun.reason === "nothing_to_retry"
+          ? NOTHING_TO_RETRY_ERROR
+          : "課題仮説設定が見つかりません";
+    return NextResponse.json(
+      { data: null, error },
+      { status: begun.reason === "not_found" ? 404 : 409 },
+    );
+  }
+
+  triggerTurnStep(
+    `/api/admin/projects/${params.id}/issue-dialogue/${params.dialogueId}/chat`,
+    begun.token,
+  );
+  return NextResponse.json(acceptedPayload(begun.messages), { status: 202 });
+}
+
+/**
+ * AIターンの実体。messages の末尾（利用者の発言）に対する応答を生成して保存する。
+ * 例外は呼び出し側で failTurn に変換される。
+ */
+async function runTurn(params: Params["params"], token: string): Promise<void> {
+  const row = await queryOne<DialogueRow>(ROW_SQL, [params.dialogueId, params.id]);
+  if (!row) throw new Error("課題仮説設定が見つかりません");
+
+  // beginTurn で利用者の発言は保存済み
+  const history = row.messages;
   const aiMessages: Anthropic.MessageParam[] = history.map((m) => ({
     role: m.role,
     content: m.content,
@@ -402,16 +478,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       allowWebSearch: true,
     });
   } catch {
-    return NextResponse.json(
-      { data: null, error: "AIとの通信に失敗しました" },
-      { status: 502 },
-    );
+    throw new Error("AIとの通信に失敗しました");
   }
   if (!toolUse) {
-    return NextResponse.json(
-      { data: null, error: "AI応答の解析に失敗しました" },
-      { status: 500 },
-    );
+    throw new Error("AI応答の解析に失敗しました");
   }
 
   // ── ツール出力を取り込む ────────────────────────
@@ -494,12 +564,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const messages = [...history, assistantMessage];
   const nextStatus: "in_progress" | "completed" = completed ? "completed" : "in_progress";
 
-  await queryOne(
+  // turn_token が一致する行だけ更新する（再試行で別トークンに置き換わった古い処理は捨てる）
+  const saved = await queryOne<{ id: string }>(
     `UPDATE issue_dialogues
      SET messages = $1::jsonb, problems = $2::jsonb, selection = $3::jsonb,
          root_causes = $4::jsonb, hypotheses = $5::jsonb,
-         current_step = $6, status = $7
-     WHERE id = $8 AND project_id = $9
+         current_step = $6, status = $7, ${turnDoneSql()}
+     WHERE id = $8 AND project_id = $9 AND turn_token = $10
      RETURNING id`,
     [
       JSON.stringify(messages),
@@ -511,21 +582,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       nextStatus,
       params.dialogueId,
       params.id,
+      token,
     ],
   );
-
-  return NextResponse.json({
-    data: {
-      reply,
-      current_step: phase,
-      status: nextStatus,
-      problems: nextData.problems,
-      selection: nextData.selection,
-      root_causes: nextData.root_causes,
-      hypotheses: nextData.hypotheses,
-      messages,
-      selected_count: selectedProblemIds(nextData.selection).length,
-    },
-    error: null,
-  });
+  if (!saved) {
+    console.warn("[issue-dialogue/chat] 古いステップの結果を破棄しました", params.dialogueId);
+  }
 }

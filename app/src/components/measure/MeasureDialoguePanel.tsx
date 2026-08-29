@@ -13,6 +13,12 @@
 import { useEffect, useRef, useState } from "react";
 import AiThinkingIndicator from "@/components/AiThinkingIndicator";
 import {
+  isAcceptedTurn,
+  isTurnProcessing,
+  waitForTurn,
+  type TurnStatus,
+} from "@/lib/ai/turnClient";
+import {
   EVIDENCE_LEVELS,
   EVIDENCE_STATUS_META,
   EXPERIMENT_DESIGN_META,
@@ -40,6 +46,9 @@ interface DialogueListItem {
   experiments: ApproachExperiment[];
   indicators: ApproachIndicators[];
   costs: ApproachCost[];
+  /** AIターンの状態（migration 055・非同期化）。processing の間はポーリングで待つ */
+  turn_status?: TurnStatus | null;
+  turn_error?: string | null;
   committed_at: string | null;
   hypothesis_title: string | null;
 }
@@ -260,6 +269,34 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
     }
   };
 
+  /** 202 受理後、GET をポーリングして結果を取り込む（再読み込み後の再開にも使う） */
+  const awaitTurn = async (dialogueId: string) => {
+    setSending(true);
+    try {
+      const rec = await waitForTurn<DialogueListItem>(
+        `/api/admin/projects/${projectId}/measure-dialogue/${dialogueId}`,
+      );
+      setList((prev) => prev.map((d) => (d.id === rec.id ? { ...d, ...rec } : d)));
+      if (rec.turn_status === "error") {
+        setError(rec.turn_error ?? "AI処理に失敗しました");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "通信エラーが発生しました");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // 画面を開いた時点で処理中（送信後に再読み込みした等）なら、待ち受けを再開する
+  const resumedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selected || !isTurnProcessing(selected) || sending) return;
+    if (resumedFor.current === selected.id) return;
+    resumedFor.current = selected.id;
+    void awaitTurn(selected.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, selected?.turn_status]);
+
   const send = async () => {
     if (!selected || !input.trim() || sending) return;
     const text = input.trim();
@@ -276,6 +313,7 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
       prev.map((d) => (d.id === selected.id ? { ...d, messages: [...d.messages, optimistic] } : d)),
     );
 
+    let accepted = false;
     try {
       const res = await fetch(
         `/api/admin/projects/${projectId}/measure-dialogue/${selected.id}/chat`,
@@ -286,16 +324,7 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
         },
       );
       const json = (await res.json()) as {
-        data: {
-          current_step: MeasureStep;
-          status: "in_progress" | "completed";
-          approaches: ApproachItem[];
-          evidence: ApproachEvidence[];
-          experiments: ApproachExperiment[];
-          indicators: ApproachIndicators[];
-          costs: ApproachCost[];
-          messages: MeasureMessage[];
-        } | null;
+        data: { turn_status?: TurnStatus; messages: MeasureMessage[] } | null;
         error: string | null;
       };
       if (!res.ok || !json.data) {
@@ -310,30 +339,63 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
         setInput(text);
         return;
       }
-      const r = json.data;
-      setList((prev) =>
-        prev.map((d) =>
-          d.id === selected.id
-            ? {
-                ...d,
-                messages: r.messages,
-                approaches: r.approaches,
-                evidence: r.evidence,
-                experiments: r.experiments,
-                indicators: r.indicators,
-                costs: r.costs,
-                current_step: r.current_step,
-                status: r.status,
-              }
-            : d,
-        ),
-      );
+      // 発言はサーバーに保存済み。AI処理は非同期なのでポーリングで結果を待つ
+      if (isAcceptedTurn(res.status, json.data)) {
+        setList((prev) =>
+          prev.map((d) =>
+            d.id === selected.id
+              ? { ...d, messages: json.data!.messages, turn_status: "processing" }
+              : d,
+          ),
+        );
+        accepted = true;
+      }
     } catch {
-      setError("通信エラーが発生しました");
+      setError("通信エラーが発生しました。画面を再読み込みすると状態を確認できます");
       setInput(text);
     } finally {
-      setSending(false);
+      if (!accepted) setSending(false);
     }
+    if (accepted) await awaitTurn(selected.id);
+  };
+
+  /** 失敗したターンを、発言を追加せずにやり直す */
+  const retry = async () => {
+    if (!selected || sending) return;
+    setError(null);
+    setSending(true);
+    let accepted = false;
+    try {
+      const res = await fetch(
+        `/api/admin/projects/${projectId}/measure-dialogue/${selected.id}/chat`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "retry" }),
+        },
+      );
+      const json = (await res.json()) as {
+        data: { turn_status?: TurnStatus; messages: MeasureMessage[] } | null;
+        error: string | null;
+      };
+      if (!res.ok || !json.data) {
+        setError(json.error ?? "再試行に失敗しました");
+        return;
+      }
+      if (isAcceptedTurn(res.status, json.data)) {
+        setList((prev) =>
+          prev.map((d) =>
+            d.id === selected.id ? { ...d, turn_status: "processing", turn_error: null } : d,
+          ),
+        );
+        accepted = true;
+      }
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      if (!accepted) setSending(false);
+    }
+    if (accepted) await awaitTurn(selected.id);
   };
 
   const commit = async () => {
@@ -422,6 +484,15 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
           style={{ borderColor: "#ef444460", background: "#ef444410", color: "#f87171" }}
         >
           {error}
+          {selected?.turn_status === "error" && !sending && (
+            <button
+              onClick={() => void retry()}
+              className="ml-3 text-xs px-2 py-0.5 rounded border hover:brightness-125"
+              style={{ borderColor: "#ef444480" }}
+            >
+              🔁 AI処理を再試行
+            </button>
+          )}
         </div>
       )}
 

@@ -5,11 +5,11 @@ menu_path: /projects/[id]/improvement-actions
 tables: [improvement_actions, improvement_dialogues, plan_handovers, program_evaluations, schedule_tasks]
 apis: [/api/admin/projects/[id]/improvement-actions, /api/admin/projects/[id]/improvement-actions/[actionId], /api/admin/projects/[id]/improvement-dialogue, /api/admin/projects/[id]/handover]
 ai_tasks: [dialogue.improvement]
-checks: [check:vocab]
-migrations: [032, 033, 048]
+checks: [check:vocab, check:asyncturn]
+migrations: [032, 033, 048, 055]
 upstream: [program-evaluation, self-evaluation, pdca]
 downstream: [schedule, measure-design, handover-intake]
-updated: 2026-08-26
+updated: 2026-08-29
 ---
 
 # 改善アクション
@@ -65,6 +65,9 @@ stateDiagram-v2
 4. 期末: carry_over（次期へ持ち越し）を付けて「次期計画への引き継ぎ」を確定（finalized）
 5. 次期計画がたたき台複製（P①）されると自動で結線され、取り込み画面（P②）の入力になる
 
+
+> **AIの応答待ちについて** — AIの応答には数十秒〜数分かかることがあります。送信した発言は即座に保存され、画面は「AIが考えています」の表示のまま結果を待ちます（画面を再読み込みしても待ち受けは再開されます）。「AI処理に失敗しました」と出た場合は「🔁 AI処理を再試行」で、発言を再入力せずにやり直せます。
+
 ## ⑥ 用語と判定基準
 
 - **期限超過**: 期限を過ぎて done/dropped でないもの（isOverdue）
@@ -75,6 +78,9 @@ stateDiagram-v2
 - テーブル: improvement_actions（source 5種・反映先FK 4系統・plan_handover_id）・plan_handovers
 - 関連する実装記録: `claude/coe-ca-p4.md`・`coe-ca-p5.md`・`claude/coe-pl1.md`（P①P②）
 
+- 対話のAIターンは非同期（migration 055・`lib/ai/asyncTurn.ts`）: 発言保存→202→自己呼び出しでAI処理→画面がポーリング。Amplify の30秒応答上限の対策。検査: `check:asyncturn`
+
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M2 初版
+- 2026-08-29 v1.1 — 対話AIターンの非同期化（通信エラー対策・再試行ボタン）

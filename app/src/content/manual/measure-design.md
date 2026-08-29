@@ -5,11 +5,11 @@ menu_path: /projects/[id]/measure-design
 tables: [measure_designs, measure_dialogues, experiment_results, kpis, corpus_measures, corpus_evidence]
 apis: [/api/admin/projects/[id]/measure-design, /api/admin/projects/[id]/measure-design/[measureId], /api/admin/projects/[id]/measure-design/[measureId]/experiment-results, /api/admin/projects/[id]/measure-dialogue]
 ai_tasks: [dialogue.measure]
-checks: [check:measure, check:expresults]
-migrations: [036, 037, 039]
+checks: [check:measure, check:expresults, check:asyncturn]
+migrations: [036, 037, 039, 055]
 upstream: [issue-hypothesis, evidences]
 downstream: [logic-model, schedule, program-evaluation, report-requests]
-updated: 2026-08-26
+updated: 2026-08-29
 ---
 
 # 施策構築（EBPM）
@@ -68,6 +68,9 @@ stateDiagram-v2
 4. **確定** — 確定済み施策だけがスケジュール生成・評価・実績報告の対象になる
 5. 実施後、実験結果を記録 → 確認 → エビデンスに昇格（次の計画の根拠になる）
 
+
+> **AIの応答待ちについて** — AIの応答には数十秒〜数分かかることがあります。送信した発言は即座に保存され、画面は「AIが考えています」の表示のまま結果を待ちます（画面を再読み込みしても待ち受けは再開されます）。「AI処理に失敗しました」と出た場合は「🔁 AI処理を再試行」で、発言を再入力せずにやり直せます。
+
 ## ⑥ 用語と判定基準
 
 - **エビデンスレベル**: Lv4=RCT明記 / Lv3=対照群あり / Lv2=前後比較 / Lv1=事例（正直判定）
@@ -80,6 +83,9 @@ stateDiagram-v2
 - 検査: `npm run check:measure` `npm run check:expresults`
 - 関連する実装記録: `claude/coe-ebpm-e1.md`〜`coe-ebpm-e5.md`
 
+- 対話のAIターンは非同期（migration 055・`lib/ai/asyncTurn.ts`）: 発言保存→202→自己呼び出しでAI処理→画面がポーリング。Amplify の30秒応答上限の対策。検査: `check:asyncturn`
+
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M2 初版
+- 2026-08-29 v1.1 — 対話AIターンの非同期化（通信エラー対策・再試行ボタン）

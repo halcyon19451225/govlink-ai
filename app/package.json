@@ -9,7 +9,7 @@
     "lint": "next lint",
     "check:vocab": "node scripts/check-status-vocab.mjs",
     "check:logicmodel": "node scripts/check-logicmodel-elements.mjs",
-    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest && npm run check:clone && npm run check:plandoc && npm run check:schedule && npm run check:report && npm run check:manual",
+    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest && npm run check:clone && npm run check:plandoc && npm run check:schedule && npm run check:report && npm run check:manual && npm run check:libera && npm run check:asyncturn",
     "check:consistency": "node scripts/check-logicmodel-consistency.mjs",
     "check:diff": "node scripts/check-logicmodel-diff.mjs",
     "check:revise": "node scripts/check-logicmodel-revise.mjs",
@@ -24,7 +24,9 @@
     "check:plandoc": "node scripts/check-plandoc.mjs",
     "check:schedule": "node scripts/check-schedule.mjs",
     "check:report": "node scripts/check-report.mjs",
-    "check:manual": "node scripts/check-manual.mjs"
+    "check:manual": "node scripts/check-manual.mjs",
+    "check:libera": "node scripts/check-libera.mjs",
+    "check:asyncturn": "node scripts/check-async-turn.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

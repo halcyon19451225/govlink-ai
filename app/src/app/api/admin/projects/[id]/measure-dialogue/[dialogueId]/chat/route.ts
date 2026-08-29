@@ -10,6 +10,17 @@ import { query, queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
 import { requireModulePermission } from "@/lib/permissions";
 import { callDialogueTool, sanitizeStringArray } from "@/lib/ai/dialogueTurn";
+import {
+  BUSY_ERROR,
+  NOTHING_TO_RETRY_ERROR,
+  acceptedPayload,
+  beginTurn,
+  claimStep,
+  failTurn,
+  isStepRequest,
+  triggerTurnStep,
+  turnDoneSql,
+} from "@/lib/ai/asyncTurn";
 import { buildGenerationContext } from "@/lib/logicmodel/generationContext";
 import {
   isEffectDirection,
@@ -22,10 +33,6 @@ import {
   type ExistingKpiSummary,
 } from "@/lib/measure/prompt";
 import {
-  allApproachesAssessed,
-  allCostsSet,
-  allExperimentsDesigned,
-  allIndicatorsSet,
   applyApproachUpdates,
   approachesNeedingExperiment,
   guardMeasurePhase,
@@ -55,10 +62,25 @@ type Params = { params: { id: string; dialogueId: string } };
 
 const bodySchema = z.object({
   message: z.string().trim().max(4000).nullish(),
+  /** "retry": 失敗したターンを（発言を追加せず）やり直す */
+  action: z.enum(["retry"]).nullish(),
 });
+
+const TURN_TABLE = "measure_dialogues" as const;
+
+const ROW_SQL = `SELECT d.id, d.issue_hypothesis_id, d.status, d.current_step,
+            d.messages, d.approaches, d.evidence, d.experiments,
+            d.indicators, d.costs,
+            d.turn_status, d.turn_error,
+            p.title AS project_title
+     FROM measure_dialogues d
+     JOIN projects p ON p.id = d.project_id
+     WHERE d.id = $1 AND d.project_id = $2`;
 
 interface DialogueRow {
   id: string;
+  turn_status: "idle" | "processing" | "error";
+  turn_error: string | null;
   issue_hypothesis_id: string | null;
   status: "in_progress" | "completed";
   current_step: MeasureStep;
@@ -75,7 +97,38 @@ function str(v: unknown, max = 400): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
+/**
+ * POST /chat — 2つの入口（lib/ai/asyncTurn.ts の方式・Amplify の30秒応答上限対策）:
+ *  A. 利用者からの発言（セッション認証）: 発言を保存して processing にし、
+ *     自分自身を step_token 付きで呼び出して 202 で即応答する
+ *  B. step_token 付きの自己呼び出し（トークン認証・セッション不要）: AI処理を行い保存する
+ */
 export async function POST(req: NextRequest, { params }: Params) {
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
+  }
+
+  // ── B. 自己呼び出し（AI処理の実体） ────────────────
+  if (isStepRequest(raw)) {
+    const ok = await claimStep(TURN_TABLE, params.dialogueId, params.id, raw.step_token);
+    if (!ok) {
+      return NextResponse.json({ data: null, error: "無効なステップ要求です" }, { status: 404 });
+    }
+    try {
+      await runTurn(params, raw.step_token);
+      return NextResponse.json({ data: { ok: true }, error: null });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "AI処理に失敗しました";
+      console.error("[measure-dialogue/chat step]", msg);
+      await failTurn(TURN_TABLE, params.dialogueId, raw.step_token, msg);
+      return NextResponse.json({ data: null, error: msg }, { status: 500 });
+    }
+  }
+
+  // ── A. 利用者からの発言 ─────────────────────────
   const session = await getServerSession(authOptions);
   const deny = await requireModulePermission(session, params.id, "measure_design", "edit");
   if (deny) return deny;
@@ -87,12 +140,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  let raw: unknown;
-  try {
-    raw = await req.json();
-  } catch {
-    return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
-  }
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
@@ -101,24 +148,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const row = await queryOne<DialogueRow>(
-    `SELECT d.id, d.issue_hypothesis_id, d.status, d.current_step,
-            d.messages, d.approaches, d.evidence, d.experiments,
-            d.indicators, d.costs,
-            p.title AS project_title
-     FROM measure_dialogues d
-     JOIN projects p ON p.id = d.project_id
-     WHERE d.id = $1 AND d.project_id = $2`,
-    [params.dialogueId, params.id],
-  );
-
+  const row = await queryOne<DialogueRow>(ROW_SQL, [params.dialogueId, params.id]);
   if (!row) {
     return NextResponse.json({ data: null, error: "対話が見つかりません" }, { status: 404 });
   }
 
-  // 初回ブートストラップ: message 未指定ならシード済みの最初の質問を返す
+  const isRetry = parsed.data.action === "retry";
   const trimmedMessage = parsed.data.message?.trim() ?? "";
-  if (trimmedMessage === "") {
+
+  // 初回ブートストラップ: message 未指定ならシード済みの最初の質問を返す
+  if (trimmedMessage === "" && !isRetry) {
     const lastAssistant = [...row.messages].reverse().find((m) => m.role === "assistant");
     return NextResponse.json({
       data: {
@@ -131,14 +170,16 @@ export async function POST(req: NextRequest, { params }: Params) {
         indicators: row.indicators,
         costs: row.costs,
         messages: row.messages,
+        turn_status: row.turn_status,
+        turn_error: row.turn_error,
       },
       error: null,
     });
   }
 
-  // プラン上限チェック
+  // プラン上限チェック（再試行は消費しない）
   const munIdForLimit = session!.user?.municipalityId;
-  if (munIdForLimit) {
+  if (munIdForLimit && !isRetry) {
     const limitCheck = await checkLimit(munIdForLimit, "ai_calls");
     if (!limitCheck.allowed) {
       return NextResponse.json(
@@ -149,12 +190,41 @@ export async function POST(req: NextRequest, { params }: Params) {
     await incrementAiUsage(munIdForLimit);
   }
 
-  const userMessage: MeasureMessage = {
-    role: "user",
-    content: trimmedMessage,
-    step: row.current_step,
-  };
-  const history = [...row.messages, userMessage];
+  const userMessage: MeasureMessage | null = isRetry
+    ? null
+    : { role: "user", content: trimmedMessage, step: row.current_step };
+
+  const begun = await beginTurn<MeasureMessage>(TURN_TABLE, params.dialogueId, params.id, userMessage);
+  if (!begun.ok) {
+    const error =
+      begun.reason === "busy"
+        ? BUSY_ERROR
+        : begun.reason === "nothing_to_retry"
+          ? NOTHING_TO_RETRY_ERROR
+          : "対話が見つかりません";
+    return NextResponse.json(
+      { data: null, error },
+      { status: begun.reason === "not_found" ? 404 : 409 },
+    );
+  }
+
+  triggerTurnStep(
+    `/api/admin/projects/${params.id}/measure-dialogue/${params.dialogueId}/chat`,
+    begun.token,
+  );
+  return NextResponse.json(acceptedPayload(begun.messages), { status: 202 });
+}
+
+/**
+ * AIターンの実体。messages の末尾（利用者の発言）に対する応答を生成して保存する。
+ * 例外は呼び出し側で failTurn に変換される。
+ */
+async function runTurn(params: Params["params"], token: string): Promise<void> {
+  const row = await queryOne<DialogueRow>(ROW_SQL, [params.dialogueId, params.id]);
+  if (!row) throw new Error("対話が見つかりません");
+
+  // beginTurn で利用者の発言は保存済み
+  const history = row.messages;
   const aiMessages: Anthropic.MessageParam[] = history.map((m) => ({
     role: m.role,
     content: m.content,
@@ -294,10 +364,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       allowWebSearch: true,
     });
   } catch {
-    return NextResponse.json({ data: null, error: "AIとの通信に失敗しました" }, { status: 502 });
+    throw new Error("AIとの通信に失敗しました");
   }
   if (!toolUse) {
-    return NextResponse.json({ data: null, error: "AI応答の解析に失敗しました" }, { status: 500 });
+    throw new Error("AI応答の解析に失敗しました");
   }
 
   // ── ツール出力を取り込む ────────────────────────
@@ -431,12 +501,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const messages = [...history, assistantMessage];
   const nextStatus: "in_progress" | "completed" = phase === "done" ? "completed" : row.status;
 
-  await queryOne(
+  // turn_token が一致する行だけ更新する（再試行で別トークンに置き換わった古い処理は捨てる）
+  const saved = await queryOne<{ id: string }>(
     `UPDATE measure_dialogues
      SET messages = $1::jsonb, approaches = $2::jsonb, evidence = $3::jsonb,
          experiments = $4::jsonb, indicators = $5::jsonb, costs = $6::jsonb,
-         current_step = $7, status = $8
-     WHERE id = $9 AND project_id = $10
+         current_step = $7, status = $8, ${turnDoneSql()}
+     WHERE id = $9 AND project_id = $10 AND turn_token = $11
      RETURNING id`,
     [
       JSON.stringify(messages),
@@ -449,25 +520,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       nextStatus,
       params.dialogueId,
       params.id,
+      token,
     ],
   );
-
-  return NextResponse.json({
-    data: {
-      reply,
-      current_step: phase,
-      status: nextStatus,
-      approaches: nextData.approaches,
-      evidence: nextData.evidence,
-      experiments: nextData.experiments,
-      indicators: nextData.indicators,
-      costs: nextData.costs,
-      messages,
-      evidence_complete: allApproachesAssessed(nextData),
-      experiments_complete: allApproachesAssessed(nextData) && allExperimentsDesigned(nextData),
-      indicators_complete: allIndicatorsSet(nextData),
-      costs_complete: allCostsSet(nextData),
-    },
-    error: null,
-  });
+  if (!saved) {
+    console.warn("[measure-dialogue/chat] 古いステップの結果を破棄しました", params.dialogueId);
+  }
 }

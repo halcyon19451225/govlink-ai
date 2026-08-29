@@ -16,6 +16,7 @@ const MODULE = "self_evaluation";
 const SELECT_COLS = `
   d.id, d.project_id, d.program_evaluation_id, d.title, d.status, d.current_step,
   d.messages, d.proposals, d.committed_at::text,
+  d.turn_status, d.turn_error,
   d.created_at::text, d.updated_at::text`;
 
 export async function GET(_req: NextRequest, { params }: Params) {

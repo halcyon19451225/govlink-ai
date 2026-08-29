@@ -177,6 +177,9 @@ export interface ImprovementDialogue {
   current_step: string;
   messages: ImprovementMessage[];
   proposals: ImprovementProposal[];
+  /** AIターンの状態（migration 055・非同期化）。processing の間は画面がポーリングで待つ */
+  turn_status?: "idle" | "processing" | "error" | null;
+  turn_error?: string | null;
   committed_at: string | null;
   created_at: string;
   updated_at: string;

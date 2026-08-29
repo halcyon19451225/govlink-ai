@@ -2,11 +2,11 @@
 module: schedule
 title: スケジュール設定
 menu_path: /projects/[id]/schedule
-tables: [project_schedules, schedule_tasks, schedule_feed_tokens, project_pdca_checkpoints]
-apis: [/api/ai/generate-schedule, /api/admin/schedule-tasks/[id], /api/admin/project-schedules/[id], /api/admin/projects/[id]/schedule-feed, /api/public/schedule-feed/[token]]
+tables: [project_schedules, schedule_tasks, schedule_feed_tokens, project_pdca_checkpoints, libera_bridge_targets, libera_bridge_logs]
+apis: [/api/ai/generate-schedule, /api/admin/schedule-tasks/[id], /api/admin/project-schedules/[id], /api/admin/projects/[id]/schedule-feed, /api/public/schedule-feed/[token], /api/admin/projects/[id]/libera]
 ai_tasks: [generation.schedule]
-checks: [check:schedule]
-migrations: [052]
+checks: [check:schedule, check:libera]
+migrations: [052, 054]
 upstream: [measure-design, pdca]
 downstream: [kpi-report, program-evaluation]
 updated: 2026-08-26
@@ -65,9 +65,14 @@ AI 生成は**ゲートウェイ経由（taskType: generation.schedule）**で�
 2. **進捗ボード** — 完了 / 期限超過 / 未着手の件数、チェックポイント完了率、
    施策別×四半期（年度区切り: Q1=4〜6月）の一覧。🔧 は改善アクション由来のタスクです。
 3. **実績記入** — タスク一覧の「完了」ボタンで完了記録（「戻す」で取り消し）。
-4. **カレンダー連携** — 「📆 カレンダー連携」でフィードURLを発行し、
+4. **カレンダー連携（ICS）** — 「📆 カレンダー連携」でフィードURLを発行し、
    配布先のカレンダーに「URLで追加（購読）」。更新は自動反映されます。
    不要になった配布先は「失効」で止めます（URLを知っていても見られなくなります）。
+5. **Libera連携（プッシュ）** — 「📱 Libera連携」で送信先をメールアドレスで登録し
+   「📤 Liberaへ送信」。タスク＋チェックポイントが送信先のLiberaカレンダー（予定）と
+   To-Do（未完了のみ）に直接届きます。再送は上書きで二重登録されません。
+   Libera側で完了にしたタスクは戻しません。運用側の設定
+   （LIBERA_BRIDGE_URL / LIBERA_BRIDGE_KEY）が済むまでは案内のみ表示されます。
 
 ## ⑥ 用語と判定基準
 
@@ -88,3 +93,4 @@ AI 生成は**ゲートウェイ経由（taskType: generation.schedule）**で�
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — S1（実データ接続生成・進捗ボード・ICSフィード）を反映して新規作成
+- 2026-08-26 v2 — S3（Libera連携プッシュ — 予定・タスクの直接送信）を追記

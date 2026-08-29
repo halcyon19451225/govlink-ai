@@ -21,6 +21,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const rows = await query(
     `SELECT d.id, d.issue_hypothesis_id, d.title, d.status, d.current_step,
             d.messages, d.approaches, d.evidence, d.experiments, d.indicators, d.costs,
+            d.turn_status, d.turn_error,
             d.committed_at::text, d.created_at::text, d.updated_at::text,
             h.title AS hypothesis_title
      FROM measure_dialogues d

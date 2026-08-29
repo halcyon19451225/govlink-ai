@@ -28,6 +28,7 @@ export default async function AsisAnalysisPage({
               COALESCE(a.messages, '[]'::jsonb)   AS messages,
               COALESCE(a.swot, $2::jsonb)         AS swot,
               COALESCE(a.cross_analysis, $3::jsonb) AS cross_analysis,
+              a.turn_status, a.turn_error,
               a.created_at::text, a.updated_at::text,
               k.label AS kpi_label
        FROM asis_analyses a

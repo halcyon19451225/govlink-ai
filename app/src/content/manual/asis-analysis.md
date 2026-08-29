@@ -5,11 +5,11 @@ menu_path: /projects/[id]/asis-analysis
 tables: [asis_analyses, corpus_context, knowledge_documents]
 apis: [/api/admin/projects/[id]/asis-analysis, /api/admin/projects/[id]/asis-analysis/[asisId]/chat]
 ai_tasks: [dialogue.asis]
-checks: [check:corpusmatch]
-migrations: [020s, 046]
+checks: [check:corpusmatch, check:asyncturn]
+migrations: [020s, 046, 055]
 upstream: [gap-analysis, datasets]
 downstream: [issue-hypothesis]
-updated: 2026-08-26
+updated: 2026-08-29
 ---
 
 # 現状整理（As-Is）
@@ -59,6 +59,9 @@ flowchart TD
 3. 採用した要素を編集・並べ替えて現状整理を完成させる
 4. ギャップ分析の結果と併せて、課題仮説設定の材料になる
 
+
+> **AIの応答待ちについて** — AIの応答には数十秒〜数分かかることがあります。送信した発言は即座に保存され、画面は「AIが考えています」の表示のまま結果を待ちます（画面を再読み込みしても待ち受けは再開されます）。「AI処理に失敗しました」と出た場合は「🔁 AI処理を再試行」で、発言を再入力せずにやり直せます。
+
 ## ⑥ 用語と判定基準
 
 - **PESTLE**: 政治/経済/社会/技術/法制度/環境 — 外部環境の分類タグ（コーパスと同語彙）
@@ -70,6 +73,9 @@ flowchart TD
 - コーパス接地の適合度: 市区町村一致 > 都道府県 > 人口規模帯 > 全国（しきい値未満は出さない）
 - 関連する実装記録: `claude/coe-x7e.md`（コーパス注入）・`claude/coe-govlink.md`
 
+- 対話のAIターンは非同期（migration 055・`lib/ai/asyncTurn.ts`）: 発言保存→202→自己呼び出しでAI処理→画面がポーリング。Amplify の30秒応答上限の対策。検査: `check:asyncturn`
+
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M2 初版（X7eのコーパス接地を反映）
+- 2026-08-29 v1.1 — 対話AIターンの非同期化（通信エラー対策・再試行ボタン）

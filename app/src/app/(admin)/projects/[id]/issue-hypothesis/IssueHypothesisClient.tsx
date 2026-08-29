@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import PermissionGate from "@/components/PermissionGate";
 import AiThinkingIndicator from "@/components/AiThinkingIndicator";
 import {
+  isAcceptedTurn,
+  isTurnProcessing,
+  waitForTurn,
+  type TurnStatus,
+} from "@/lib/ai/turnClient";
+import {
   ISSUE_STEP_ORDER,
   ISSUE_STEP_LABEL,
   ISSUE_STEP_HINT,
@@ -38,6 +44,9 @@ export interface IssueDialogueRecord {
   selection: SelectionItem[];
   root_causes: RootCauseItem[];
   hypotheses: HypothesisItem[];
+  /** AIターンの状態（migration 055・非同期化）。processing の間はポーリングで待つ */
+  turn_status?: TurnStatus | null;
+  turn_error?: string | null;
   committed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -966,6 +975,34 @@ export default function IssueHypothesisClient({
     }
   };
 
+  /** 202 受理後、GET をポーリングして結果を取り込む（再読み込み後の再開にも使う） */
+  const awaitTurn = async (dialogueId: string) => {
+    setSending(true);
+    try {
+      const rec = await waitForTurn<IssueDialogueRecord>(
+        `/api/admin/projects/${projectId}/issue-dialogue/${dialogueId}`,
+      );
+      setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, ...rec } : r)));
+      if (rec.turn_status === "error") {
+        setError(rec.turn_error ?? "AI処理に失敗しました");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "通信エラーが発生しました");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // 画面を開いた時点で処理中（送信後に再読み込みした等）なら、待ち受けを再開する
+  const resumedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selected || !isTurnProcessing(selected) || sending) return;
+    if (resumedFor.current === selected.id) return;
+    resumedFor.current = selected.id;
+    void awaitTurn(selected.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, selected?.turn_status]);
+
   const handleSend = async () => {
     if (!selected || !input.trim() || sending) return;
     const text = input.trim();
@@ -984,6 +1021,7 @@ export default function IssueHypothesisClient({
       ),
     );
 
+    let accepted = false;
     try {
       const res = await fetch(
         `/api/admin/projects/${projectId}/issue-dialogue/${selected.id}/chat`,
@@ -995,12 +1033,7 @@ export default function IssueHypothesisClient({
       );
       const json = (await res.json()) as {
         data: {
-          current_step: IssueStep;
-          status: "in_progress" | "completed";
-          problems: ProblemItem[];
-          selection: SelectionItem[];
-          root_causes: RootCauseItem[];
-          hypotheses: HypothesisItem[];
+          turn_status?: TurnStatus;
           messages: IssueMessage[];
         } | null;
         error: string | null;
@@ -1017,29 +1050,64 @@ export default function IssueHypothesisClient({
         setInput(text);
         return;
       }
-      const d = json.data;
-      setRecords((prev) =>
-        prev.map((r) =>
-          r.id === selected.id
-            ? {
-                ...r,
-                messages: d.messages,
-                problems: d.problems,
-                selection: d.selection,
-                root_causes: d.root_causes,
-                hypotheses: d.hypotheses,
-                current_step: d.current_step,
-                status: d.status,
-              }
-            : r,
-        ),
-      );
+      // 発言はサーバーに保存済み。AI処理は非同期なのでポーリングで結果を待つ
+      if (isAcceptedTurn(res.status, json.data)) {
+        setRecords((prev) =>
+          prev.map((r) =>
+            r.id === selected.id
+              ? { ...r, messages: json.data!.messages, turn_status: "processing" }
+              : r,
+          ),
+        );
+        accepted = true;
+      }
     } catch {
-      setError("通信エラーが発生しました");
+      // 送信自体が失敗した可能性もあるが、届いていれば再読み込みで反映される
+      setError("通信エラーが発生しました。画面を再読み込みすると状態を確認できます");
       setInput(text);
     } finally {
-      setSending(false);
+      if (!accepted) setSending(false);
     }
+    if (accepted) await awaitTurn(selected.id);
+  };
+
+  /** 失敗したターンを、発言を追加せずにやり直す */
+  const handleRetry = async () => {
+    if (!selected || sending) return;
+    setError(null);
+    setSending(true);
+    let accepted = false;
+    try {
+      const res = await fetch(
+        `/api/admin/projects/${projectId}/issue-dialogue/${selected.id}/chat`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "retry" }),
+        },
+      );
+      const json = (await res.json()) as {
+        data: { turn_status?: TurnStatus; messages: IssueMessage[] } | null;
+        error: string | null;
+      };
+      if (!res.ok || !json.data) {
+        setError(json.error ?? "再試行に失敗しました");
+        return;
+      }
+      if (isAcceptedTurn(res.status, json.data)) {
+        setRecords((prev) =>
+          prev.map((r) =>
+            r.id === selected.id ? { ...r, turn_status: "processing", turn_error: null } : r,
+          ),
+        );
+        accepted = true;
+      }
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      if (!accepted) setSending(false);
+    }
+    if (accepted) await awaitTurn(selected.id);
   };
 
   const handleCommit = async () => {
@@ -1387,6 +1455,15 @@ export default function IssueHypothesisClient({
             style={{ borderColor: "#ef444460", background: "#ef444410", color: "#f87171" }}
           >
             {error}
+            {selected?.turn_status === "error" && !sending && (
+              <button
+                onClick={() => void handleRetry()}
+                className="ml-3 text-xs px-2 py-0.5 rounded border hover:brightness-125"
+                style={{ borderColor: "#ef444480" }}
+              >
+                🔁 AI処理を再試行
+              </button>
+            )}
             <button
               onClick={() => setError(null)}
               className="ml-3 text-xs opacity-60 hover:opacity-100"

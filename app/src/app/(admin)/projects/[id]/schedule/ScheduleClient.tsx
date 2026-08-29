@@ -478,6 +478,159 @@ function CalendarFeedCard({ projectId }: { projectId: string }) {
   );
 }
 
+// ─── Libera連携（S3 D②段2 — カレンダー/タスクのプッシュ）───
+
+interface BridgeTargetRow {
+  id: string;
+  email: string;
+  display_name: string | null;
+  created_at: string;
+}
+
+interface BridgeLogRow {
+  operation: string;
+  ok: boolean;
+  detail: string | null;
+  created_at: string;
+}
+
+function LiberaBridgeCard({ projectId }: { projectId: string }) {
+  const [configured, setConfigured] = useState(false);
+  const [targets, setTargets] = useState<BridgeTargetRow[]>([]);
+  const [logs, setLogs] = useState<BridgeLogRow[]>([]);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/libera`);
+      const json = (await res.json()) as {
+        data: { configured: boolean; targets: BridgeTargetRow[]; logs: BridgeLogRow[] } | null;
+      };
+      if (res.ok && json.data) {
+        setConfigured(json.data.configured);
+        setTargets(json.data.targets);
+        setLogs(json.data.logs);
+      }
+    } catch {
+      /* noop */
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const post = async (body: Record<string, unknown>, okMsg?: string) => {
+    setBusy(true);
+    setMsg(null);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/libera`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await res.json()) as { data: { detail?: string } | null; error: string | null };
+      if (!res.ok) {
+        setErr(json.error ?? "失敗しました");
+        return;
+      }
+      setMsg(json.data?.detail ?? okMsg ?? "完了しました");
+      await load();
+    } catch {
+      setErr("通信エラーが発生しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="rounded-2xl border p-5 space-y-3"
+      style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
+    >
+      <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+        📱 Libera連携（カレンダー・タスクのプッシュ）
+      </h3>
+      {!configured ? (
+        <p className="text-xs text-slate-500">
+          Libera連携は未設定です。運用担当者が環境変数 LIBERA_BRIDGE_URL / LIBERA_BRIDGE_KEY を
+          設定すると、タスクとチェックポイントを担当者のLiberaカレンダー・タスクへ直接届けられます
+          （それまでは上のICSフィードをご利用ください）。
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-slate-500">
+            タスク・チェックポイントを、登録した送信先のLiberaカレンダー（予定）と
+            To-Do（未完了のみ）へ送ります。再送は上書きで、二重登録されません。
+            Libera側で完了にしたタスクは戻しません。
+          </p>
+          {err && <p className="text-xs text-red-400">⚠️ {err}</p>}
+          {msg && <p className="text-xs text-emerald-400">✅ {msg}</p>}
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="送信先のメールアドレス（Coe/Liberaのアカウント）"
+              className="flex-1 min-w-[220px] rounded-lg border px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500"
+              style={{ background: "#12151f", borderColor: "var(--border)" }}
+            />
+            <button
+              onClick={() => {
+                if (!email.trim()) return;
+                void post({ action: "add_target", email: email.trim() }, "送信先を追加しました").then(() => setEmail(""));
+              }}
+              disabled={busy}
+              className="text-xs font-semibold text-cyan-400 border rounded-lg px-3 py-1.5 hover:bg-cyan-400/10 disabled:opacity-40"
+              style={{ borderColor: "#06b6d430" }}
+            >
+              ＋ 送信先を追加
+            </button>
+          </div>
+          {targets.length > 0 && (
+            <div className="space-y-1">
+              {targets.map((t) => (
+                <div key={t.id} className="flex items-center gap-2 text-xs text-slate-400">
+                  <span className="text-slate-300">{t.display_name || t.email}</span>
+                  {t.display_name && <span>{t.email}</span>}
+                  <button
+                    onClick={() => void post({ action: "remove_target", target_id: t.id }, "送信先を削除しました")}
+                    disabled={busy}
+                    className="ml-auto text-red-400 border rounded px-2 py-0.5 hover:bg-red-400/10 disabled:opacity-40"
+                    style={{ borderColor: "#ef444430" }}
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => void post({ action: "push_schedule" })}
+            disabled={busy || targets.length === 0}
+            className="text-xs font-semibold text-indigo-400 border rounded-lg px-3 py-1.5 hover:bg-indigo-400/10 disabled:opacity-40"
+            style={{ borderColor: "#6366f130" }}
+          >
+            {busy ? "送信中…" : "📤 Liberaへ送信（予定＋タスク）"}
+          </button>
+          {logs.length > 0 && (
+            <div className="space-y-0.5">
+              {logs.slice(0, 5).map((l, i) => (
+                <p key={i} className="text-[11px] text-slate-600">
+                  {l.created_at.slice(5, 16).replace("T", " ")} {l.ok ? "✅" : "⚠️"} {l.operation}: {l.detail}
+                </p>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ScheduleClient({
   projectId,
   projectTitle,
@@ -897,6 +1050,9 @@ export default function ScheduleClient({
 
       {/* カレンダー連携（S1 D②段1 — タスクが無くても発行できる） */}
       <CalendarFeedCard projectId={projectId} />
+
+      {/* Libera連携（S3 D②段2 — 本命のプッシュ経路） */}
+      <LiberaBridgeCard projectId={projectId} />
     </div>
     </>
   );

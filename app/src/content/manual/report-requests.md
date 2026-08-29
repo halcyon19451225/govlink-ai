@@ -3,10 +3,10 @@ module: report-requests
 title: 実績報告依頼
 menu_path: /projects/[id]/report-requests
 tables: [report_requests, report_responses, kpi_reports, measure_designs]
-apis: [/api/admin/projects/[id]/report-requests, /api/admin/projects/[id]/report-requests/[requestId], /api/public/report/[token]]
+apis: [/api/admin/projects/[id]/report-requests, /api/admin/projects/[id]/report-requests/[requestId], /api/public/report/[token], /api/admin/projects/[id]/libera]
 ai_tasks: [generation.report_request]
-checks: [check:report]
-migrations: [053]
+checks: [check:report, check:libera]
+migrations: [053, 054]
 upstream: [measure-design]
 downstream: [kpi-report, program-evaluation]
 updated: 2026-08-26
@@ -52,7 +52,9 @@ flowchart TD
 
 1. 「＋依頼を作成」— 種別（年次/計画期間）・年度・期限・対象施策を選ぶと設問をAIが組成
 2. 設問・依頼文を確認・編集 → 「📮 送信」で対象ごとの回答URLを発行
-3. URLをコピーして担当者・事業者に共有（メール等）。未回答には「⏰督促記録」
+3. URLをコピーして担当者・事業者に共有（メール等）。未回答には「⏰督促記録」。
+   庁内のLiberaユーザーには「📱 Liberaで通知」— 未回答・差し戻し中の回答URLが
+   送信先（スケジュール画面のLibera連携で登録）のLiberaタスクとして届く
 4. 回答を確認して「✅受領」または「🔁差し戻し」（理由は回答者に表示される）
 5. 受領後「📊 KPI実績値を取り込む」— KPI報告に登録され現在値が更新される
 
@@ -70,3 +72,4 @@ flowchart TD
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M3 初版
+- 2026-08-26 v2 — S3（Liberaタスク通知）を追記

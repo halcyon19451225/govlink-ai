@@ -63,7 +63,7 @@ export async function fetchIssueKpiContext(
     trend: string | null;
   }>(
     `SELECT k.label, k.unit, k.target::float,
-            to_char(k.target_deadline, 'YYYY年M月') AS target_deadline,
+            to_char(k.target_deadline, 'YYYY年FMMM月') AS target_deadline,
             g.id                   AS gap_id,
             g.current_value::float AS current_value,
             g.gap_value::float     AS gap_value,

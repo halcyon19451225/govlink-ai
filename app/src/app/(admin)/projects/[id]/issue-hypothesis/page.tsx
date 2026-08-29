@@ -28,6 +28,7 @@ export default async function IssueHypothesisPage({
               COALESCE(d.selection,   '[]'::jsonb) AS selection,
               COALESCE(d.root_causes, '[]'::jsonb) AS root_causes,
               COALESCE(d.hypotheses,  '[]'::jsonb) AS hypotheses,
+              d.turn_status, d.turn_error,
               d.committed_at::text,
               d.created_at::text, d.updated_at::text,
               k.label AS kpi_label

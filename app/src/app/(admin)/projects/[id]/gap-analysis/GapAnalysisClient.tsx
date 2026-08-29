@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { calcAchievement } from "@/lib/stats/achievement";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -15,7 +14,6 @@ interface Kpi {
   unit: string;
   achievement_condition: AchievementCondition | null;
   target_deadline: string | null;
-  baseline_value: number | null;
   goal_id: string | null;
   goal_title: string | null;
 }
@@ -75,12 +73,9 @@ function calcDisplay(kpi: Kpi, current: number | null) {
       : current >= kpi.target;
   }
 
-  const achievementRate = calcAchievement({
-    current,
-    target: kpi.target,
-    baseline: kpi.baseline_value,
-    condition: kpi.achievement_condition,
-  }).rate;
+  const achievementRate = kpi.target !== 0
+    ? Math.round((current / kpi.target) * 1000) / 10
+    : null;
 
   return { gapValue, achieved, achievementRate };
 }

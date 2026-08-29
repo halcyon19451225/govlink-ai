@@ -4,6 +4,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import type Anthropic from "@anthropic-ai/sdk";
 import { aiCreateMessage, type AiCallContext } from "@/lib/ai/gateway";
+import {
+  BUSY_ERROR,
+  NOTHING_TO_RETRY_ERROR,
+  acceptedPayload,
+  beginTurn,
+  claimStep,
+  failTurn,
+  isStepRequest,
+  triggerTurnStep,
+  turnDoneSql,
+} from "@/lib/ai/asyncTurn";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
@@ -29,10 +40,32 @@ type Params = { params: { id: string; asisId: string } };
 // 既にシード済みの最初のAI質問をそのまま返す。
 const bodySchema = z.object({
   message: z.string().trim().max(2000).nullish(),
+  /** "retry": 失敗したターンを（発言を追加せず）やり直す */
+  action: z.enum(["retry"]).nullish(),
 });
+
+const TURN_TABLE = "asis_analyses" as const;
+
+const ROW_SQL = `SELECT a.id, a.kpi_id, a.title, a.status, a.current_step,
+            a.messages, a.swot, a.cross_analysis,
+            a.turn_status, a.turn_error,
+            p.title AS project_title, k.label AS kpi_label,
+            k.target::float          AS kpi_target,
+            k.unit                   AS kpi_unit,
+            k.achievement_condition  AS kpi_condition,
+            to_char(k.target_deadline, 'YYYY-MM-DD') AS kpi_deadline,
+            g.current_value::float   AS kpi_current_value,
+            g.gap_value::float       AS kpi_gap_value
+     FROM asis_analyses a
+     JOIN projects p ON p.id = a.project_id
+     LEFT JOIN kpis k ON k.id = a.kpi_id
+     LEFT JOIN gap_analyses g ON g.kpi_id = a.kpi_id AND g.project_id = a.project_id
+     WHERE a.id = $1 AND a.project_id = $2`;
 
 interface AsisRow {
   id: string;
+  turn_status: "idle" | "processing" | "error";
+  turn_error: string | null;
   kpi_id: string | null;
   title: string;
   status: "in_progress" | "completed";
@@ -165,7 +198,38 @@ async function callRecordTurn(
   return null;
 }
 
+/**
+ * POST /chat — 2つの入口（lib/ai/asyncTurn.ts の方式・Amplify の30秒応答上限対策）:
+ *  A. 利用者からの発言（セッション認証）: 発言を保存して processing にし、
+ *     自分自身を step_token 付きで呼び出して 202 で即応答する
+ *  B. step_token 付きの自己呼び出し（トークン認証・セッション不要）: AI処理を行い保存する
+ */
 export async function POST(req: NextRequest, { params }: Params) {
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
+  }
+
+  // ── B. 自己呼び出し（AI処理の実体） ────────────────
+  if (isStepRequest(raw)) {
+    const ok = await claimStep(TURN_TABLE, params.asisId, params.id, raw.step_token);
+    if (!ok) {
+      return NextResponse.json({ data: null, error: "無効なステップ要求です" }, { status: 404 });
+    }
+    try {
+      await runTurn(params, raw.step_token);
+      return NextResponse.json({ data: { ok: true }, error: null });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "AI処理に失敗しました";
+      console.error("[asis-analysis/chat step]", msg);
+      await failTurn(TURN_TABLE, params.asisId, raw.step_token, msg);
+      return NextResponse.json({ data: null, error: msg }, { status: 500 });
+    }
+  }
+
+  // ── A. 利用者からの発言 ─────────────────────────
   const session = await getServerSession(authOptions);
   const deny = await requireModulePermission(session, params.id, "issue_hypothesis", "edit");
   if (deny) return deny;
@@ -177,12 +241,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  let raw: unknown;
-  try {
-    raw = await req.json();
-  } catch {
-    return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
-  }
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
@@ -191,30 +249,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const asis = await queryOne<AsisRow>(
-    `SELECT a.id, a.kpi_id, a.title, a.status, a.current_step,
-            a.messages, a.swot, a.cross_analysis,
-            p.title AS project_title, k.label AS kpi_label,
-            k.target::float          AS kpi_target,
-            k.unit                   AS kpi_unit,
-            k.achievement_condition  AS kpi_condition,
-            to_char(k.target_deadline, 'YYYY-MM-DD') AS kpi_deadline,
-            g.current_value::float   AS kpi_current_value,
-            g.gap_value::float       AS kpi_gap_value
-     FROM asis_analyses a
-     JOIN projects p ON p.id = a.project_id
-     LEFT JOIN kpis k ON k.id = a.kpi_id
-     LEFT JOIN gap_analyses g ON g.kpi_id = a.kpi_id AND g.project_id = a.project_id
-     WHERE a.id = $1 AND a.project_id = $2`,
-    [params.asisId, params.id],
-  );
+  const asis = await queryOne<AsisRow>(ROW_SQL, [params.asisId, params.id]);
   if (!asis) {
     return NextResponse.json({ data: null, error: "現状整理が見つかりません" }, { status: 404 });
   }
 
-  // 初回ブートストラップ: message 未指定の場合はシード済みの最初のAI質問を返す
+  const isRetry = parsed.data.action === "retry";
   const trimmedMessage = parsed.data.message?.trim() ?? "";
-  if (trimmedMessage === "") {
+
+  // 初回ブートストラップ: message 未指定の場合はシード済みの最初のAI質問を返す
+  if (trimmedMessage === "" && !isRetry) {
     const lastAssistant = [...asis.messages]
       .reverse()
       .find((m) => m.role === "assistant");
@@ -226,14 +270,16 @@ export async function POST(req: NextRequest, { params }: Params) {
         swot: asis.swot,
         cross_analysis: asis.cross_analysis,
         messages: asis.messages,
+        turn_status: asis.turn_status,
+        turn_error: asis.turn_error,
       },
       error: null,
     });
   }
 
-  // プラン上限チェック
+  // プラン上限チェック（再試行は消費しない）
   const munIdForLimit = session!.user?.municipalityId;
-  if (munIdForLimit) {
+  if (munIdForLimit && !isRetry) {
     const limitCheck = await checkLimit(munIdForLimit, "ai_calls");
     if (!limitCheck.allowed) {
       return NextResponse.json(
@@ -244,12 +290,41 @@ export async function POST(req: NextRequest, { params }: Params) {
     await incrementAiUsage(munIdForLimit);
   }
 
-  const userMessage: AsisMessage = {
-    role: "user",
-    content: trimmedMessage,
-    step: asis.current_step,
-  };
-  const history = [...asis.messages, userMessage];
+  const userMessage: AsisMessage | null = isRetry
+    ? null
+    : { role: "user", content: trimmedMessage, step: asis.current_step };
+
+  const begun = await beginTurn<AsisMessage>(TURN_TABLE, params.asisId, params.id, userMessage);
+  if (!begun.ok) {
+    const error =
+      begun.reason === "busy"
+        ? BUSY_ERROR
+        : begun.reason === "nothing_to_retry"
+          ? NOTHING_TO_RETRY_ERROR
+          : "現状整理が見つかりません";
+    return NextResponse.json(
+      { data: null, error },
+      { status: begun.reason === "not_found" ? 404 : 409 },
+    );
+  }
+
+  triggerTurnStep(
+    `/api/admin/projects/${params.id}/asis-analysis/${params.asisId}/chat`,
+    begun.token,
+  );
+  return NextResponse.json(acceptedPayload(begun.messages), { status: 202 });
+}
+
+/**
+ * AIターンの実体。messages の末尾（利用者の発言）に対する応答を生成して保存する。
+ * 例外は呼び出し側で failTurn に変換される。
+ */
+async function runTurn(params: Params["params"], token: string): Promise<void> {
+  const asis = await queryOne<AsisRow>(ROW_SQL, [params.asisId, params.id]);
+  if (!asis) throw new Error("現状整理が見つかりません");
+
+  // beginTurn で利用者の発言は保存済み
+  const history = asis.messages;
 
   const aiCtx = { taskType: "dialogue.asis", projectId: params.id } as const;
   const aiMessages: Anthropic.MessageParam[] = history.map((m) => ({
@@ -343,16 +418,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       allowWebSearch: true,
     });
   } catch {
-    return NextResponse.json(
-      { data: null, error: "AIとの通信に失敗しました" },
-      { status: 502 },
-    );
+    throw new Error("AIとの通信に失敗しました");
   }
   if (!toolUse) {
-    return NextResponse.json(
-      { data: null, error: "AI応答の解析に失敗しました" },
-      { status: 500 },
-    );
+    throw new Error("AI応答の解析に失敗しました");
   }
 
   const input = toolUse.input as Record<string, unknown>;
@@ -437,11 +506,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   const messages = [...history, assistantMessage];
   const nextStatus = completed ? "completed" : "in_progress";
 
-  await queryOne(
+  // turn_token が一致する行だけ更新する（再試行で別トークンに置き換わった古い処理は捨てる）
+  const saved = await queryOne<{ id: string }>(
     `UPDATE asis_analyses
      SET messages = $1::jsonb, swot = $2::jsonb, cross_analysis = $3::jsonb,
-         current_step = $4, status = $5
-     WHERE id = $6 AND project_id = $7
+         current_step = $4, status = $5, ${turnDoneSql()}
+     WHERE id = $6 AND project_id = $7 AND turn_token = $8
      RETURNING id`,
     [
       JSON.stringify(messages),
@@ -451,18 +521,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       nextStatus,
       params.asisId,
       params.id,
+      token,
     ],
   );
-
-  return NextResponse.json({
-    data: {
-      reply,
-      current_step: phase,
-      status: nextStatus,
-      swot,
-      cross_analysis: cross,
-      messages,
-    },
-    error: null,
-  });
+  if (!saved) {
+    console.warn("[asis-analysis/chat] 古いステップの結果を破棄しました", params.asisId);
+  }
 }
