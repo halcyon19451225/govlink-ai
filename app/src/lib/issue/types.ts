@@ -143,11 +143,129 @@ export interface ProblemItem {
   source_text?: string;
   /** 特性要因図の大骨（PESTLE / 7S） */
   factor?: string;
+  /**
+   * 他の問題に統合されて退役した。ID は消さずに残す
+   * （選別・真因・仮説が problem_id で参照しているため、行を消すと下流が壊れる）。
+   */
+  retired?: boolean;
+  /** 統合先の問題ID（retired のときのみ） */
+  merged_into?: string;
+}
+
+/** 統合の指示（AIの record_issue_turn から受け取る） */
+export interface ProblemMerge {
+  /** 統合先の問題ID（残る方） */
+  into: string;
+  /** 統合されて退役する問題ID（1件以上） */
+  from: string[];
+  /** 統合後の文言（省略時は into の文言を維持） */
+  text?: string;
+}
+
+/** 生きている（退役していない）問題だけを返す */
+export function activeProblems(problems: ProblemItem[]): ProblemItem[] {
+  return problems.filter((p) => !p.retired);
+}
+
+/**
+ * 統合を適用する。from を retired にし、統合先へ source_text を引き継ぐ。
+ *
+ * 行を消さないのは、選別・真因・仮説が problem_id で参照しているため。
+ * 消すと下流が黙って壊れる（2026-08-29 の誤選定事故と同じ壊れ方になる）。
+ * 自己統合・存在しないID・退役済みへの統合・循環は無視する。
+ */
+export function applyProblemMerges(
+  problems: ProblemItem[],
+  merges: ProblemMerge[],
+): ProblemItem[] {
+  let out = problems.map((p) => ({ ...p }));
+  for (const m of merges) {
+    const into = out.find((p) => p.id === m.into && !p.retired);
+    if (!into) continue;
+    for (const fromId of m.from) {
+      if (fromId === m.into) continue;
+      const from = out.find((p) => p.id === fromId && !p.retired);
+      if (!from) continue;
+      // 統合元の引用原文を引き継ぐ（現状整理へのトレーサビリティを切らさない）
+      if (from.source_text && from.source_text !== into.source_text) {
+        into.source_text = into.source_text
+          ? `${into.source_text}\n${from.source_text}`
+          : from.source_text;
+      }
+      from.retired = true;
+      from.merged_into = m.into;
+    }
+    if (m.text && m.text.trim().length > 0) into.text = m.text.trim();
+    out = out.map((p) => (p.id === into.id ? into : p));
+  }
+  return out;
+}
+
+/**
+ * 照合用の正規化。空白・記号・全角半角のゆれを落として比較する。
+ * AIが返す echo と保存済みの文言を突き合わせるためのもの。
+ */
+export function normalizeForEcho(s: string): string {
+  return s
+    .normalize("NFKC")
+    .replace(/[\s\u3000]/g, "")
+    .replace(/[、。，．,.\-—–ー・「」『』（）()【】\[\]:：;；!！?？'"'"]/g, "")
+    .toLowerCase();
+}
+
+/**
+ * selection の problem_id と problem_text_echo が、保存済みの問題と一致するか検証する。
+ *
+ * AIが発言の中で番号を振り直し、保存済みIDと対応が崩れたまま selection を出すと、
+ * 意図と違う問題が「課題」として選定されてしまう（実際に発生した）。
+ * ID だけでは「存在するが別物」を検出できないため、文言のエコーを突き合わせる。
+ */
+export function validateSelectionEchoes(
+  problems: ProblemItem[],
+  selection: { problem_id: string; problem_text_echo?: string }[],
+): { ok: SelectionEchoResult[]; mismatched: SelectionEchoResult[] } {
+  const ok: SelectionEchoResult[] = [];
+  const mismatched: SelectionEchoResult[] = [];
+  for (const s of selection) {
+    const p = problems.find((x) => x.id === s.problem_id);
+    const echo = (s.problem_text_echo ?? "").trim();
+    const result: SelectionEchoResult = {
+      problem_id: s.problem_id,
+      echo,
+      stored_text: p?.text ?? null,
+    };
+    if (!p || p.retired) {
+      mismatched.push(result);
+      continue;
+    }
+    // エコー未指定は照合できないので不一致扱いにする（省略で素通りさせない）
+    if (echo.length === 0) {
+      mismatched.push(result);
+      continue;
+    }
+    const a = normalizeForEcho(p.text);
+    const b = normalizeForEcho(echo);
+    // 先頭一致・部分一致のどちらでも可（AIは冒頭を引用することが多い）
+    if (b.length >= 6 && (a.startsWith(b) || a.includes(b) || b.includes(a))) ok.push(result);
+    else mismatched.push(result);
+  }
+  return { ok, mismatched };
+}
+
+export interface SelectionEchoResult {
+  problem_id: string;
+  echo: string;
+  stored_text: string | null;
 }
 
 /** 課題の選別（JIS Q 9024 の重点指向）。3軸とも 1〜5 */
 export interface SelectionItem {
   problem_id: string;
+  /**
+   * 対象問題の文言のエコー（AIが保存済みの文言を引き写したもの）。
+   * problem_id だけでは「存在するが別物」を検出できないため照合に使う。
+   */
+  problem_text_echo?: string;
   impact: number; // 影響度: 指標のギャップへの寄与の大きさ
   controllability: number; // 関与可能性: 自治体の施策で動かせる度合い
   urgency: number; // 緊急性: 先送りした場合の悪化速度
@@ -261,6 +379,15 @@ export const EMPTY_ISSUE_DATA: IssueDialogueData = {
 /** 選定された（＝「課題」となった）問題IDの集合 */
 export function selectedProblemIds(selection: SelectionItem[]): string[] {
   return selection.filter((s) => s.selected).map((s) => s.problem_id);
+}
+
+/** 退役した問題を除いた、選定済み問題IDの集合（下流はこれを使う） */
+export function selectedActiveProblemIds(
+  problems: ProblemItem[],
+  selection: SelectionItem[],
+): string[] {
+  const alive = new Set(activeProblems(problems).map((p) => p.id));
+  return selectedProblemIds(selection).filter((id) => alive.has(id));
 }
 
 export function findProblem(

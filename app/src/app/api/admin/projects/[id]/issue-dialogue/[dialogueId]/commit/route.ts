@@ -8,6 +8,7 @@ import { requireModulePermission } from "@/lib/permissions";
 import { recordArtifact, resolveArtifactIds } from "@/lib/modules/recordArtifact";
 import { ARTIFACT_TYPES } from "@/lib/modules/artifact-types";
 import {
+  activeProblems,
   factorShortLabel,
   type HypothesisItem,
   type ProblemItem,
@@ -99,8 +100,13 @@ export async function POST(_req: NextRequest, { params }: Params) {
     );
   }
 
+  // 統合で退役した問題に紐づく仮説は書き出さない（統合前の古い仮説が残っている場合の保険）
+  const aliveIds = new Set(activeProblems(d.problems).map((p) => p.id));
   const usable = d.hypotheses.filter(
-    (h) => h.title.trim().length > 0 && h.statement.trim().length > 0,
+    (h) =>
+      h.title.trim().length > 0 &&
+      h.statement.trim().length > 0 &&
+      (aliveIds.size === 0 || aliveIds.has(h.problem_id)),
   );
   if (usable.length === 0) {
     return NextResponse.json(

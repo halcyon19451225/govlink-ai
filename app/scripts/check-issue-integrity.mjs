@@ -1,0 +1,210 @@
+#!/usr/bin/env node
+/**
+ * 課題仮説設定の整合性検査 — 問題IDのずれによる誤選定を防ぐ
+ *
+ * この検査を作った理由:
+ *   2026-08-29、担当者の「p1とp5は同じなのでまとめて」という依頼に対し、AIが
+ *   返答の文章の中でだけ番号を振り直した。new_problems が追加専用で統合手段が
+ *   無かったため保存済みの問題は8件のまま残り、以降 AI が使う番号と保存済みIDの
+ *   対応が崩れた。その状態で出された selection が別の問題に適用され、
+ *   「EBPMノウハウの欠如」を選定したつもりで「地震後コミュニティの未回復」が
+ *   課題として選定された。画面上は正常に見えるため気づきにくく、
+ *   そのまま真因分析・仮説・施策へ流れる。
+ *
+ *   対策は3層: ①merge_problems でデータ上も統合する（行は消さず retired）
+ *   ②selection に problem_text_echo を必須にしてサーバーで文言照合
+ *   ③プロンプトで番号の振り直しを禁止
+ *   この3層が外れていないことをここで固定する。
+ *
+ * 使い方:
+ *   node scripts/check-issue-integrity.mjs
+ */
+
+import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const APP_ROOT = resolve(here, "..");
+
+let passed = 0;
+let failed = 0;
+function check(name, cond) {
+  if (cond) passed++;
+  else {
+    failed++;
+    console.error(`  ✗ ${name}`);
+  }
+}
+const read = (p) => (existsSync(p) ? readFileSync(p, "utf8") : "");
+
+// ── 1. ツール定義とプロンプトの規律 ─────────────────
+const promptSrc = read(join(APP_ROOT, "src", "lib", "issue", "prompt.ts"));
+check("prompt: merge_problems をツールに持つ", promptSrc.includes("merge_problems"));
+check("prompt: problem_updates をツールに持つ", promptSrc.includes("problem_updates"));
+check("prompt: problem_text_echo をツールに持つ", promptSrc.includes("problem_text_echo"));
+check(
+  "prompt: problem_text_echo が selection の必須項目",
+  /required:\s*\[[^\]]*"problem_text_echo"/s.test(promptSrc),
+);
+check("prompt: 番号の振り直しを禁止している", promptSrc.includes("振り直さないでください"));
+check(
+  "prompt: 文章だけの統合を禁じている",
+  promptSrc.includes("文章の中だけで統合したことにしてはいけません"),
+);
+check(
+  "prompt: 退役した問題を一覧から外して提示する",
+  promptSrc.includes("p.retired") && promptSrc.includes("退役"),
+);
+
+// ── 2. chat ルートの適用順とガード ────────────────
+const routeSrc = read(
+  join(
+    APP_ROOT, "src", "app", "api", "admin", "projects", "[id]",
+    "issue-dialogue", "[dialogueId]", "chat", "route.ts",
+  ),
+);
+check("chat: applyProblemMerges を使う", routeSrc.includes("applyProblemMerges("));
+check("chat: validateSelectionEchoes で照合する", routeSrc.includes("validateSelectionEchoes("));
+check(
+  "chat: 選別の対象を生存中の問題に限る",
+  routeSrc.includes("activeProblems(problems).map"),
+);
+check(
+  "chat: 不一致時に selection フェーズへ留める",
+  /phase = "selection"/.test(routeSrc),
+);
+check(
+  "chat: 不一致の選別を保存しない（フィルタしている）",
+  routeSrc.includes("recheck.mismatched.some") || routeSrc.includes("echoCheck.mismatched.some"),
+);
+check(
+  "chat: 退役を考慮した選定判定を使う",
+  routeSrc.includes("selectedActiveProblemIds("),
+);
+
+// ── 3. 書き出し（commit）が退役分を除く ───────────────
+const commitSrc = read(
+  join(
+    APP_ROOT, "src", "app", "api", "admin", "projects", "[id]",
+    "issue-dialogue", "[dialogueId]", "commit", "route.ts",
+  ),
+);
+check("commit: 退役した問題の仮説を書き出さない", commitSrc.includes("activeProblems("));
+
+// ── 4. 画面が統合を隠さない ──────────────────────
+const clientSrc = read(
+  join(
+    APP_ROOT, "src", "app", "(admin)", "projects", "[id]",
+    "issue-hypothesis", "IssueHypothesisClient.tsx",
+  ),
+);
+check("画面: 統合済みバッジを出す", clientSrc.includes("に統合"));
+check("画面: 件数から退役分を除く", clientSrc.includes("!p.retired"));
+
+// ── 5. 純粋ロジックの実挙動 ─────────────────────
+const work = mkdtempSync(join(tmpdir(), "issue-integrity-"));
+const outFile = join(work, "types.mjs");
+try {
+  execFileSync(
+    "npx",
+    [
+      "--no-install", "esbuild",
+      join(APP_ROOT, "src", "lib", "issue", "types.ts"),
+      "--bundle", "--format=esm", "--target=es2020", "--platform=neutral",
+      `--alias:@=${join(APP_ROOT, "src")}`,
+      `--outfile=${outFile}`,
+    ],
+    { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT },
+  );
+  const m = await import(pathToFileURL(outFile).href);
+
+  const base = () => [
+    { id: "p1", text: "指標体系の断絶で幸福感が分野別施策に落ちていない", origin: "dialogue" },
+    { id: "p2", text: "主観的幸福感の現状値が測れていない", origin: "dialogue" },
+    {
+      id: "p5",
+      text: "分野別計画の成果目標がアウトプット指標中心でアウトカム指標がない",
+      origin: "weakness",
+      source_text: "成果目標がアウトプット指標中心",
+    },
+  ];
+
+  // 統合
+  const merged = m.applyProblemMerges(base(), [
+    { into: "p1", from: ["p5"], text: "指標体系の断絶＋アウトカム指標の欠如" },
+  ]);
+  const p1 = merged.find((p) => p.id === "p1");
+  const p5 = merged.find((p) => p.id === "p5");
+  check("統合: 統合先の文言が差し替わる", p1.text === "指標体系の断絶＋アウトカム指標の欠如");
+  check("統合: 統合元は retired になる", p5.retired === true && p5.merged_into === "p1");
+  check("統合: 行は消えない（IDが残る）", merged.length === 3);
+  check(
+    "統合: 引用原文が統合先へ引き継がれる（トレーサビリティ）",
+    (p1.source_text ?? "").includes("成果目標がアウトプット指標中心"),
+  );
+  check("統合: activeProblems が退役を除く", m.activeProblems(merged).length === 2);
+
+  // 異常系
+  check("統合: 自己統合は無視", m.applyProblemMerges(base(), [{ into: "p1", from: ["p1"] }])
+    .every((p) => !p.retired));
+  check("統合: 存在しないIDは無視", m.applyProblemMerges(base(), [{ into: "p9", from: ["p1"] }])
+    .every((p) => !p.retired));
+  check("統合: 退役済みへの統合は無視",
+    m.applyProblemMerges(merged, [{ into: "p5", from: ["p2"] }])
+      .find((p) => p.id === "p2").retired !== true);
+
+  // エコー照合 — これが今回の事故を検出する層
+  const probs = base();
+  const okRes = m.validateSelectionEchoes(probs, [
+    { problem_id: "p1", problem_text_echo: "指標体系の断絶で幸福感が" },
+  ]);
+  check("照合: 正しいエコーは通る", okRes.ok.length === 1 && okRes.mismatched.length === 0);
+
+  const wrongRes = m.validateSelectionEchoes(probs, [
+    // 事故の再現: p2 のつもりで p5 の文言をエコーしている
+    { problem_id: "p5", problem_text_echo: "主観的幸福感の現状値が測れていない" },
+  ]);
+  check("照合: IDと文言の取り違えを検出する", wrongRes.mismatched.length === 1);
+
+  check(
+    "照合: エコー未記入は不一致扱い（省略で素通りさせない）",
+    m.validateSelectionEchoes(probs, [{ problem_id: "p1" }]).mismatched.length === 1,
+  );
+  check(
+    "照合: 退役した問題への選別は不一致扱い",
+    m.validateSelectionEchoes(merged, [
+      { problem_id: "p5", problem_text_echo: "分野別計画の成果目標が" },
+    ]).mismatched.length === 1,
+  );
+  check(
+    "照合: 空白や記号のゆれは許容する",
+    m.validateSelectionEchoes(probs, [
+      { problem_id: "p2", problem_text_echo: " 主観的幸福感の、現状値が " },
+    ]).ok.length === 1,
+  );
+  check(
+    "照合: 短すぎるエコーは通さない",
+    m.validateSelectionEchoes(probs, [{ problem_id: "p1", problem_text_echo: "指標" }])
+      .mismatched.length === 1,
+  );
+
+  // 退役を考慮した選定
+  const selection = [
+    { problem_id: "p1", selected: true },
+    { problem_id: "p5", selected: true },
+  ];
+  check(
+    "選定: 退役した問題は課題に数えない",
+    m.selectedActiveProblemIds(merged, selection).join() === "p1",
+  );
+} catch (e) {
+  check(`types.ts のバンドル/実行: ${e instanceof Error ? e.message : e}`, false);
+} finally {
+  rmSync(work, { recursive: true, force: true });
+}
+
+console.log(`\ncheck-issue-integrity: ${passed} passed, ${failed} failed`);
+process.exit(failed === 0 ? 0 : 1);

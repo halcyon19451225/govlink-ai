@@ -29,7 +29,10 @@ import {
 } from "@/lib/issue/prompt";
 import {
   ISSUE_STEP_ORDER,
+  activeProblems,
+  applyProblemMerges,
   calcIssueScore,
+  selectedActiveProblemIds,
   isFactorKey,
   isProblemOrigin,
   type FishboneBone,
@@ -38,9 +41,11 @@ import {
   type IssueMessage,
   type IssueStep,
   type ProblemItem,
+  type ProblemMerge,
   type RootCauseItem,
   type SelectionItem,
   type WhyStep,
+  validateSelectionEchoes,
 } from "@/lib/issue/types";
 import type { CrossAnalysis, SwotData } from "@/lib/asis/types";
 
@@ -107,6 +112,42 @@ function sanitizeProblems(arr: unknown, startIndex: number): ProblemItem[] {
   return out;
 }
 
+/** 統合の指示を取り込む（存在しないID・自己統合は applyProblemMerges 側で無視される） */
+function sanitizeMerges(arr: unknown): ProblemMerge[] {
+  if (!Array.isArray(arr)) return [];
+  const out: ProblemMerge[] = [];
+  for (const it of arr) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const into = str(o.into, 40);
+    const from = sanitizeStringArray(o.from, { maxItems: 10, maxLength: 40 });
+    if (!into || from.length === 0) continue;
+    const m: ProblemMerge = { into, from };
+    const text = str(o.text, 400);
+    if (text) m.text = text;
+    out.push(m);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+/** 既存の問題の文言・大骨の修正を取り込む（IDは変えない） */
+function applyProblemUpdates(problems: ProblemItem[], arr: unknown): ProblemItem[] {
+  if (!Array.isArray(arr)) return problems;
+  const byId = new Map(problems.map((p) => [p.id, { ...p }]));
+  for (const it of arr) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const pid = str(o.problem_id, 40);
+    const target = pid ? byId.get(pid) : undefined;
+    if (!target || target.retired) continue;
+    const text = str(o.text, 400);
+    if (text) target.text = text;
+    if (isFactorKey(o.factor)) target.factor = o.factor;
+  }
+  return problems.map((p) => byId.get(p.id) ?? p);
+}
+
 function num1to5(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
   if (!Number.isFinite(n)) return 3;
@@ -126,7 +167,7 @@ function sanitizeSelection(arr: unknown, validIds: Set<string>): SelectionItem[]
     const impact = num1to5(o.impact);
     const controllability = num1to5(o.controllability);
     const urgency = num1to5(o.urgency);
-    out.push({
+    const item: SelectionItem = {
       problem_id: pid,
       impact,
       controllability,
@@ -134,7 +175,10 @@ function sanitizeSelection(arr: unknown, validIds: Set<string>): SelectionItem[]
       score: calcIssueScore(impact, controllability, urgency),
       selected: o.selected === true,
       reason: str(o.reason, 300),
-    });
+    };
+    const echo = str(o.problem_text_echo, 200);
+    if (echo) item.problem_text_echo = echo;
+    out.push(item);
   }
   return out;
 }
@@ -238,7 +282,8 @@ function hasResolvedRootCause(data: IssueDialogueData): boolean {
 }
 
 function hasSelectedIssue(data: IssueDialogueData): boolean {
-  return data.selection.some((s) => s.selected);
+  // 退役（統合）した問題への選定は数えない
+  return selectedActiveProblemIds(data.problems, data.selection).length > 0;
 }
 
 function hasUsableHypothesis(data: IssueDialogueData): boolean {
@@ -486,11 +531,17 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
 
   // ── ツール出力を取り込む ────────────────────────
   const applyTurn = (input: Record<string, unknown>, current: IssueDialogueData) => {
+    // 統合 → 文言修正 → 追加 の順に適用する。
+    // 統合は行を消さず retired にするだけなので、既存の problem_id 参照は壊れない。
+    const merged = applyProblemMerges(current.problems, sanitizeMerges(input.merge_problems));
+    const updated = applyProblemUpdates(merged, input.problem_updates);
     const problems = [
-      ...current.problems,
-      ...sanitizeProblems(input.new_problems, current.problems.length),
+      ...updated,
+      // IDの採番は「これまでに存在した数」ベース。退役分も数に含めてIDを再利用しない
+      ...sanitizeProblems(input.new_problems, updated.length),
     ];
-    const validIds = new Set(problems.map((p) => p.id));
+    // 退役した問題は選別・真因・仮説の対象にしない
+    const validIds = new Set(activeProblems(problems).map((p) => p.id));
     const incomingSelection = sanitizeSelection(input.selection, validIds);
     const next: IssueDialogueData = {
       problems,
@@ -513,6 +564,83 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   let phase = guardPhase(parsePhase(input.phase, row.current_step), row.current_step, nextData);
   let suggestions = sanitizeStringArray(input.suggestions, { maxItems: 4, maxLength: 200 });
   let completed = (input.completed === true || phase === "done") && phase === "done";
+
+  // ── 選別の取り違えガード ──────────────────────────
+  // AIが返答の中で問題番号を振り直し、保存済みIDとの対応が崩れたまま selection を
+  // 出すと、意図と違う問題が「課題」として選定される（2026-08-29 に実際に発生）。
+  // problem_text_echo を保存済みの文言と突き合わせ、不一致があれば
+  // 正しい対応表を突きつけて selection を作り直させる（1回だけ）。
+  const echoCheck = validateSelectionEchoes(nextData.problems, nextData.selection);
+  if (echoCheck.mismatched.length > 0) {
+    const roster = activeProblems(nextData.problems)
+      .map((p) => `  ${p.id}: ${p.text}`)
+      .join("\n");
+    const wrong = echoCheck.mismatched
+      .map(
+        (m) =>
+          `  ${m.problem_id} … あなたの照合文「${m.echo || "（未記入）"}」／保存済みの文言「${
+            m.stored_text ?? "（そのIDは存在しないか退役済み）"
+          }」`,
+      )
+      .join("\n");
+    console.warn(
+      "[issue-dialogue/chat] selection のID取り違えを検出",
+      params.dialogueId,
+      echoCheck.mismatched.map((m) => m.problem_id).join(","),
+    );
+    try {
+      const fixUse = await callDialogueTool(
+        aiCtx,
+        systemText,
+        [
+          ...aiMessages,
+          { role: "assistant", content: reply },
+          {
+            role: "user",
+            content:
+              `（システムからの自動指示）selection の problem_id が保存済みの問題と対応していません。\n` +
+              `次の項目で食い違いがあります:\n${wrong}\n\n` +
+              `保存済みの問題候補は次のとおりです。**この対応表のIDと文言だけを使って**、\n` +
+              `selection を全件作り直してください（problem_text_echo には下の文言の冒頭をそのまま引き写す）。\n` +
+              `番号を振り直さず、問題をまとめる必要がある場合は merge_problems を使ってください。\n${roster}`,
+          },
+        ],
+        { tool: RECORD_ISSUE_TURN_TOOL, allowWebSearch: false },
+      );
+      if (fixUse) {
+        const fInput = fixUse.input as Record<string, unknown>;
+        const fixed = applyTurn(fInput, nextData);
+        const recheck = validateSelectionEchoes(fixed.problems, fixed.selection);
+        if (recheck.mismatched.length === 0) {
+          nextData = fixed;
+          reply = str(fInput.reply, 4000) || reply;
+          suggestions = sanitizeStringArray(fInput.suggestions, { maxItems: 4, maxLength: 200 });
+          phase = guardPhase(parsePhase(fInput.phase, row.current_step), row.current_step, nextData);
+          completed = phase === "done";
+        } else {
+          // まだ食い違う場合は、取り違えた項目を捨てて selection フェーズに留める
+          nextData = {
+            ...nextData,
+            selection: nextData.selection.filter(
+              (sel) => !recheck.mismatched.some((m) => m.problem_id === sel.problem_id),
+            ),
+          };
+          phase = "selection";
+          completed = false;
+        }
+      }
+    } catch {
+      // 回復に失敗した場合も、取り違えた選別は保存しない
+      nextData = {
+        ...nextData,
+        selection: nextData.selection.filter(
+          (sel) => !echoCheck.mismatched.some((m) => m.problem_id === sel.problem_id),
+        ),
+      };
+      phase = "selection";
+      completed = false;
+    }
+  }
 
   // ── 完了ガード ────────────────────────────────
   // 仮説が無い/真因が無いまま完了しようとした場合は、不足分の作成を促す

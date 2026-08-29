@@ -21,6 +21,7 @@ import {
   factorShortLabel,
   isProblemOrigin,
   issueScoreFormula,
+  selectedActiveProblemIds,
   type HypothesisItem,
   type IssueMessage,
   type IssueStep,
@@ -170,7 +171,10 @@ function ProblemList({
   return (
     <ul className="space-y-1.5">
       {problems.map((p) => {
-        const sel = selMap.get(p.id);
+        // 退役（統合）した問題は消さずに残す。IDを消すと選別・真因・仮説の参照が壊れるため、
+        // 「どこへ統合されたか」を見せたうえで選外扱いにする
+        const retired = p.retired === true;
+        const sel = retired ? undefined : selMap.get(p.id);
         return (
           <li
             key={p.id}
@@ -178,12 +182,21 @@ function ProblemList({
             style={{
               background: sel?.selected ? "#10b98112" : "var(--bg-primary)",
               border: `1px solid ${sel?.selected ? "#10b98140" : "var(--border)"}`,
+              opacity: retired ? 0.55 : 1,
             }}
           >
             <div className="flex items-start gap-1.5 flex-wrap">
               <span className="text-[10px] font-mono text-slate-500 shrink-0">{p.id}</span>
               <OriginBadge origin={p.origin} />
               {p.factor && <FactorBadge factor={p.factor} />}
+              {retired && (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0"
+                  style={{ background: "#94a3b825", color: "#94a3b8" }}
+                >
+                  {p.merged_into ? `${p.merged_into} に統合` : "統合済み"}
+                </span>
+              )}
               {sel?.selected && (
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0"
@@ -193,7 +206,12 @@ function ProblemList({
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-300 leading-snug mt-1">{p.text}</p>
+            <p
+              className="text-[11px] text-slate-300 leading-snug mt-1"
+              style={retired ? { textDecoration: "line-through" } : undefined}
+            >
+              {p.text}
+            </p>
             {!compact && p.source_text && (
               <p className="text-[10px] text-slate-500 leading-snug mt-1">
                 現状整理より: 「{p.source_text}」
@@ -1216,10 +1234,15 @@ export default function IssueHypothesisClient({
         style={{ borderTop: "1px solid var(--border)" }}
       >
         {[
-          { label: "問題", value: selected.problems.length, color: "#818cf8" },
+          {
+            label: "問題",
+            // 統合で退役したものは数えない（画面の件数とAIの認識をずらさない）
+            value: selected.problems.filter((p) => !p.retired).length,
+            color: "#818cf8",
+          },
           {
             label: "課題",
-            value: selected.selection.filter((s) => s.selected).length,
+            value: selectedActiveProblemIds(selected.problems, selected.selection).length,
             color: "#10b981",
           },
           {

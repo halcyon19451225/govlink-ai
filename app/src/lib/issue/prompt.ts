@@ -31,7 +31,16 @@ JIS Q 9024 の定義に従い、ここで扱う「問題」＝設定してある
 - factor には特性要因図の大骨となる PESTLE または 7S のキーを入れる。
 - 1ターンにつき2〜4件を提示し、担当者に過不足を確認する。
 - 担当者が挙げた問題は origin="dialogue" で追加する。
-- 合計5件以上の問題候補が出そろい、担当者が「他にない」と答えたら selection へ進む。`;
+- 合計5件以上の問題候補が出そろい、担当者が「他にない」と答えたら selection へ進む。
+
+**問題IDの扱い（厳守）**
+- 【これまでの整理内容】に出ている問題ID（p1, p2, …）が正本です。
+  **返答の中で番号を振り直さないでください。** 保存済みのIDと文言の対応が崩れると、
+  選別・真因・仮説が別の問題に付いてしまいます（実際に起きた事故です）。
+- 担当者から「AとBは同じなのでまとめてほしい」と言われたら、**merge_problems** で統合します。
+  返答の文章の中だけで統合したことにしてはいけません。統合された側のIDは退役し、
+  以降の一覧には出なくなります（IDの再利用はしません）。
+- 文言だけを直す場合は **problem_updates** を使い、IDは変えないでください。`;
 
 const SELECTION_GUIDE = `【フェーズ2: 課題の選別（selection）】
 洗い出した問題のうち「特に解決すべきもの」を選び出します（重点指向）。
@@ -46,7 +55,9 @@ JIS Q 9024 のパレート図・マトリックス図に相当する絞り込み
 スコアは 影響度×${SELECTION_WEIGHTS.impact} + 関与可能性×${SELECTION_WEIGHTS.controllability} + 緊急性×${SELECTION_WEIGHTS.urgency}（各軸を0〜100に正規化）で自動計算されます。
 reason には点数の根拠を1文で書いてください。
 
-- **すべての問題について selection を出力**してください（未評価を残さない）。
+- **すべての問題について selection を出力**してください（未評価を残さない。退役した問題は除く）。
+- 各項目の **problem_text_echo に、その問題IDの保存済み文言の冒頭をそのまま引き写して**ください。
+  IDの取り違えをサーバー側で検出するための照合用です（自分で言い換えた要約ではなく原文の引き写し）。
 - selected=true は上位2〜3件に絞ってください（全部やろうとしないのが重点指向です）。
 - 評価案を提示して担当者に確認し、修正があれば selection を作り直して再提出する。
 - 担当者が選定に同意したら rootcause へ進む。`;
@@ -165,9 +176,17 @@ function dataSummary(d: IssueDialogueData): string {
   lines.push(
     d.problems.length === 0
       ? "問題候補: （まだなし）"
-      : `問題候補:\n${d.problems
+      : `問題候補（このIDと文言が正本。番号を振り直さないこと）:\n${d.problems
+          .filter((p) => !p.retired)
           .map((p) => `  ${p.id} [${p.origin}${p.factor ? `/${p.factor}` : ""}] ${p.text}`)
-          .join("\n")}`,
+          .join("\n")}${
+          d.problems.some((p) => p.retired)
+            ? `\n  （統合により退役: ${d.problems
+                .filter((p) => p.retired)
+                .map((p) => `${p.id}→${p.merged_into ?? "?"}`)
+                .join("、")}。これらのIDは今後使わない）`
+            : ""
+        }`,
   );
 
   if (d.selection.length > 0) {
@@ -339,13 +358,53 @@ const SELECTION_ITEM_SCHEMA = {
   type: "object" as const,
   properties: {
     problem_id: { type: "string", description: "対象の問題ID（p1 など）" },
+    problem_text_echo: {
+      type: "string",
+      description:
+        "その問題IDに対応する【保存済みの問題候補】の文言の冒頭20文字程度をそのまま引き写す。IDの取り違えを検出するための照合用（必須）",
+    },
     impact: { type: "integer", minimum: 1, maximum: 5, description: "影響度" },
     controllability: { type: "integer", minimum: 1, maximum: 5, description: "関与可能性" },
     urgency: { type: "integer", minimum: 1, maximum: 5, description: "緊急性" },
     selected: { type: "boolean", description: "「課題」として選定するか" },
     reason: { type: "string", description: "評価の根拠（1文）" },
   },
-  required: ["problem_id", "impact", "controllability", "urgency", "selected", "reason"],
+  required: [
+    "problem_id",
+    "problem_text_echo",
+    "impact",
+    "controllability",
+    "urgency",
+    "selected",
+    "reason",
+  ],
+};
+
+const PROBLEM_MERGE_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    into: { type: "string", description: "統合先（残す方）の問題ID" },
+    from: {
+      type: "array",
+      description: "統合されて退役する問題ID（1件以上）",
+      items: { type: "string" },
+    },
+    text: {
+      type: "string",
+      description: "統合後の問題文（省略時は統合先の文言を維持）",
+    },
+  },
+  required: ["into", "from"],
+};
+
+const PROBLEM_UPDATE_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    problem_id: { type: "string", description: "対象の問題ID" },
+    text: { type: "string", description: "差し替える問題文" },
+    factor: { type: "string", description: "差し替える大骨（PESTLE / 7S）" },
+  },
+  required: ["problem_id"],
 };
 
 const ROOT_CAUSE_ITEM_SCHEMA = {
@@ -424,9 +483,21 @@ export const RECORD_ISSUE_TURN_TOOL: Anthropic.Tool = {
         description: "今回新たに洗い出した問題（problems フェーズ）。既出は含めない",
         items: PROBLEM_ITEM_SCHEMA,
       },
+      merge_problems: {
+        type: "array",
+        description:
+          "問題候補の統合（担当者から「まとめて」と言われた場合）。文章の上だけで統合したことにせず必ずこれを使う",
+        items: PROBLEM_MERGE_SCHEMA,
+      },
+      problem_updates: {
+        type: "array",
+        description: "既存の問題候補の文言・大骨の修正（IDは変えない）",
+        items: PROBLEM_UPDATE_SCHEMA,
+      },
       selection: {
         type: "array",
-        description: "課題の選別（selection フェーズ）。全問題ぶんをまとめて提出する",
+        description:
+          "課題の選別（selection フェーズ）。退役していない全問題ぶんをまとめて提出する",
         items: SELECTION_ITEM_SCHEMA,
       },
       root_causes: {
