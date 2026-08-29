@@ -26,7 +26,9 @@
     "check:report": "node scripts/check-report.mjs",
     "check:manual": "node scripts/check-manual.mjs",
     "check:libera": "node scripts/check-libera.mjs",
-    "check:asyncturn": "node scripts/check-async-turn.mjs"
+    "check:asyncturn": "node scripts/check-async-turn.mjs",
+    "migrate": "node scripts/run-migration.mjs",
+    "check:drift": "node scripts/check-schema-drift.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
