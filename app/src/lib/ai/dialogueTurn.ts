@@ -10,6 +10,9 @@ import { aiCreateMessage, type AiCallContext } from "@/lib/ai/gateway";
  * - web_search（Anthropic のサーバーツール）を併用する場合、tool_choice を
  *   固定できないため「最後は必ず記録ツールで締める」ようプロンプト側で指示し、
  *   ここでは締めなかった場合の強制リトライを受け持つ。
+ * - 出力が max_tokens で切られるとツール入力のJSONが途中で切れ、reply が欠けたまま
+ *   返ることがある（仮説フェーズは evidence/measures/verification を伴い長く、実際に発生した）。
+ *   その場合は予算を広げて1回だけ引き直す。
  * - サーバーツールの実行が長引くと stop_reason="pause_turn" で返るため、
  *   assistant の内容を積んで続きを要求する。
  */
@@ -21,6 +24,8 @@ export interface CallDialogueToolOptions {
   /** web_search を許可するか（false で記録ツールに tool_choice を固定） */
   allowWebSearch: boolean;
   maxTokens?: number;
+  /** 内部用: max_tokens で切られて引き直した後かどうか（無限ループ防止） */
+  retriedForLength?: boolean;
   /** web_search の1ターンあたり最大回数 */
   maxSearchUses?: number;
 }
@@ -31,7 +36,9 @@ export async function callDialogueTool(
   inputMessages: Anthropic.MessageParam[],
   opts: CallDialogueToolOptions,
 ): Promise<Anthropic.ToolUseBlock | null> {
-  const maxTokens = opts.maxTokens ?? 2500;
+  // 既定を 2500 → 4000。2500 は真因分析・仮説フェーズの構造化出力には足りず、
+  // ツール入力が途中で切れて空の返答が保存される事故が起きた（2026-08-30）
+  const maxTokens = opts.maxTokens ?? 4000;
 
   const tools: NonNullable<Anthropic.MessageCreateParams["tools"]> = opts.allowWebSearch
     ? [
@@ -73,9 +80,26 @@ export async function callDialogueTool(
     });
   }
 
+  // 出力上限で切られた場合、ツール入力のJSONが不完全なまま返る。
+  // 中身を信用せず、予算を倍にして引き直す（1回だけ）。
+  if (response.stop_reason === "max_tokens" && !opts.retriedForLength) {
+    console.warn(
+      `[callDialogueTool] max_tokens(${maxTokens}) で打ち切られたため引き直します`,
+      ctx.taskType,
+    );
+    return callDialogueTool(ctx, systemText, inputMessages, {
+      ...opts,
+      maxTokens: Math.min(maxTokens * 2, 16000),
+      retriedForLength: true,
+    });
+  }
+
   const toolUse = response.content.find(
     (c): c is Anthropic.ToolUseBlock => c.type === "tool_use" && c.name === opts.tool.name,
   );
+  // 引き直しても上限で切れたなら、壊れた出力を返さず null にする
+  // （呼び出し側が失敗として扱い、担当者は「再試行」で引き直せる）
+  if (toolUse && response.stop_reason === "max_tokens") return null;
   if (toolUse) return toolUse;
 
   // 記録ツールで締めなかった場合は web_search 抜きで強制リトライ

@@ -425,7 +425,13 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   }
 
   const input = toolUse.input as Record<string, unknown>;
-  let reply = typeof input.reply === "string" ? input.reply : "（応答を取得できませんでした）";
+  // 返答が空のまま保存すると、対話に空のターンが残り担当者は再試行もできない。
+  // 失敗として扱い、発言を残したまま「再試行」できる状態にする。
+  const replyText = typeof input.reply === "string" ? input.reply.trim() : "";
+  if (!replyText) {
+    throw new Error("AIの返答が空でした。再試行してください");
+  }
+  let reply = replyText;
   const parsePhase = (v: unknown, fallback: AsisStep): AsisStep =>
     v === "external" || v === "internal" || v === "cross" || v === "done" ? v : fallback;
   let phase = parsePhase(input.phase, asis.current_step);

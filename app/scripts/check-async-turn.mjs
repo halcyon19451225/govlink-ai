@@ -105,6 +105,31 @@ for (const file of clients) {
   check(`${label}: 再試行ボタンがある`, src.includes('action: "retry"'));
 }
 
+// ── 4.5 出力上限と空の返答の扱い ─────────────────
+// max_tokens で切られるとツール入力のJSONが途中で切れ、reply が欠けたまま返る。
+// それを「（応答を取得できませんでした）」として保存すると、対話に空のターンが残り
+// 担当者は再試行もできない（2026-08-30 に仮説フェーズで発生）。
+const turnSrc = read(join(APP_ROOT, "src", "lib", "ai", "dialogueTurn.ts"));
+check("dialogueTurn: max_tokens の打ち切りを検出する", turnSrc.includes('stop_reason === "max_tokens"'));
+check("dialogueTurn: 予算を広げて引き直す", turnSrc.includes("retriedForLength"));
+check("dialogueTurn: 引き直しても切れたら null を返す", /if \(toolUse && response\.stop_reason === "max_tokens"\) return null;/.test(turnSrc));
+check("dialogueTurn: 既定の出力予算が 2500 より広い", /opts\.maxTokens \?\? (\d+)/.test(turnSrc) && Number(RegExp.$1) > 2500);
+
+for (const [table, file] of Object.entries(routes)) {
+  const label = file.replace(APP_ROOT + "/", "");
+  const src = read(file);
+  check(`${label}: 空の返答を保存せず失敗にする`, src.includes("AIの返答が空でした"));
+  check(
+    `${label}: 空の返答のプレースホルダを保存しない`,
+    !src.includes("（応答を取得できませんでした）"),
+  );
+  void table;
+}
+check(
+  "issue-dialogue: フェーズごとに出力予算を変える（仮説は長い）",
+  read(routes.issue_dialogues).includes("MAX_TOKENS_BY_STEP"),
+);
+
 // ── 5. turnClient.ts の純粋ロジック ───────────────────
 const work = mkdtempSync(join(tmpdir(), "asyncturn-"));
 const outFile = join(work, "turnClient.mjs");

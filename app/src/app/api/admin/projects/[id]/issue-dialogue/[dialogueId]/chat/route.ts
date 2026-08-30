@@ -61,6 +61,19 @@ const bodySchema = z.object({
 
 const TURN_TABLE = "issue_dialogues" as const;
 
+/**
+ * フェーズごとの出力予算。
+ * 仮説フェーズは1件ごとに statement / evidence / measures / verification を伴い、
+ * 3件ぶんだと既定の枠では収まらない（2026-08-30 に切り捨てが発生した）。
+ */
+const MAX_TOKENS_BY_STEP: Record<IssueStep, number> = {
+  problems: 4000,
+  selection: 5000,
+  rootcause: 7000,
+  hypothesis: 12000,
+  done: 5000,
+};
+
 interface DialogueRow {
   id: string;
   turn_status: "idle" | "processing" | "error";
@@ -543,6 +556,7 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
     toolUse = await callDialogueTool(aiCtx, systemText, aiMessages, {
       tool: RECORD_ISSUE_TURN_TOOL,
       allowWebSearch: true,
+      maxTokens: MAX_TOKENS_BY_STEP[row.current_step],
     });
   } catch {
     throw new Error("AIとの通信に失敗しました");
@@ -581,7 +595,13 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   };
 
   const input = toolUse.input as Record<string, unknown>;
-  let reply = str(input.reply, 4000) || "（応答を取得できませんでした）";
+  // 返答が空のまま保存すると、対話に空のターンが残り担当者は再試行もできない。
+  // 失敗として扱い、発言を残したまま「再試行」できる状態にする。
+  const replyText = str(input.reply, 4000);
+  if (!replyText) {
+    throw new Error("AIの返答が空でした。再試行してください");
+  }
+  let reply = replyText;
   let nextData = applyTurn(input, data);
   let phase = guardPhase(parsePhase(input.phase, row.current_step), row.current_step, nextData);
   let suggestions = sanitizeStringArray(input.suggestions, { maxItems: 4, maxLength: 200 });

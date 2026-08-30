@@ -314,7 +314,13 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   }
 
   const input = toolUse.input as Record<string, unknown>;
-  const reply = str(input.reply, 4000) || "（応答を取得できませんでした）";
+  // 返答が空のまま保存すると、対話に空のターンが残り担当者は再試行もできない。
+  // 失敗として扱い、発言を残したまま「再試行」できる状態にする。
+  const replyText = str(input.reply, 4000);
+  if (!replyText) {
+    throw new Error("AIの返答が空でした。再試行してください");
+  }
+  const reply = replyText;
 
   // proposals は id 単位で上書きマージ
   const incoming = sanitizeProposals(input.proposals);
