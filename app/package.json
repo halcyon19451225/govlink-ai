@@ -30,7 +30,8 @@
     "migrate": "node scripts/run-migration.mjs",
     "check:drift": "node scripts/check-schema-drift.mjs",
     "check:issue": "node scripts/check-issue-integrity.mjs",
-    "check:copy": "node scripts/check-copy-transcript.mjs"
+    "check:copy": "node scripts/check-copy-transcript.mjs",
+    "ai:errors": "node scripts/show-ai-errors.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

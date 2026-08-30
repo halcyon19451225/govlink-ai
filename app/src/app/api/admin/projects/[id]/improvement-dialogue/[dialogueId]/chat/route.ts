@@ -306,8 +306,12 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
       tool: RECORD_IMPROVEMENT_TURN_TOOL,
       allowWebSearch: true,
     });
-  } catch {
-    throw new Error("AIとの通信に失敗しました");
+  } catch (e) {
+    // 原因（レート制限・過負荷・タイムアウト等）を turn_error に残す。
+    // 「通信に失敗しました」だけでは担当者も開発側も切り分けられないため。
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[dialogue/chat] AI呼び出しに失敗", detail);
+    throw new Error(`AIとの通信に失敗しました（${detail.slice(0, 300)}）`);
   }
   if (!toolUse) {
     throw new Error("AI応答の解析に失敗しました");

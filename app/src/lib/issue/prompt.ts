@@ -246,6 +246,14 @@ function dataSummary(d: IssueDialogueData): string {
 }
 
 // ─── システムプロンプト ──────────────────────────
+/**
+ * システムプロンプトを組み立てる。
+ *
+ * **並び順はプロンプトキャッシュの効き方を決める。**
+ * 対話中ずっと変わらないもの（役割・工程ガイド・プロジェクト情報・現状整理・参照ナレッジ）を
+ * stable に、毎ターン変わるもの（現在のフェーズ・これまでの整理内容）を volatile に置く。
+ * 混ぜて1本の文字列にすると、可変部より前しか一致せず読み出しが当たらない。
+ */
 export function buildIssueSystemPrompt(opts: {
   projectTitle: string;
   kpiContext: IssueKpiContext | null;
@@ -253,14 +261,14 @@ export function buildIssueSystemPrompt(opts: {
   currentStep: string;
   data: IssueDialogueData;
   knowledgeContext?: string;
-}): string {
+}): { stable: string; volatile: string } {
   const { projectTitle, kpiContext, asisContext, currentStep, data, knowledgeContext } = opts;
 
   const kpiBlock = kpiContext ? `\n\n【${buildIssueKpiText(kpiContext)}】` : "";
   const asisBlock = asisContext ? `\n\n${asisContext}` : "\n\n（現状整理の結果は未連携です。担当者への質問で補ってください）";
   const knowledgeBlock = knowledgeContext ? `\n\n${knowledgeContext}\n` : "";
 
-  return `あなたは日本の地方自治体の政策アナリストです。
+  const stable = `あなたは日本の地方自治体の政策アナリストです。
 担当者と対話しながら「課題仮説設定」を進めるファシリテーターを務めます。
 対象プロジェクト: ${projectTitle}${kpiBlock}${asisBlock}
 
@@ -273,7 +281,6 @@ export function buildIssueSystemPrompt(opts: {
 
 分析は次の順で進みます:
 problems（問題の洗い出し）→ selection（課題の選別）→ rootcause（真因分析）→ hypothesis（仮説の定式化）→ done
-現在のフェーズ: ${currentStep}（${ISSUE_STEP_LABEL[currentStep as keyof typeof ISSUE_STEP_LABEL] ?? currentStep}）
 
 ${PROBLEMS_GUIDE}
 
@@ -313,12 +320,20 @@ ${HYPOTHESIS_GUIDE}
 特性要因図の大骨 PESTLE: ${PESTLE_LEGEND}
 特性要因図の大骨 7S: ${SEVEN_S_LEGEND}
 
-【これまでに整理済みの内容】
-${dataSummary(data)}
 ${knowledgeBlock}
 応答の最後は必ず record_issue_turn ツールで締めくくってください（web_search を使った
 場合も、最終的な応答は必ず record_issue_turn で返します）。reply には担当者への
 メッセージ（次の質問または締めくくり）を入れてください。`;
+
+  // ここから下は毎ターン変わる。キャッシュの区切りより後ろに置く
+  const volatile = `現在のフェーズ: ${currentStep}（${
+    ISSUE_STEP_LABEL[currentStep as keyof typeof ISSUE_STEP_LABEL] ?? currentStep
+  }）
+
+【これまでに整理済みの内容】
+${dataSummary(data)}`;
+
+  return { stable, volatile };
 }
 
 // ─── 対話開始時の最初のメッセージ ────────────────────

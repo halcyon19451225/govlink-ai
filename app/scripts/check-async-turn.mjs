@@ -130,6 +130,35 @@ check(
   read(routes.issue_dialogues).includes("MAX_TOKENS_BY_STEP"),
 );
 
+// ── 4.6 プロンプトキャッシュの設計 ───────────────
+// システムプロンプトを1本にまとめて末尾に区切りを置くと、毎ターン変わる
+// 「これまでの整理内容」のせいで読み出しが一度も当たらず、書き込みの割増だけを払う
+// （2026-08-30 まで実際にその状態だった）。不変部と可変部を分けることを固定する。
+check("dialogueTurn: 不変部と可変部を分けて受け取れる", turnSrc.includes("DialogueSystem"));
+check("dialogueTurn: 不変部だけにキャッシュの区切りを置く", turnSrc.includes("buildSystemBlocks"));
+check("dialogueTurn: 対話履歴にもキャッシュの区切りを置く", turnSrc.includes("withHistoryCache"));
+check("dialogueTurn: 保持時間を1時間にする（既定の5分では間隔が空くと外れる）", turnSrc.includes('ttl: "1h"'));
+
+for (const [name, file] of [
+  ["現状整理", join(APP_ROOT, "src", "lib", "asis", "prompt.ts")],
+  ["課題仮説設定", join(APP_ROOT, "src", "lib", "issue", "prompt.ts")],
+]) {
+  const src = read(file);
+  check(`${name}: システムプロンプトを stable / volatile で返す`, /\{ stable, volatile \}/.test(src));
+  check(`${name}: 可変部に現在のフェーズを置く`, /const volatile = `現在のフェーズ/.test(src));
+  // 整理済みの内容（毎ターン変わる）が可変部の側に来ていること＝位置で判定する
+  const volatileAt = src.indexOf("const volatile = `現在のフェーズ");
+  const summaryAt = Math.max(src.indexOf("${dataSummary(data)}"), src.indexOf("${swotSummary(swot)}"));
+  check(
+    `${name}: 整理済みの内容を可変部に置いている`,
+    volatileAt > 0 && summaryAt > volatileAt,
+  );
+}
+check(
+  "現状整理: 共通ヘルパーを使う（写しを持たない）",
+  read(join(API, "asis-analysis", "[asisId]", "chat", "route.ts")).includes("callDialogueTool("),
+);
+
 // ── 5. turnClient.ts の純粋ロジック ───────────────────
 const work = mkdtempSync(join(tmpdir(), "asyncturn-"));
 const outFile = join(work, "turnClient.mjs");

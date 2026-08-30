@@ -3,7 +3,8 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import type Anthropic from "@anthropic-ai/sdk";
-import { aiCreateMessage, type AiCallContext } from "@/lib/ai/gateway";
+import { type AiCallContext } from "@/lib/ai/gateway";
+import { callDialogueTool, type DialogueSystem } from "@/lib/ai/dialogueTurn";
 import {
   BUSY_ERROR,
   NOTHING_TO_RETRY_ERROR,
@@ -143,59 +144,22 @@ function sanitizeSuggestions(arr: unknown): string[] {
     .slice(0, 4);
 }
 
-// Anthropic API 呼び出し。web_search（サーバーツール）利用時の pause_turn 継続と、
-// record_turn が返らなかった場合の強制リトライを面倒見る。
+/**
+ * 対話ターンの呼び出しは共通ヘルパー（lib/ai/dialogueTurn.ts）に寄せる。
+ * ここに同じ処理の写しを置いていたため、出力上限の扱いやプロンプトキャッシュの
+ * 改善が現状整理だけ取り残されていた（2026-08-30 に統合）。
+ */
 async function callRecordTurn(
   ctx: AiCallContext,
-  systemText: string,
+  system: DialogueSystem,
   aiMessages: Anthropic.MessageParam[],
   opts: { allowWebSearch: boolean },
 ): Promise<Anthropic.ToolUseBlock | null> {
-  const tools: NonNullable<Anthropic.MessageCreateParams["tools"]> = opts.allowWebSearch
-    ? [
-        RECORD_TURN_TOOL,
-        { type: "web_search_20250305", name: "web_search", max_uses: 2 },
-      ]
-    : [RECORD_TURN_TOOL];
-
-  const system = [
-    { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const } },
-  ];
-
-  let messages: Anthropic.MessageParam[] = aiMessages;
-  let response = await aiCreateMessage(ctx, {
-    model: "claude-sonnet-4-6",
-    max_tokens: 2000,
-    system,
-    tools,
-    // web_search を使わせるため強制はしない（プロンプトで record_turn 締めを指示済み）
-    tool_choice: opts.allowWebSearch ? { type: "auto" } : { type: "tool", name: "record_turn" },
-    messages,
+  return callDialogueTool(ctx, system, aiMessages, {
+    tool: RECORD_TURN_TOOL,
+    allowWebSearch: opts.allowWebSearch,
+    maxTokens: 5000,
   });
-
-  // サーバーツール実行が長引くと pause_turn で返るため、続きを要求する（最大3回）
-  for (let i = 0; i < 3 && response.stop_reason === "pause_turn"; i++) {
-    messages = [...messages, { role: "assistant", content: response.content }];
-    response = await aiCreateMessage(ctx, {
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      system,
-      tools,
-      tool_choice: { type: "auto" },
-      messages,
-    });
-  }
-
-  const toolUse = response.content.find(
-    (c): c is Anthropic.ToolUseBlock => c.type === "tool_use" && c.name === "record_turn",
-  );
-  if (toolUse) return toolUse;
-
-  // record_turn で締めなかった場合: web_search なしで強制リトライ
-  if (opts.allowWebSearch) {
-    return callRecordTurn(ctx, systemText, aiMessages, { allowWebSearch: false });
-  }
-  return null;
 }
 
 /**
@@ -417,8 +381,12 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
     toolUse = await callRecordTurn(aiCtx, systemText, aiMessages, {
       allowWebSearch: true,
     });
-  } catch {
-    throw new Error("AIとの通信に失敗しました");
+  } catch (e) {
+    // 原因（レート制限・過負荷・タイムアウト等）を turn_error に残す。
+    // 「通信に失敗しました」だけでは担当者も開発側も切り分けられないため。
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[dialogue/chat] AI呼び出しに失敗", detail);
+    throw new Error(`AIとの通信に失敗しました（${detail.slice(0, 300)}）`);
   }
   if (!toolUse) {
     throw new Error("AI応答の解析に失敗しました");

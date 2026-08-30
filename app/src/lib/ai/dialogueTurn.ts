@@ -13,10 +13,56 @@ import { aiCreateMessage, type AiCallContext } from "@/lib/ai/gateway";
  * - 出力が max_tokens で切られるとツール入力のJSONが途中で切れ、reply が欠けたまま
  *   返ることがある（仮説フェーズは evidence/measures/verification を伴い長く、実際に発生した）。
  *   その場合は予算を広げて1回だけ引き直す。
+ * - プロンプトキャッシュ: システムプロンプトを「不変部（役割・工程ガイド・
+ *   プロジェクト情報・参照ナレッジ）」と「可変部（現在のフェーズ・これまでの整理内容）」に
+ *   分け、不変部にだけ区切りを置く。1つのブロックにまとめて末尾に区切りを置くと、
+ *   毎ターン中身が変わるため読み出しが一度も当たらず、書き込みの割増だけを払うことになる
+ *   （2026-08-30 まで実際にその状態だった）。履歴は末尾に積まれるだけなので前半も再利用できる。
+ *   保持時間は1時間。担当者が回答を考える間隔（実測で1〜23分）は既定の5分では外れる。
  * - サーバーツールの実行が長引くと stop_reason="pause_turn" で返るため、
  *   assistant の内容を積んで続きを要求する。
  */
 export const DIALOGUE_MODEL = "claude-sonnet-4-6";
+
+/**
+ * システムプロンプト。
+ * 文字列で渡すと従来どおり全体を1ブロックとして扱う（キャッシュは効きにくい）。
+ * 分けて渡すと不変部だけをキャッシュ対象にできる。
+ */
+export type DialogueSystem = string | { stable: string; volatile?: string };
+
+const CACHE: Anthropic.CacheControlEphemeral = { type: "ephemeral", ttl: "1h" };
+
+/** system ブロックを組み立てる（不変部にだけキャッシュの区切りを置く） */
+function buildSystemBlocks(system: DialogueSystem): Anthropic.TextBlockParam[] {
+  if (typeof system === "string") {
+    return [{ type: "text", text: system, cache_control: CACHE }];
+  }
+  const blocks: Anthropic.TextBlockParam[] = [
+    { type: "text", text: system.stable, cache_control: CACHE },
+  ];
+  const volatile = system.volatile?.trim();
+  if (volatile) blocks.push({ type: "text", text: volatile });
+  return blocks;
+}
+
+/**
+ * 対話履歴にキャッシュの区切りを1つ置く。
+ * 履歴は末尾に追加されるだけなので、直近のやり取りの手前で区切っておくと
+ * 次のターン以降も前半がそのまま再利用される。
+ */
+function withHistoryCache(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  // 短い履歴はキャッシュの最小トークン数に届かず、書き込みの割増だけ損になる
+  if (messages.length < 5) return messages;
+  const idx = messages.length - 3;
+  return messages.map((m, i) => {
+    if (i !== idx || typeof m.content !== "string" || m.content.length === 0) return m;
+    return {
+      role: m.role,
+      content: [{ type: "text" as const, text: m.content, cache_control: CACHE }],
+    };
+  });
+}
 
 export interface CallDialogueToolOptions {
   /** 記録用ツール（record_turn / record_issue_turn） */
@@ -32,7 +78,7 @@ export interface CallDialogueToolOptions {
 
 export async function callDialogueTool(
   ctx: AiCallContext,
-  systemText: string,
+  system: DialogueSystem,
   inputMessages: Anthropic.MessageParam[],
   opts: CallDialogueToolOptions,
 ): Promise<Anthropic.ToolUseBlock | null> {
@@ -51,15 +97,13 @@ export async function callDialogueTool(
       ]
     : [opts.tool];
 
-  const system = [
-    { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const } },
-  ];
+  const systemBlocks = buildSystemBlocks(system);
 
-  let messages: Anthropic.MessageParam[] = inputMessages;
+  let messages: Anthropic.MessageParam[] = withHistoryCache(inputMessages);
   let response = await aiCreateMessage(ctx, {
     model: DIALOGUE_MODEL,
     max_tokens: maxTokens,
-    system,
+    system: systemBlocks,
     tools,
     tool_choice: opts.allowWebSearch
       ? { type: "auto" }
@@ -73,7 +117,7 @@ export async function callDialogueTool(
     response = await aiCreateMessage(ctx, {
       model: DIALOGUE_MODEL,
       max_tokens: maxTokens,
-      system,
+      system: systemBlocks,
       tools,
       tool_choice: { type: "auto" },
       messages,
@@ -87,7 +131,7 @@ export async function callDialogueTool(
       `[callDialogueTool] max_tokens(${maxTokens}) で打ち切られたため引き直します`,
       ctx.taskType,
     );
-    return callDialogueTool(ctx, systemText, inputMessages, {
+    return callDialogueTool(ctx, system, inputMessages, {
       ...opts,
       maxTokens: Math.min(maxTokens * 2, 16000),
       retriedForLength: true,
@@ -104,7 +148,7 @@ export async function callDialogueTool(
 
   // 記録ツールで締めなかった場合は web_search 抜きで強制リトライ
   if (opts.allowWebSearch) {
-    return callDialogueTool(ctx, systemText, inputMessages, {
+    return callDialogueTool(ctx, system, inputMessages, {
       ...opts,
       allowWebSearch: false,
     });

@@ -123,6 +123,14 @@ export function buildKpiContextText(k: KpiContext): string {
 この指標のギャップが生じている要因を現状整理を通じて明らかにします。`;
 }
 
+/**
+ * システムプロンプトを組み立てる。
+ *
+ * **並び順はプロンプトキャッシュの効き方を決める。**
+ * 対話中ずっと変わらないもの（役割・工程ガイド・プロジェクト情報・参照ナレッジ・
+ * コーパス接地）を stable に、毎ターン変わるもの（現在のフェーズ・整理済みのSWOT）を
+ * volatile に置く。混ぜて1本にすると可変部より前しか一致せず読み出しが当たらない。
+ */
 export function buildSystemPrompt(opts: {
   projectTitle: string;
   kpiLabel: string | null;
@@ -132,7 +140,7 @@ export function buildSystemPrompt(opts: {
   knowledgeContext?: string;
   /** 横断コーパスの接地ブロック（X4・assistモードのとき注入） */
   corpusBlock?: string | null;
-}): string {
+}): { stable: string; volatile: string } {
   const { projectTitle, kpiLabel, kpiContext, currentStep, swot, knowledgeContext, corpusBlock } =
     opts;
   const target = kpiLabel
@@ -150,13 +158,12 @@ export function buildSystemPrompt(opts: {
   （自地域値と全国値の比較）を材料にしてください。使うときは「（コーパス: ◯◯）」と出所を添えて、
   当自治体との規模・体制の違いを確認してください。\n`
     : "";
-  return `あなたは日本の地方自治体の政策アナリストです。
+  const stable = `あなたは日本の地方自治体の政策アナリストです。
 担当者と対話しながら「現状整理（As-Is分析）」を進めるファシリテーターを務めます。
 対象プロジェクト: ${projectTitle}
 分析対象: ${target}${kpiBlock}
 
 分析は次の順で進みます: external（外部環境/PESTLE）→ internal（内部環境/7S）→ cross（クロス分析）→ done。
-現在のフェーズ: ${currentStep}
 
 ${EXTERNAL_GUIDE}
 
@@ -192,12 +199,18 @@ suggestions フィールドで必ず添えてください。書き方のルー�
 PESTLE: ${PESTLE_LEGEND}
 7S: ${SEVEN_S_LEGEND}
 
-【これまでに整理済みのSWOT】
-${swotSummary(swot)}
 ${knowledgeBlock}${corpusGroundingBlock}
 応答の最後は必ず record_turn ツールで締めくくってください（web_search を使った場合も、
 最終的な応答は必ず record_turn で返します）。reply には担当者へのメッセージ
 （次の質問または締めくくり）を入れてください。`;
+
+  // ここから下は毎ターン変わる。キャッシュの区切りより後ろに置く
+  const volatile = `現在のフェーズ: ${currentStep}
+
+【これまでに整理済みのSWOT】
+${swotSummary(swot)}`;
+
+  return { stable, volatile };
 }
 
 // 対話開始時の最初のメッセージ（external フェーズ）
