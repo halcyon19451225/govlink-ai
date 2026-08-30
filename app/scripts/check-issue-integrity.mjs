@@ -103,6 +103,9 @@ const clientSrc = read(
 );
 check("画面: 統合済みバッジを出す", clientSrc.includes("に統合"));
 check("画面: 件数から退役分を除く", clientSrc.includes("!p.retired"));
+// 出所（引用原文）はトレーサビリティの証跡。完了を待たず対話中に確認できること
+check("画面: 対話中でも出所を開ける", clientSrc.includes("出所を表示"));
+check("画面: 出所トグルが ProblemList の compact を切り替える", clientSrc.includes("compact={!showSource}"));
 
 // ── 5. 純粋ロジックの実挙動 ─────────────────────
 const work = mkdtempSync(join(tmpdir(), "issue-integrity-"));

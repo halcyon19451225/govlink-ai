@@ -922,6 +922,9 @@ export default function IssueHypothesisClient({
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 出所（現状整理からの引用原文）の表示。トレーサビリティの確認は対話の途中でこそ必要なので、
+  // 完了後の結果ビューを待たずにサイドバーからも開けるようにする
+  const [showSource, setShowSource] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newKpiId, setNewKpiId] = useState("");
   const [creating, setCreating] = useState(false);
@@ -1285,9 +1288,27 @@ export default function IssueHypothesisClient({
       </div>
 
       <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-        <p className="text-[11px] font-semibold text-slate-400 mb-1.5">洗い出した問題</p>
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-[11px] font-semibold text-slate-400">洗い出した問題</p>
+          <button
+            type="button"
+            onClick={() => setShowSource((v) => !v)}
+            className="text-[10px] px-1.5 py-0.5 rounded transition-colors hover:brightness-125"
+            style={{
+              color: showSource ? "#818cf8" : "#94a3b8",
+              border: `1px solid ${showSource ? "#818cf850" : "var(--border)"}`,
+            }}
+            aria-pressed={showSource}
+          >
+            {showSource ? "出所を隠す" : "出所を表示"}
+          </button>
+        </div>
         <div className="max-h-64 overflow-y-auto pr-1">
-          <ProblemList problems={selected.problems} selection={selected.selection} compact />
+          <ProblemList
+            problems={selected.problems}
+            selection={selected.selection}
+            compact={!showSource}
+          />
         </div>
       </div>
 
