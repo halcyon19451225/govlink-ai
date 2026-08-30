@@ -91,6 +91,10 @@ interface UsageLogEntry {
   model: string;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  /** プロンプトキャッシュへ書き込んだ入力トークン数（割増課金） */
+  cacheWriteTokens?: number | null;
+  /** プロンプトキャッシュから読んだ入力トークン数（約1割の単価） */
+  cacheReadTokens?: number | null;
   latencyMs: number;
   status: "ok" | "error";
   errorMessage?: string | null;
@@ -102,13 +106,16 @@ async function logUsage(entry: UsageLogEntry): Promise<void> {
     await query(
       `INSERT INTO ai_usage_logs
          (task_type, provider, model, input_tokens, output_tokens,
+          cache_write_tokens, cache_read_tokens,
           latency_ms, status, error_message, project_id, municipality_id)
-       VALUES ($1, 'claude', $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($1, 'claude', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         entry.ctx.taskType,
         entry.model,
         entry.inputTokens ?? null,
         entry.outputTokens ?? null,
+        entry.cacheWriteTokens ?? null,
+        entry.cacheReadTokens ?? null,
         entry.latencyMs,
         entry.status,
         entry.errorMessage ? entry.errorMessage.slice(0, 500) : null,
@@ -157,6 +164,8 @@ export async function aiCreateMessage(
       model,
       inputTokens: msg.usage?.input_tokens ?? null,
       outputTokens: msg.usage?.output_tokens ?? null,
+      cacheWriteTokens: msg.usage?.cache_creation_input_tokens ?? null,
+      cacheReadTokens: msg.usage?.cache_read_input_tokens ?? null,
       latencyMs: Date.now() - t0,
       status: "ok",
     });
@@ -190,6 +199,8 @@ export function aiStreamMessage(ctx: AiCallContext, params: StreamParams) {
         model,
         inputTokens: msg.usage?.input_tokens ?? null,
         outputTokens: msg.usage?.output_tokens ?? null,
+        cacheWriteTokens: msg.usage?.cache_creation_input_tokens ?? null,
+        cacheReadTokens: msg.usage?.cache_read_input_tokens ?? null,
         latencyMs: Date.now() - t0,
         status: "ok",
       }),

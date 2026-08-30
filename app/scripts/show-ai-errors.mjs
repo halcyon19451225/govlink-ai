@@ -51,7 +51,8 @@ try {
   const where = includeOk ? "" : "WHERE status <> 'ok'";
   const { rows } = await pool.query(
     `SELECT occurred_at, task_type, model, status,
-            input_tokens, output_tokens, latency_ms, error_message
+            input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
+            latency_ms, error_message
      FROM ai_usage_logs
      ${where}
      ORDER BY occurred_at DESC
@@ -64,9 +65,14 @@ try {
   }
   for (const r of rows) {
     const when = new Date(r.occurred_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+    // キャッシュの内訳。read が大きいほど入力コストが下がっている
+    const cache =
+      r.cache_read_tokens != null || r.cache_write_tokens != null
+        ? ` cache(read=${r.cache_read_tokens ?? 0} write=${r.cache_write_tokens ?? 0})`
+        : "";
     const io =
       r.input_tokens != null || r.output_tokens != null
-        ? ` in=${r.input_tokens ?? "-"} out=${r.output_tokens ?? "-"}`
+        ? ` in=${r.input_tokens ?? "-"} out=${r.output_tokens ?? "-"}${cache}`
         : "";
     console.log(
       `\n[${when}] ${r.status.toUpperCase()} ${r.task_type} / ${r.model} ` +

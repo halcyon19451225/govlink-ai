@@ -154,6 +154,17 @@ for (const [name, file] of [
     volatileAt > 0 && summaryAt > volatileAt,
   );
 }
+// キャッシュの効き具合はログでしか確かめられない。
+// input_tokens だけではキャッシュ読み出し・書き込みと区別できず、
+// 「効いているつもり」を検証できない（2026-08-30 に実際に判断できなかった）。
+const gatewaySrc = read(join(APP_ROOT, "src", "lib", "ai", "gateway.ts"));
+check("gateway: キャッシュ書き込みトークンを記録する", gatewaySrc.includes("cache_creation_input_tokens"));
+check("gateway: キャッシュ読み出しトークンを記録する", gatewaySrc.includes("cache_read_input_tokens"));
+check(
+  "056: ai_usage_logs にキャッシュのトークン列がある",
+  read(join(REPO_ROOT, "infra", "migrations", "056_ai_cache_tokens.sql")).includes("cache_read_tokens"),
+);
+
 check(
   "現状整理: 共通ヘルパーを使う（写しを持たない）",
   read(join(API, "asis-analysis", "[asisId]", "chat", "route.ts")).includes("callDialogueTool("),
