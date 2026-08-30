@@ -14,9 +14,13 @@ const nextConfig = {
       '/manual/[topicId]': ['./src/content/manual/**/*'],
       '/api/manual/[topicId]': ['./src/content/manual/**/*'],
     },
+    // Next 14 でのキー名は experimental.serverComponentsExternalPackages。
+    // 素の serverExternalPackages（Next 15 の書き方）はここでは認識されず、
+    // 「Unrecognized key(s)」の警告とともに黙って無視される
+    // （＝ pdf-parse などがバンドルされ、本番の本文抽出が壊れうる）。
+    serverComponentsExternalPackages: ['pdf-parse', 'mammoth', 'pdfjs-dist'],
   },
   transpilePackages: ['three'],
-  serverExternalPackages: ['pdf-parse', 'mammoth', 'pdfjs-dist'],
   images: {
     remotePatterns: [
       {

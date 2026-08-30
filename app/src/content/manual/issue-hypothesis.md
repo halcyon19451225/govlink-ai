@@ -5,11 +5,11 @@ menu_path: /projects/[id]/issue-hypothesis
 tables: [issue_hypotheses, issue_dialogues, gap_analyses, asis_analyses]
 apis: [/api/admin/projects/[id]/issue-hypothesis, /api/admin/projects/[id]/issue-hypothesis/ai-suggest, /api/admin/projects/[id]/issue-dialogue]
 ai_tasks: [dialogue.issue, proposal.issue_hypothesis]
-checks: [check:vocab, check:asyncturn, check:issue]
+checks: [check:vocab, check:asyncturn, check:issue, check:copy]
 migrations: [020s, 055]
 upstream: [gap-analysis, asis-analysis]
 downstream: [measure-design, logic-model, improvement-actions]
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # 課題仮説設定
@@ -64,6 +64,10 @@ flowchart TD
 > IDで参照しているため、消すと下流の対応が崩れるからです）。統合元の引用原文は統合先に引き継がれるので、
 > 現状整理へのトレーサビリティは切れません。
 
+> **対話のコピー** — 各発言の下の 📋 でその発言だけを、画面右上の「対話全体をコピー」で対話全体を
+> クリップボードへコピーできます。役割（AI／担当者）と工程の見出しが付いたテキストになるので、
+> 庁内資料への引用や、他の担当者への共有にそのまま使えます。
+
 ## ⑥ 用語と判定基準
 
 - **課題仮説**: ギャップの原因についての検証可能な仮説
@@ -78,8 +82,11 @@ flowchart TD
 
 - 選別の取り違え防止（2026-08-29）: `selection` は `problem_text_echo`（保存済み文言の引き写し）を必須とし、サーバーが保存済みの問題と照合する。不一致なら正しい対応表を示す追いターンで作り直させ、それでも直らなければ選別を保存せず selection フェーズに留める。統合は `merge_problems` で行い、退役した問題は `retired` / `merged_into` を持つ。検査: `check:issue`
 
+- 対話のコピー: `components/CopyButton.tsx`（navigator.clipboard＋非セキュア環境向けフォールバック）と `lib/ai/transcript.ts`（整形は純粋関数）。検査: `check:copy`
+
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M2 初版
 - 2026-08-29 v1.1 — 対話AIターンの非同期化（通信エラー対策・再試行ボタン）
 - 2026-08-29 v1.2 — 問題候補の統合機能とID取り違えガード（誤選定の修正）
+- 2026-08-30 v1.3 — 対話の発言単位／全体のクリップボードコピー

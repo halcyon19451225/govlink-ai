@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PermissionGate from "@/components/PermissionGate";
 import AiThinkingIndicator from "@/components/AiThinkingIndicator";
+import CopyButton from "@/components/CopyButton";
+import { formatMessage, formatTranscript } from "@/lib/ai/transcript";
 import {
   isAcceptedTurn,
   isTurnProcessing,
@@ -761,18 +763,40 @@ function TranscriptView({ messages }: { messages: IssueMessage[] }) {
       className="rounded-xl border p-4 space-y-3 max-h-[600px] overflow-y-auto"
       style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
     >
+      {messages.length > 0 && (
+        <div className="flex justify-end">
+          <CopyButton
+            variant="outline"
+            label="対話全体をコピー"
+            text={() =>
+              formatTranscript(messages, {
+                title: "課題仮説設定 — 対話履歴",
+                stepLabel: (k) => ISSUE_STEP_LABEL[k as IssueStep] ?? k,
+              })
+            }
+          />
+        </div>
+      )}
       {messages.length === 0 ? (
         <p className="text-sm text-slate-500">対話の記録がありません</p>
       ) : (
         messages.map((m, idx) => (
           <div key={idx} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div className="max-w-[80%]">
-              <p
-                className={`text-[10px] mb-0.5 text-slate-500 ${m.role === "user" ? "text-right" : ""}`}
+              <div
+                className={`flex items-center gap-1 mb-0.5 ${
+                  m.role === "user" ? "justify-end" : "justify-start"
+                }`}
               >
-                {m.role === "user" ? "担当者" : "AI"}
-                {m.step ? `・${ISSUE_STEP_LABEL[m.step]}` : ""}
-              </p>
+                <p className="text-[10px] text-slate-500">
+                  {m.role === "user" ? "担当者" : "AI"}
+                  {m.step ? `・${ISSUE_STEP_LABEL[m.step]}` : ""}
+                </p>
+                <CopyButton
+                  text={() => formatMessage(m, (k) => ISSUE_STEP_LABEL[k as IssueStep] ?? k)}
+                  title="この発言をコピー"
+                />
+              </div>
               <div
                 className="rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap leading-relaxed"
                 style={
@@ -1321,22 +1345,50 @@ export default function IssueHypothesisClient({
         className="rounded-xl border flex flex-col"
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)", height: 620 }}
       >
+        <div
+          className="flex items-center justify-between px-4 py-2"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          <p className="text-[11px] text-slate-500">
+            {ISSUE_STEP_LABEL[selected.current_step]}
+          </p>
+          {selected.messages.length > 0 && (
+            <CopyButton
+              variant="outline"
+              label="対話全体をコピー"
+              text={() =>
+                formatTranscript(selected.messages, {
+                  title: `課題仮説設定${selected.kpi_label ? ` — ${selected.kpi_label}` : ""}`,
+                  stepLabel: (k) => ISSUE_STEP_LABEL[k as IssueStep] ?? k,
+                })
+              }
+            />
+          )}
+        </div>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
           {selected.messages.map((m, idx) => (
             <div key={idx} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className="max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap leading-relaxed"
-                style={
-                  m.role === "user"
-                    ? { background: "#6366f1", color: "#fff" }
-                    : {
-                        background: "var(--bg-secondary)",
-                        color: "var(--text-primary)",
-                        border: "1px solid var(--border)",
-                      }
-                }
-              >
-                {m.content}
+              <div className="max-w-[80%]">
+                <div
+                  className="rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap leading-relaxed"
+                  style={
+                    m.role === "user"
+                      ? { background: "#6366f1", color: "#fff" }
+                      : {
+                          background: "var(--bg-secondary)",
+                          color: "var(--text-primary)",
+                          border: "1px solid var(--border)",
+                        }
+                  }
+                >
+                  {m.content}
+                </div>
+                <div className={`flex mt-0.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <CopyButton
+                    text={() => formatMessage(m, (k) => ISSUE_STEP_LABEL[k as IssueStep] ?? k)}
+                    title="この発言をコピー"
+                  />
+                </div>
               </div>
             </div>
           ))}

@@ -5,11 +5,11 @@ menu_path: /projects/[id]/asis-analysis
 tables: [asis_analyses, corpus_context, knowledge_documents]
 apis: [/api/admin/projects/[id]/asis-analysis, /api/admin/projects/[id]/asis-analysis/[asisId]/chat]
 ai_tasks: [dialogue.asis]
-checks: [check:corpusmatch, check:asyncturn]
+checks: [check:corpusmatch, check:asyncturn, check:copy]
 migrations: [020s, 046, 055]
 upstream: [gap-analysis, datasets]
 downstream: [issue-hypothesis]
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # 現状整理（As-Is）
@@ -62,6 +62,10 @@ flowchart TD
 
 > **AIの応答待ちについて** — AIの応答には数十秒〜数分かかることがあります。送信した発言は即座に保存され、画面は「AIが考えています」の表示のまま結果を待ちます（画面を再読み込みしても待ち受けは再開されます）。「AI処理に失敗しました」と出た場合は「🔁 AI処理を再試行」で、発言を再入力せずにやり直せます。
 
+> **対話のコピー** — 各発言の下の 📋 でその発言だけを、画面右上の「対話全体をコピー」で対話全体を
+> クリップボードへコピーできます。役割（AI／担当者）と工程の見出しが付いたテキストになるので、
+> 庁内資料への引用や、他の担当者への共有にそのまま使えます。
+
 ## ⑥ 用語と判定基準
 
 - **PESTLE**: 政治/経済/社会/技術/法制度/環境 — 外部環境の分類タグ（コーパスと同語彙）
@@ -75,7 +79,10 @@ flowchart TD
 
 - 対話のAIターンは非同期（migration 055・`lib/ai/asyncTurn.ts`）: 発言保存→202→自己呼び出しでAI処理→画面がポーリング。Amplify の30秒応答上限の対策。検査: `check:asyncturn`
 
+- 対話のコピー: `components/CopyButton.tsx`（navigator.clipboard＋非セキュア環境向けフォールバック）と `lib/ai/transcript.ts`（整形は純粋関数）。検査: `check:copy`
+
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M2 初版（X7eのコーパス接地を反映）
 - 2026-08-29 v1.1 — 対話AIターンの非同期化（通信エラー対策・再試行ボタン）
+- 2026-08-30 v1.3 — 対話の発言単位／全体のクリップボードコピー
