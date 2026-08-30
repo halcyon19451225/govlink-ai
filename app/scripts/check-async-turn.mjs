@@ -170,6 +170,19 @@ check(
   read(join(API, "asis-analysis", "[asisId]", "chat", "route.ts")).includes("callDialogueTool("),
 );
 
+// ── 4.7 引用マークアップの除去 ───────────────────
+// web_search 使用時にモデルが <cite …> を本文に混ぜてくることがあり、
+// そのまま保存すると画面・課題仮説・計画書まで生のタグが残る（2026-08-30 に発生）。
+check("dialogueTurn: 引用マークアップの除去関数がある", turnSrc.includes("stripCitationMarkup"));
+for (const [table, file] of Object.entries(routes)) {
+  const src = read(file);
+  check(
+    `${file.replace(APP_ROOT + "/", "")}: 取り込み時に引用マークアップを落とす`,
+    src.includes("stripCitationMarkup("),
+  );
+  void table;
+}
+
 // ── 5. turnClient.ts の純粋ロジック ───────────────────
 const work = mkdtempSync(join(tmpdir(), "asyncturn-"));
 const outFile = join(work, "turnClient.mjs");
@@ -225,6 +238,26 @@ try {
   check(`turnClient.ts のバンドル/実行: ${e instanceof Error ? e.message : e}`, false);
 } finally {
   rmSync(work, { recursive: true, force: true });
+}
+
+// stripCitationMarkup の挙動（server-only のため実装と同じ正規表現で検証する）
+{
+  const strip = (t) =>
+    t
+      .replace(/<\/?cite\b[^>]*>/gi, "")
+      .replace(/<\/?citation\b[^>]*>/gi, "")
+      .replace(/\[\/?cite(?::[^\]]*)?\]/gi, "");
+  check(
+    "引用除去: タグを外して中身は残す",
+    strip('<cite index="4-1">研修が重要である</cite>と指摘されている') ===
+      "研修が重要であると指摘されている",
+  );
+  check("引用除去: 通常の文は変えない", strip("委託先が専門性を持てばよい") === "委託先が専門性を持てばよい");
+  check("引用除去: 角括弧形式にも対応", strip("重要である[cite:12]") === "重要である");
+  check(
+    "引用除去: 山括弧を含む通常の記述は壊さない",
+    strip("目標値 > 現状値 の場合") === "目標値 > 現状値 の場合",
+  );
 }
 
 console.log(`\ncheck-async-turn: ${passed} passed, ${failed} failed`);

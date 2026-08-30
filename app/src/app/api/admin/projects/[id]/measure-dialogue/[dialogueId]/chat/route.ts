@@ -9,7 +9,11 @@ import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
 import { query, queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
 import { requireModulePermission } from "@/lib/permissions";
-import { callDialogueTool, sanitizeStringArray } from "@/lib/ai/dialogueTurn";
+import {
+  callDialogueTool,
+  sanitizeStringArray,
+  stripCitationMarkup,
+} from "@/lib/ai/dialogueTurn";
 import {
   BUSY_ERROR,
   NOTHING_TO_RETRY_ERROR,
@@ -94,7 +98,8 @@ interface DialogueRow {
 }
 
 function str(v: unknown, max = 400): string {
-  return typeof v === "string" ? v.trim().slice(0, max) : "";
+  // 引用マークアップ（<cite …>）はここで落とす。本文・仮説・出典すべてこの関数を通る
+  return typeof v === "string" ? stripCitationMarkup(v).trim().slice(0, max) : "";
 }
 
 /**

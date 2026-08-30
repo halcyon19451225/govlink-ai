@@ -4,7 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import type Anthropic from "@anthropic-ai/sdk";
 import { type AiCallContext } from "@/lib/ai/gateway";
-import { callDialogueTool, type DialogueSystem } from "@/lib/ai/dialogueTurn";
+import {
+  callDialogueTool,
+  stripCitationMarkup,
+  type DialogueSystem,
+} from "@/lib/ai/dialogueTurn";
 import {
   BUSY_ERROR,
   NOTHING_TO_RETRY_ERROR,
@@ -395,7 +399,8 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   const input = toolUse.input as Record<string, unknown>;
   // 返答が空のまま保存すると、対話に空のターンが残り担当者は再試行もできない。
   // 失敗として扱い、発言を残したまま「再試行」できる状態にする。
-  const replyText = typeof input.reply === "string" ? input.reply.trim() : "";
+  const replyText =
+    typeof input.reply === "string" ? stripCitationMarkup(input.reply).trim() : "";
   if (!replyText) {
     throw new Error("AIの返答が空でした。再試行してください");
   }

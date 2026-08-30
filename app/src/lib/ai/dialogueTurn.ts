@@ -156,6 +156,21 @@ export async function callDialogueTool(
   return null;
 }
 
+/**
+ * web_search の引用マークアップを本文から取り除く。
+ *
+ * モデルが `<cite index="4-1">…</cite>` のようなタグを本文に混ぜてくることがあり、
+ * そのまま保存すると担当者の画面にも、書き出した先の課題仮説にも、
+ * さらに計画書にまで生のタグが残る（2026-08-30 に実際に発生）。
+ * タグだけを外し、中身の文章は残す。
+ */
+export function stripCitationMarkup(text: string): string {
+  return text
+    .replace(/<\/?cite\b[^>]*>/gi, "")
+    .replace(/<\/?citation\b[^>]*>/gi, "")
+    .replace(/\[\/?cite(?::[^\]]*)?\]/gi, "");
+}
+
 /** ツール出力の文字列配列を安全に取り込む */
 export function sanitizeStringArray(
   arr: unknown,
@@ -166,6 +181,6 @@ export function sanitizeStringArray(
   const maxLength = opts?.maxLength ?? 400;
   return arr
     .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-    .map((x) => x.trim().slice(0, maxLength))
+    .map((x) => stripCitationMarkup(x).trim().slice(0, maxLength))
     .slice(0, maxItems);
 }
