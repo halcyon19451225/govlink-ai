@@ -479,6 +479,26 @@ export function findProblem(
   return problems.find((p) => p.id === id);
 }
 
+/**
+ * 選定した課題のうち、まだ真因に到達していないものの問題IDを返す。
+ *
+ * JIS Q 9024 の要因解析は「選定した課題ごとに」行うもの。
+ * 1件でも真因があれば完了できる判定にしていたため、3件選定して1件しか
+ * 特性要因図・なぜなぜが残らないまま完了できてしまった（2026-08-30）。
+ * 大骨は現状整理の PESTLE/7S と連結する設計なので、欠けるとそこだけ
+ * 現状整理から真因までの筋道が辿れなくなる。
+ */
+export function unresolvedRootCauseIds(
+  problems: ProblemItem[],
+  selection: SelectionItem[],
+  rootCauses: RootCauseItem[],
+): string[] {
+  const resolved = new Set(
+    rootCauses.filter((r) => r.root_cause.trim().length > 0).map((r) => r.problem_id),
+  );
+  return selectedActiveProblemIds(problems, selection).filter((id) => !resolved.has(id));
+}
+
 /** 真因に到達済みの課題数 */
 export function resolvedRootCauseCount(items: RootCauseItem[]): number {
   return items.filter((r) => r.root_cause.trim().length > 0).length;

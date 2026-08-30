@@ -37,6 +37,7 @@ import {
   applyProblemMerges,
   calcIssueScore,
   selectedActiveProblemIds,
+  unresolvedRootCauseIds,
   isFactorKey,
   isProblemOrigin,
   type FishboneBone,
@@ -317,8 +318,11 @@ function parsePhase(v: unknown, fallback: IssueStep): IssueStep {
     : fallback;
 }
 
+/** 選定した課題「すべて」が真因に到達しているか（1件でも欠ければ false） */
 function hasResolvedRootCause(data: IssueDialogueData): boolean {
-  return data.root_causes.some((r) => r.root_cause.trim().length > 0);
+  const selected = selectedActiveProblemIds(data.problems, data.selection);
+  if (selected.length === 0) return false;
+  return unresolvedRootCauseIds(data.problems, data.selection, data.root_causes).length === 0;
 }
 
 function hasSelectedIssue(data: IssueDialogueData): boolean {
@@ -702,8 +706,15 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   // 追いターンを1回だけ自動実行する（現状整理のクロス分析ガードと同じ方式）。
   const wantsFinish = input.completed === true || parsePhase(input.phase, row.current_step) === "done";
   if (wantsFinish && !completed) {
+    const pending = unresolvedRootCauseIds(
+      nextData.problems,
+      nextData.selection,
+      nextData.root_causes,
+    );
     const missing = !hasResolvedRootCause(nextData)
-      ? "真因（root_causes）がまだ確定していません。selected=true の課題について、特性要因図（bones）となぜなぜ分析（whys）を行い root_cause を確定してください。phase は rootcause のままにしてください。"
+      ? `真因（root_causes）が未確定の課題があります: ${pending.join("、")}。` +
+        "選定した課題は1件残らず、特性要因図（bones）となぜなぜ分析（whys）を行って root_cause を確定してください" +
+        "（1件だけ確定して先へ進むことはできません）。phase は rootcause のままにしてください。"
       : "課題仮説（hypotheses）がまだ作成されていません。確定した真因ごとに title / statement / root_cause / evidence / measures / verification を作成してください。";
     try {
       const retryUse = await callDialogueTool(

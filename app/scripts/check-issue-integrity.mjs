@@ -95,6 +95,33 @@ check(
 check("chat: 出典を取り込む", routeSrc.includes("sanitizeReferences("));
 check("chat: 出典なしの発言に印を付ける", routeSrc.includes("needsCitation(reply)"));
 
+// ── 2.5 真因は「選定した課題ごとに」確定する ─────────────
+// JIS Q 9024 の要因解析は選定した課題1件ずつに行うもの。
+// 1件でも真因があれば先へ進める判定にしていたため、3件選定したのに
+// 1件しか特性要因図・なぜなぜが残らないまま仮説へ進めてしまった（2026-08-30）。
+// 大骨は現状整理の PESTLE/7S と連結しているので、欠けた課題はそこだけ
+// 現状整理から真因までの筋道が辿れなくなる。
+check(
+  "chat: 未確定の真因を課題ごとに数える",
+  routeSrc.includes("unresolvedRootCauseIds("),
+);
+check(
+  "chat: 完了ガードが全件の真因を要求する",
+  /hasResolvedRootCause[\s\S]{0,200}unresolvedRootCauseIds\([\s\S]{0,120}\.length === 0/.test(routeSrc),
+);
+check(
+  "chat: 追いターンで未確定の課題IDを具体的に示す",
+  routeSrc.includes("pending.join("),
+);
+check(
+  "課題仮説設定: 選定した課題は1件残らず真因を出す旨を指示する",
+  read(join(APP_ROOT, "src", "lib", "issue", "prompt.ts")).includes("1件残らず"),
+);
+check(
+  "課題仮説設定: 未確定の真因を整理内容に警告として出す",
+  read(join(APP_ROOT, "src", "lib", "issue", "prompt.ts")).includes("真因が未確定の課題"),
+);
+
 // ── 3. 書き出し（commit）が退役分を除く ───────────────
 const commitSrc = read(
   join(
@@ -122,6 +149,12 @@ check("画面: 出所を1件ずつ引用する", clientSrc.includes("現状整�
 check("画面: 出典を表示する", clientSrc.includes("MessageSources"));
 check("画面: 出典なしの警告を出す", clientSrc.includes("出典が示されていません"));
 check("画面: 選定と点数の矛盾を知らせる", clientSrc.includes("SelectionInconsistencyNotice"));
+check("画面: 真因が未確定の課題を知らせる", clientSrc.includes("UnresolvedRootCauseNotice"));
+// 優先順位は選別スコアで決まる。仮説だけを見て「なぜこれが1位なのか」を
+// 追えるよう、順位と根拠の点数を並べて出す。
+check("画面: 仮説に優先順位を出す", /優先度 \{?c\.priority_rank/.test(clientSrc));
+check("画面: 優先順位の根拠（選別スコア）も添える", clientSrc.includes("選別 ${sel.score}点"));
+check("画面: 仮説ビューに選別結果を渡している", clientSrc.includes("selection={record.selection}"));
 
 // ── 5. 純粋ロジックの実挙動 ─────────────────────
 const work = mkdtempSync(join(tmpdir(), "issue-integrity-"));
@@ -264,6 +297,49 @@ try {
   check(
     "選定: 退役した問題は課題に数えない",
     m.selectedActiveProblemIds(merged, selection).join() === "p1",
+  );
+
+  // 真因の網羅（選定した課題ごとに1件ずつ）
+  const sel3 = [
+    { problem_id: "p1", selected: true },
+    { problem_id: "p2", selected: true },
+    { problem_id: "p3", selected: true },
+  ];
+  check(
+    "真因: 1件だけ確定していても残りを未確定として返す",
+    m.unresolvedRootCauseIds(probs2, sel3, [{ problem_id: "p1", root_cause: "指標体系の断絶" }])
+      .join() === "p2,p3",
+  );
+  check(
+    "真因: 全件確定していれば空になる",
+    m.unresolvedRootCauseIds(
+      probs2,
+      sel3,
+      sel3.map((s) => ({ problem_id: s.problem_id, root_cause: "x" })),
+    ).length === 0,
+  );
+  check(
+    "真因: 空文字の root_cause は確定と見なさない",
+    m.unresolvedRootCauseIds(probs2, sel3, [
+      { problem_id: "p1", root_cause: "  " },
+      { problem_id: "p2", root_cause: "y" },
+      { problem_id: "p3", root_cause: "z" },
+    ]).join() === "p1",
+  );
+  check(
+    "真因: 選定していない問題は要求しない",
+    m.unresolvedRootCauseIds(
+      probs2,
+      [
+        { problem_id: "p1", selected: true },
+        { problem_id: "p2", selected: false },
+      ],
+      [{ problem_id: "p1", root_cause: "x" }],
+    ).length === 0,
+  );
+  check(
+    "真因: 退役した問題は要求しない",
+    m.unresolvedRootCauseIds(merged, selection, [{ problem_id: "p1", root_cause: "x" }]).length === 0,
   );
 } catch (e) {
   check(`types.ts のバンドル/実行: ${e instanceof Error ? e.message : e}`, false);

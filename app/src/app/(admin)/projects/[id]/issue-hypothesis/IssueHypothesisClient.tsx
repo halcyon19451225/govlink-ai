@@ -24,6 +24,7 @@ import {
   isProblemOrigin,
   findSelectionInconsistencies,
   issueScoreFormula,
+  unresolvedRootCauseIds,
   selectedActiveProblemIds,
   type HypothesisItem,
   type IssueMessage,
@@ -635,6 +636,7 @@ function RootCauseView({
 function HypothesisView({
   problems,
   hypotheses,
+  selection,
   committed,
   onCommit,
   committing,
@@ -643,6 +645,7 @@ function HypothesisView({
 }: {
   problems: ProblemItem[];
   hypotheses: HypothesisItem[];
+  selection: SelectionItem[];
   committed: CommittedHypothesis[];
   onCommit: () => void;
   committing: boolean;
@@ -657,6 +660,7 @@ function HypothesisView({
     );
   }
   const problemMap = new Map(problems.map((p) => [p.id, p]));
+  const selMap = new Map(selection.map((x) => [x.problem_id, x]));
   const committedByTitle = new Map(committed.map((c) => [c.title, c]));
 
   return (
@@ -683,6 +687,7 @@ function HypothesisView({
 
       {hypotheses.map((h, i) => {
         const p = problemMap.get(h.problem_id);
+        const sel = selMap.get(h.problem_id);
         const c = committedByTitle.get(h.title);
         return (
           <div
@@ -700,6 +705,17 @@ function HypothesisView({
                     style={{ background: "#10b98120", color: "#10b981" }}
                   >
                     書き出し済み
+                  </span>
+                )}
+                {/* 優先順位は選別スコアの降順で採番される。なぜこの順かを画面で辿れるようにする */}
+                {c?.priority_rank != null && (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-mono"
+                    style={{ background: "#6366f120", color: "#818cf8" }}
+                    title="選別スコアの降順で採番された優先順位"
+                  >
+                    優先度 {c.priority_rank}位
+                    {sel ? `（選別 ${sel.score}点）` : ""}
                   </span>
                 )}
               </div>
@@ -812,6 +828,33 @@ function MessageSources({
     );
   }
   return null;
+}
+
+/** 選定したのに真因まで掘れていない課題を知らせる */
+function UnresolvedRootCauseNotice({
+  problems,
+  selection,
+  rootCauses,
+}: {
+  problems: ProblemItem[];
+  selection: SelectionItem[];
+  rootCauses: RootCauseItem[];
+}) {
+  const pending = unresolvedRootCauseIds(problems, selection, rootCauses);
+  if (pending.length === 0) return null;
+  return (
+    <div
+      className="rounded-lg border px-2 py-1.5 mb-2"
+      style={{ borderColor: "#f8717140", background: "#f8717110" }}
+    >
+      <p className="text-[10px] font-semibold" style={{ color: "#f87171" }}>
+        ⚠ 真因まで掘れていない課題があります: {pending.join("、")}
+      </p>
+      <p className="text-[10px] text-slate-400 leading-snug mt-0.5">
+        選定した課題は1件ずつ特性要因図となぜなぜ分析を行う工程です。欠けたままだと、その課題は現状整理から真因までの筋道が残りません
+      </p>
+    </div>
+  );
 }
 
 /** 選定と点数の矛盾（重点指向の破れ）を担当者に見せる */
@@ -983,6 +1026,7 @@ function ResultView({
         <HypothesisView
           problems={record.problems}
           hypotheses={record.hypotheses}
+          selection={record.selection}
           committed={committed}
           onCommit={onCommit}
           committing={committing}
@@ -1403,6 +1447,11 @@ export default function IssueHypothesisClient({
         <SelectionInconsistencyNotice
           problems={selected.problems}
           selection={selected.selection}
+        />
+        <UnresolvedRootCauseNotice
+          problems={selected.problems}
+          selection={selected.selection}
+          rootCauses={selected.root_causes}
         />
         <div className="max-h-64 overflow-y-auto pr-1">
           <ProblemList

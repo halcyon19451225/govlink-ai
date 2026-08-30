@@ -14,6 +14,7 @@ import {
   PROBLEM_ORIGIN_KEYS,
   SELECTION_WEIGHTS,
   findSelectionInconsistencies,
+  unresolvedRootCauseIds,
   type IssueDialogueData,
 } from "./types";
 
@@ -87,7 +88,10 @@ selected=true の課題**ひとつずつ**について、真因に到達しま�
     - これ以上掘ると自治体の裁量を超える、という段で止めて root_cause を確定する。
 
 - root_causes は問題ごとに1件。root_cause には到達した真因を1〜2文で書く。
-- selected の課題すべてで root_cause が埋まったら hypothesis へ進む。`;
+- selected の課題すべてで root_cause が埋まったら hypothesis へ進む。
+- **selected=true の課題は1件残らず** 特性要因図となぜなぜ分析を行い、root_cause を確定してください。
+  1件だけ掘って次のフェーズへ進むことはできません（大骨は現状整理の PESTLE/7S と対応させ、
+  どの課題についても現状整理から真因までの筋道が辿れる状態にします）。`;
 
 const HYPOTHESIS_GUIDE = `【フェーズ4: 課題仮説の定式化（hypothesis）】
 真因ごとに、検証可能な課題仮説へ整えます（EBPMの効果検証の入口になります）。
@@ -219,6 +223,11 @@ function dataSummary(d: IssueDialogueData): string {
     );
   } else {
     lines.push("選別: （まだなし）");
+  }
+
+  const pendingRc = unresolvedRootCauseIds(d.problems, d.selection, d.root_causes);
+  if (pendingRc.length > 0) {
+    lines.push(`⚠ 真因が未確定の課題: ${pendingRc.join("、")}（すべて確定するまで hypothesis へ進めません）`);
   }
 
   if (d.root_causes.length > 0) {

@@ -137,7 +137,37 @@ check(
 check("dialogueTurn: 不変部と可変部を分けて受け取れる", turnSrc.includes("DialogueSystem"));
 check("dialogueTurn: 不変部だけにキャッシュの区切りを置く", turnSrc.includes("buildSystemBlocks"));
 check("dialogueTurn: 対話履歴にもキャッシュの区切りを置く", turnSrc.includes("withHistoryCache"));
-check("dialogueTurn: 保持時間を1時間にする（既定の5分では間隔が空くと外れる）", turnSrc.includes('ttl: "1h"'));
+// 保持時間は不変部と履歴で分ける。
+//   不変部（システムプロンプト）… 対話の合間に数十分空いても効かせたいので 1時間（書き込み 2.0倍）
+//   履歴（毎ターン伸びる）      … 次のターンまでの数分しか再利用されないので 5分（書き込み 1.25倍）
+// 両方 1h にしていた間は、伸び続ける履歴を毎ターン 2.0倍で書き直しており、
+// 読み出しの節約分を書き込みの割増が食っていた（2026-08-30 に計測で判明）。
+check(
+  "dialogueTurn: 不変部の保持時間は1時間（間隔が空いても効かせる）",
+  /CACHE_STABLE[^\n]*ttl: "1h"/.test(turnSrc),
+);
+check(
+  "dialogueTurn: 履歴の保持時間は5分（毎ターン伸びるので割増を抑える）",
+  /CACHE_HISTORY[^\n]*ttl: "5m"/.test(turnSrc),
+);
+check(
+  "dialogueTurn: 不変部に CACHE_STABLE を使っている",
+  /buildSystemBlocks[\s\S]*?cache_control: CACHE_STABLE/.test(turnSrc),
+);
+check(
+  "dialogueTurn: 履歴に CACHE_HISTORY を使っている",
+  /withHistoryCache[\s\S]*?cache_control: CACHE_HISTORY/.test(turnSrc),
+);
+// 効果を後から確かめられること（ai_usage_logs にキャッシュの内訳が残る）
+{
+  const gw = read(join(APP_ROOT, "src", "lib", "ai", "gateway.ts"));
+  check(
+    "gateway: キャッシュの書き込み/読み出しトークンを記録する",
+    gw.includes("cache_creation_input_tokens") && gw.includes("cache_read_input_tokens"),
+  );
+  const errScript = read(join(APP_ROOT, "scripts", "show-ai-errors.mjs"));
+  check("ai:errors: キャッシュの内訳を表示する", errScript.includes("cache(read="));
+}
 
 for (const [name, file] of [
   ["現状整理", join(APP_ROOT, "src", "lib", "asis", "prompt.ts")],

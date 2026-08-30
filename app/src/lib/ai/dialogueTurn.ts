@@ -31,15 +31,25 @@ export const DIALOGUE_MODEL = "claude-sonnet-4-6";
  */
 export type DialogueSystem = string | { stable: string; volatile?: string };
 
-const CACHE: Anthropic.CacheControlEphemeral = { type: "ephemeral", ttl: "1h" };
+/**
+ * 保持時間は区切りの性質で分ける。
+ * - 不変部（システムプロンプト）は対話中ずっと同じ内容なので、一度書けば何度も読める。
+ *   書き込みは事実上1回なので、長く持つ 1h が得。
+ * - 対話履歴は毎ターン伸びるため書き込みが繰り返し発生する。1h の書き込みは通常単価の
+ *   2倍、5m なら1.25倍なので、こちらは 5m のほうが安い。
+ * 実測（2026-08-30）では書き込みが読み出しの節約を食っており、この分離で改善するはず。
+ * 変更後は `npm run ai:errors -- 5 all` の cache(read=… write=…) で確認できる。
+ */
+const CACHE_STABLE: Anthropic.CacheControlEphemeral = { type: "ephemeral", ttl: "1h" };
+const CACHE_HISTORY: Anthropic.CacheControlEphemeral = { type: "ephemeral", ttl: "5m" };
 
 /** system ブロックを組み立てる（不変部にだけキャッシュの区切りを置く） */
 function buildSystemBlocks(system: DialogueSystem): Anthropic.TextBlockParam[] {
   if (typeof system === "string") {
-    return [{ type: "text", text: system, cache_control: CACHE }];
+    return [{ type: "text", text: system, cache_control: CACHE_STABLE }];
   }
   const blocks: Anthropic.TextBlockParam[] = [
-    { type: "text", text: system.stable, cache_control: CACHE },
+    { type: "text", text: system.stable, cache_control: CACHE_STABLE },
   ];
   const volatile = system.volatile?.trim();
   if (volatile) blocks.push({ type: "text", text: volatile });
@@ -59,7 +69,7 @@ function withHistoryCache(messages: Anthropic.MessageParam[]): Anthropic.Message
     if (i !== idx || typeof m.content !== "string" || m.content.length === 0) return m;
     return {
       role: m.role,
-      content: [{ type: "text" as const, text: m.content, cache_control: CACHE }],
+      content: [{ type: "text" as const, text: m.content, cache_control: CACHE_HISTORY }],
     };
   });
 }
