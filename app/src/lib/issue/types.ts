@@ -359,6 +359,88 @@ export interface IssueMessage {
   step?: IssueStep;
   /** AIからの回答ヒント（assistantメッセージのみ） */
   suggestions?: string[];
+  /** 発言中で挙げた制度・調査・研究の出典（assistantメッセージのみ） */
+  references?: IssueReference[];
+  /**
+   * 出典が要りそうな固有名詞・数値を挙げているのに references が空だった印。
+   * 画面で注意を促すために立てる（保存はするが、担当者が検証できるようにする）。
+   */
+  unsourced?: boolean;
+}
+
+/** 発言の根拠として示す出典 */
+export interface IssueReference {
+  /** 資料名・調査名（例: 内閣府「満足度・生活の質に関する調査」） */
+  title: string;
+  url?: string;
+  /** 何をそこから引いたか */
+  note?: string;
+}
+
+/**
+ * 「出典が要りそうな発言か」を判定する（保守的なヒューリスティック）。
+ *
+ * 真因分析の説明文で、AIが制度名・調査名・ガイドライン名をもっともらしく挙げながら
+ * 出典を示さず、しかも名称を取り違えていた事例があった（2026-08-30:
+ * 内閣府「満足度・生活の質に関する調査」が測るのは生活満足度なのに幸福感と説明し、
+ * OECDの主観的幸福感ガイドラインを「より良い暮らし指標」と取り違えた）。
+ * 検証されないまま計画書へ流れ込む経路になるため、画面で注意を促す材料にする。
+ *
+ * 誤検知を避けるため「鉤括弧つきの固有名詞」と「資料を示す語」の両方が
+ * 揃ったときだけ真とする。
+ */
+const CITATION_SOURCE_WORDS = [
+  "調査", "ガイドライン", "指標", "白書", "統計", "研究", "報告書", "指針", "基準", "法", "省", "庁", "OECD", "WHO",
+];
+
+export function needsCitation(text: string): boolean {
+  const quoted = /[「『][^」』]{3,60}[」』]/.test(text);
+  if (!quoted) return false;
+  return CITATION_SOURCE_WORDS.some((w) => text.includes(w));
+}
+
+/** 選定と点数の矛盾（重点指向の破れ） */
+export interface SelectionInconsistency {
+  selected_id: string;
+  selected_score: number;
+  unselected_id: string;
+  unselected_score: number;
+}
+
+/**
+ * 「選定した課題より高い点数の問題が選外になっている」組み合わせを返す。
+ *
+ * JIS Q 9024 の重点指向は点数の上位から選ぶ考え方なので、この状態は
+ * 点数か選定のどちらかが誤っている合図になる。実際、IDの取り違えを直した際に
+ * 選定フラグだけが移り、点数は元の並びのまま残る事故が起きた（2026-08-30）。
+ * 書き出し時の優先順位ランクは点数の降順で採番されるため、放置すると
+ * 最重要の課題が最下位で登録される。
+ *
+ * 判断そのものは担当者に委ねる（低い点数でも選ぶ判断はありうる）。
+ * ここでは矛盾の所在を示すだけで、選定を書き換えたりはしない。
+ */
+export function findSelectionInconsistencies(
+  problems: ProblemItem[],
+  selection: SelectionItem[],
+): SelectionInconsistency[] {
+  const alive = new Set(activeProblems(problems).map((p) => p.id));
+  const live = selection.filter((s) => alive.has(s.problem_id));
+  const picked = live.filter((s) => s.selected);
+  const dropped = live.filter((s) => !s.selected);
+  const out: SelectionInconsistency[] = [];
+  for (const p of picked) {
+    for (const d of dropped) {
+      if (d.score > p.score) {
+        out.push({
+          selected_id: p.problem_id,
+          selected_score: p.score,
+          unselected_id: d.problem_id,
+          unselected_score: d.score,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 export interface IssueDialogueData {

@@ -54,6 +54,14 @@ check(
   "prompt: 文章だけの統合を禁じている",
   promptSrc.includes("文章の中だけで統合したことにしてはいけません"),
 );
+// 出典の規律（もっともらしい固有名詞が検証されずに計画書へ流れるのを防ぐ）
+check("prompt: references をツールに持つ", promptSrc.includes("references: {"));
+check("prompt: 出典を必須と明示している", promptSrc.includes("必ず references に出典を入れて"));
+check("prompt: 記憶による断定を禁じている", promptSrc.includes("記憶に頼って正式名称"));
+// 重点指向と点数の整合
+check("prompt: 選定はスコア上位からと明示", promptSrc.includes("選定は原則としてスコアの上位から"));
+check("prompt: 選定差し替え時の点数付け直しを求める", promptSrc.includes("点数も対象の問題に合わせて付け直す"));
+check("prompt: 矛盾をAIに提示する", promptSrc.includes("選定と点数が矛盾しています"));
 check(
   "prompt: 退役した問題を一覧から外して提示する",
   promptSrc.includes("p.retired") && promptSrc.includes("退役"),
@@ -84,6 +92,8 @@ check(
   "chat: 退役を考慮した選定判定を使う",
   routeSrc.includes("selectedActiveProblemIds("),
 );
+check("chat: 出典を取り込む", routeSrc.includes("sanitizeReferences("));
+check("chat: 出典なしの発言に印を付ける", routeSrc.includes("needsCitation(reply)"));
 
 // ── 3. 書き出し（commit）が退役分を除く ───────────────
 const commitSrc = read(
@@ -106,6 +116,12 @@ check("画面: 件数から退役分を除く", clientSrc.includes("!p.retired")
 // 出所（引用原文）はトレーサビリティの証跡。完了を待たず対話中に確認できること
 check("画面: 対話中でも出所を開ける", clientSrc.includes("出所を表示"));
 check("画面: 出所トグルが ProblemList の compact を切り替える", clientSrc.includes("compact={!showSource}"));
+// 引き継いだ複数の出所を1件ずつ引用する（別々のSWOT項目を1つの引用に見せない）
+check("画面: 出所を1件ずつ引用する", clientSrc.includes("現状整理より: 「{t}」"));
+// 出典と重点指向の可視化
+check("画面: 出典を表示する", clientSrc.includes("MessageSources"));
+check("画面: 出典なしの警告を出す", clientSrc.includes("出典が示されていません"));
+check("画面: 選定と点数の矛盾を知らせる", clientSrc.includes("SelectionInconsistencyNotice"));
 
 // ── 5. 純粋ロジックの実挙動 ─────────────────────
 const work = mkdtempSync(join(tmpdir(), "issue-integrity-"));
@@ -192,6 +208,52 @@ try {
     "照合: 短すぎるエコーは通さない",
     m.validateSelectionEchoes(probs, [{ problem_id: "p1", problem_text_echo: "指標" }])
       .mismatched.length === 1,
+  );
+
+  // 出典が要りそうな発言の判定
+  check(
+    "出典判定: 鉤括弧つきの資料名を挙げていれば真",
+    m.needsCitation("内閣府「満足度・生活の質に関する調査」の設問を使えます") === true,
+  );
+  check(
+    "出典判定: 固有名詞が無ければ偽（誤検知を避ける）",
+    m.needsCitation("各課がアウトプット指標を追う構造になっています") === false,
+  );
+  check(
+    "出典判定: 鉤括弧があっても資料を示す語が無ければ偽",
+    m.needsCitation("担当者が「足がない」とおっしゃっていた点ですね") === false,
+  );
+
+  // 重点指向の破れ
+  const probs2 = [
+    { id: "p1", text: "a", origin: "dialogue" },
+    { id: "p2", text: "b", origin: "dialogue" },
+    { id: "p3", text: "c", origin: "dialogue" },
+  ];
+  const incons = m.findSelectionInconsistencies(probs2, [
+    { problem_id: "p1", score: 43, selected: true },
+    { problem_id: "p2", score: 23, selected: true },
+    { problem_id: "p3", score: 39, selected: false },
+  ]);
+  check("重点指向: 選外のほうが高得点なら検出する", incons.length === 1);
+  check(
+    "重点指向: 検出内容が正しい",
+    incons[0].selected_id === "p2" && incons[0].unselected_id === "p3",
+  );
+  check(
+    "重点指向: 上位から選んでいれば検出しない",
+    m.findSelectionInconsistencies(probs2, [
+      { problem_id: "p1", score: 43, selected: true },
+      { problem_id: "p3", score: 39, selected: true },
+      { problem_id: "p2", score: 23, selected: false },
+    ]).length === 0,
+  );
+  check(
+    "重点指向: 退役した問題は判定に含めない",
+    m.findSelectionInconsistencies(merged, [
+      { problem_id: "p1", score: 20, selected: true },
+      { problem_id: "p5", score: 90, selected: false },
+    ]).length === 0,
   );
 
   // 退役を考慮した選定

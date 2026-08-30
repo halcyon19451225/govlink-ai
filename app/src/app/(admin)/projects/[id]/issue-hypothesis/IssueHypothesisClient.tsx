@@ -22,11 +22,13 @@ import {
   factorLabel,
   factorShortLabel,
   isProblemOrigin,
+  findSelectionInconsistencies,
   issueScoreFormula,
   selectedActiveProblemIds,
   type HypothesisItem,
   type IssueMessage,
   type IssueStep,
+  type IssueReference,
   type ProblemItem,
   type RootCauseItem,
   type SelectionItem,
@@ -214,11 +216,19 @@ function ProblemList({
             >
               {p.text}
             </p>
-            {!compact && p.source_text && (
-              <p className="text-[10px] text-slate-500 leading-snug mt-1">
-                現状整理より: 「{p.source_text}」
-              </p>
-            )}
+            {!compact &&
+              p.source_text &&
+              // 統合で複数の出所を引き継いだ場合は改行区切り。1件ずつ引用して、
+              // 別々のSWOT項目が1つの引用に見えないようにする
+              p.source_text
+                .split("\n")
+                .map((t) => t.trim())
+                .filter((t) => t.length > 0)
+                .map((t, i) => (
+                  <p key={i} className="text-[10px] text-slate-500 leading-snug mt-1">
+                    現状整理より: 「{t}」
+                  </p>
+                ))}
           </li>
         );
       })}
@@ -756,6 +766,90 @@ function HypothesisView({
   );
 }
 
+/** AIの発言に添えられた出典。無いのに固有名詞を挙げている場合は検証を促す */
+function MessageSources({
+  references,
+  unsourced,
+}: {
+  references?: IssueReference[] | undefined;
+  unsourced?: boolean | undefined;
+}) {
+  if (references && references.length > 0) {
+    return (
+      <div className="mt-1.5 pt-1.5" style={{ borderTop: "1px dashed var(--border)" }}>
+        <p className="text-[10px] font-semibold text-slate-500 mb-0.5">出典</p>
+        <ul className="space-y-0.5">
+          {references.map((r, i) => (
+            <li key={i} className="text-[10px] text-slate-400 leading-snug">
+              {r.url ? (
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:brightness-125"
+                  style={{ color: "#818cf8" }}
+                >
+                  {r.title}
+                </a>
+              ) : (
+                r.title
+              )}
+              {r.note ? ` — ${r.note}` : ""}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  if (unsourced) {
+    return (
+      <p
+        className="text-[10px] leading-snug mt-1.5 pt-1.5"
+        style={{ color: "#fbbf24", borderTop: "1px dashed var(--border)" }}
+      >
+        ⚠ 制度名・調査名を挙げていますが出典が示されていません。計画書に載せる前に確認してください
+      </p>
+    );
+  }
+  return null;
+}
+
+/** 選定と点数の矛盾（重点指向の破れ）を担当者に見せる */
+function SelectionInconsistencyNotice({
+  problems,
+  selection,
+}: {
+  problems: ProblemItem[];
+  selection: SelectionItem[];
+}) {
+  const bad = findSelectionInconsistencies(problems, selection);
+  if (bad.length === 0) return null;
+  const pairs = Array.from(
+    new Map(bad.map((b) => [`${b.selected_id}<${b.unselected_id}`, b])).values(),
+  ).slice(0, 5);
+  return (
+    <div
+      className="rounded-lg border px-2 py-1.5 mb-2"
+      style={{ borderColor: "#fbbf2440", background: "#fbbf2410" }}
+    >
+      <p className="text-[10px] font-semibold" style={{ color: "#fbbf24" }}>
+        ⚠ 選定と点数が噛み合っていません
+      </p>
+      <ul className="mt-0.5 space-y-0.5">
+        {pairs.map((b, i) => (
+          <li key={i} className="text-[10px] text-slate-400 leading-snug">
+            選定 {b.selected_id}（{b.selected_score}点） ＜ 選外 {b.unselected_id}（
+            {b.unselected_score}点）
+          </li>
+        ))}
+      </ul>
+      <p className="text-[10px] text-slate-500 leading-snug mt-0.5">
+        点数の付け直しか、低い点数でも選ぶ理由の明記をAIに依頼してください（優先順位は点数の降順で採番されます）
+      </p>
+    </div>
+  );
+}
+
 // ─── 対話履歴 ────────────────────────────────
 function TranscriptView({ messages }: { messages: IssueMessage[] }) {
   return (
@@ -810,6 +904,9 @@ function TranscriptView({ messages }: { messages: IssueMessage[] }) {
                 }
               >
                 {m.content}
+                {m.role === "assistant" && (
+                  <MessageSources references={m.references} unsourced={m.unsourced} />
+                )}
               </div>
             </div>
           </div>
@@ -1303,6 +1400,10 @@ export default function IssueHypothesisClient({
             {showSource ? "出所を隠す" : "出所を表示"}
           </button>
         </div>
+        <SelectionInconsistencyNotice
+          problems={selected.problems}
+          selection={selected.selection}
+        />
         <div className="max-h-64 overflow-y-auto pr-1">
           <ProblemList
             problems={selected.problems}
@@ -1403,6 +1504,9 @@ export default function IssueHypothesisClient({
                   }
                 >
                   {m.content}
+                  {m.role === "assistant" && (
+                    <MessageSources references={m.references} unsourced={m.unsourced} />
+                  )}
                 </div>
                 <div className={`flex mt-0.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                   <CopyButton

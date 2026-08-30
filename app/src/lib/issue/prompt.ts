@@ -13,6 +13,7 @@ import {
   PROBLEM_ORIGIN_META,
   PROBLEM_ORIGIN_KEYS,
   SELECTION_WEIGHTS,
+  findSelectionInconsistencies,
   type IssueDialogueData,
 } from "./types";
 
@@ -59,6 +60,11 @@ reason には点数の根拠を1文で書いてください。
 - 各項目の **problem_text_echo に、その問題IDの保存済み文言の冒頭をそのまま引き写して**ください。
   IDの取り違えをサーバー側で検出するための照合用です（自分で言い換えた要約ではなく原文の引き写し）。
 - selected=true は上位2〜3件に絞ってください（全部やろうとしないのが重点指向です）。
+- **選定は原則としてスコアの上位から**。選外より低いスコアの問題を選定する場合は、
+  点数のほうが実態に合っていない可能性を先に疑い、必要なら3軸を付け直してください。
+  それでも低スコアを選ぶ判断をするなら、reason にその理由を明記してください。
+- 担当者の指示で選定を差し替えたときは、**点数も対象の問題に合わせて付け直す**こと。
+  選定フラグだけ動かして点数を前の並びのまま残さないでください。
 - 評価案を提示して担当者に確認し、修正があれば selection を作り直して再提出する。
 - 担当者が選定に同意したら rootcause へ進む。`;
 
@@ -190,6 +196,17 @@ function dataSummary(d: IssueDialogueData): string {
   );
 
   if (d.selection.length > 0) {
+    const bad = findSelectionInconsistencies(d.problems, d.selection);
+    if (bad.length > 0) {
+      lines.push(
+        `⚠ 選定と点数が矛盾しています（選外のほうが高得点）:\n${bad
+          .map(
+            (b) =>
+              `  選定 ${b.selected_id}(${b.selected_score}点) < 選外 ${b.unselected_id}(${b.unselected_score}点)`,
+          )
+          .join("\n")}\n  → 点数の付け直しか、reason での理由の明記が必要です`,
+      );
+    }
     lines.push(
       `選別:\n${d.selection
         .map(
@@ -276,6 +293,10 @@ ${HYPOTHESIS_GUIDE}
   selection / root_causes / hypotheses は該当フェーズで**全体を作り直して**提出してください
   （problem_id が一致するものは上書きされます）。
 - 担当者が「わからない」と答えた場合は、選択肢を示して答えやすくしてください。
+- **制度・調査・ガイドライン・研究・統計を名前を挙げて説明するときは、必ず references に出典を入れてください。**
+  出典を確認できないものは、名前を挙げずに一般論として述べるか、「確認が必要」と正直に添えてください。
+  記憶に頼って正式名称や調査内容を断定しないこと（似た名前の別資料と取り違えた事例があります）。
+  探索順序は他と同じで、①【参照ナレッジ】→ ②不足時のみ web_search です。
 
 【回答ヒント（suggestions）の作成 — 質問ターンでは必須】
 担当者が答えやすいように「回答のヒント」を2〜4件、suggestions で必ず添えてください。
@@ -509,6 +530,20 @@ export const RECORD_ISSUE_TURN_TOOL: Anthropic.Tool = {
         type: "array",
         description: "課題仮説（hypothesis フェーズ）。problem_id 単位で上書きされる",
         items: HYPOTHESIS_ITEM_SCHEMA,
+      },
+      references: {
+        type: "array",
+        description:
+          "返答の中で制度・調査・ガイドライン・研究・統計を名前を挙げて説明した場合の出典（必須）。担当者は計画書に載せて議会・審議会で根拠を問われるため、名称は正式名称で、可能ならURLも付ける",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "正式な資料名・調査名" },
+            url: { type: "string", description: "URL（分かる場合）" },
+            note: { type: "string", description: "そこから何を引いたか" },
+          },
+          required: ["title"],
+        },
       },
       suggestions: {
         type: "array",

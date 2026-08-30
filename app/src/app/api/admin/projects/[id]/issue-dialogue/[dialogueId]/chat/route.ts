@@ -41,6 +41,8 @@ import {
   type IssueMessage,
   type IssueStep,
   type ProblemItem,
+  type IssueReference,
+  needsCitation,
   type ProblemMerge,
   type RootCauseItem,
   type SelectionItem,
@@ -146,6 +148,26 @@ function applyProblemUpdates(problems: ProblemItem[], arr: unknown): ProblemItem
     if (isFactorKey(o.factor)) target.factor = o.factor;
   }
   return problems.map((p) => byId.get(p.id) ?? p);
+}
+
+/** 出典（references）を取り込む。title 必須・URLは http(s) のみ */
+function sanitizeReferences(arr: unknown): IssueReference[] {
+  if (!Array.isArray(arr)) return [];
+  const out: IssueReference[] = [];
+  for (const it of arr) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const title = str(o.title, 200);
+    if (!title) continue;
+    const ref: IssueReference = { title };
+    const url = str(o.url, 500);
+    if (/^https?:\/\//.test(url)) ref.url = url;
+    const note = str(o.note, 300);
+    if (note) ref.note = note;
+    out.push(ref);
+    if (out.length >= 8) break;
+  }
+  return out;
 }
 
 function num1to5(v: unknown): number {
@@ -563,6 +585,9 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   let nextData = applyTurn(input, data);
   let phase = guardPhase(parsePhase(input.phase, row.current_step), row.current_step, nextData);
   let suggestions = sanitizeStringArray(input.suggestions, { maxItems: 4, maxLength: 200 });
+  // reply/suggestions/references は「最後に採用したツール出力」から取る
+  // （下のガードで追いターンを回すと差し替わるため）
+  let lastInput: Record<string, unknown> = input;
   let completed = (input.completed === true || phase === "done") && phase === "done";
 
   // ── 選別の取り違えガード ──────────────────────────
@@ -615,6 +640,7 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
           nextData = fixed;
           reply = str(fInput.reply, 4000) || reply;
           suggestions = sanitizeStringArray(fInput.suggestions, { maxItems: 4, maxLength: 200 });
+          lastInput = fInput;
           phase = guardPhase(parsePhase(fInput.phase, row.current_step), row.current_step, nextData);
           completed = phase === "done";
         } else {
@@ -675,6 +701,7 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
         nextData = retried;
         reply = str(rInput.reply, 4000) || reply;
         suggestions = sanitizeStringArray(rInput.suggestions, { maxItems: 4, maxLength: 200 });
+        lastInput = rInput;
         phase = retriedPhase;
         completed = retriedPhase === "done";
       }
@@ -683,11 +710,20 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
     }
   }
 
+  // 出典。制度名・調査名を挙げているのに出典が無い返答には印を付け、画面で検証を促す
+  const references = sanitizeReferences(lastInput.references);
+  const unsourced = references.length === 0 && needsCitation(reply);
+  if (unsourced) {
+    console.warn("[issue-dialogue/chat] 出典なしで固有名詞を含む返答", params.dialogueId);
+  }
+
   const assistantMessage: IssueMessage = {
     role: "assistant",
     content: reply,
     step: phase,
     ...(suggestions.length > 0 ? { suggestions } : {}),
+    ...(references.length > 0 ? { references } : {}),
+    ...(unsourced ? { unsourced: true } : {}),
   };
   const messages = [...history, assistantMessage];
   const nextStatus: "in_progress" | "completed" = completed ? "completed" : "in_progress";
