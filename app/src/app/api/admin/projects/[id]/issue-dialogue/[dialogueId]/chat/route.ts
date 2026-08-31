@@ -768,7 +768,9 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
 
   // 出典。制度名・調査名を挙げているのに出典が無い返答には印を付け、画面で検証を促す
   const references = sanitizeReferences(lastInput.references);
-  const unsourced = references.length === 0 && needsCitation(reply);
+  // 担当者自身の発言を引用し返しただけの鉤括弧は対象外にする（誤検知を避ける）
+  const lastUserText = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
+  const unsourced = references.length === 0 && needsCitation(reply, lastUserText);
   if (unsourced) {
     console.warn("[issue-dialogue/chat] 出典なしで固有名詞を含む返答", params.dialogueId);
   }

@@ -663,6 +663,17 @@ function HypothesisView({
   const problemMap = new Map(problems.map((p) => [p.id, p]));
   const selMap = new Map(selection.map((x) => [x.problem_id, x]));
   const committedByTitle = new Map(committed.map((c) => [c.title, c]));
+  // 書き出し前でも順位を見せる。書き出し時のランクは選別スコアの降順で採番されるので、
+  // 同じ規則で「予定順位」を出しておく（書き出してから順序を知る、という状態を避ける）
+  const plannedRank = new Map<string, number>();
+  [...hypotheses]
+    .sort(
+      (a, b) =>
+        (selMap.get(b.problem_id)?.score ?? 0) - (selMap.get(a.problem_id)?.score ?? 0),
+    )
+    .forEach((h, i) => {
+      if (!plannedRank.has(h.problem_id)) plannedRank.set(h.problem_id, i + 1);
+    });
 
   return (
     <div className="space-y-4">
@@ -708,14 +719,16 @@ function HypothesisView({
                     書き出し済み
                   </span>
                 )}
-                {/* 優先順位は選別スコアの降順で採番される。なぜこの順かを画面で辿れるようにする */}
-                {c?.priority_rank != null && (
+                {/* 優先順位は選別スコアの降順で採番される。なぜこの順かを画面で辿れるようにする。
+                    書き出し前は同じ規則で計算した「予定」を出す */}
+                {(c?.priority_rank ?? plannedRank.get(h.problem_id)) != null && (
                   <span
                     className="text-[10px] px-2 py-0.5 rounded-full font-mono"
                     style={{ background: "#6366f120", color: "#818cf8" }}
                     title="選別スコアの降順で採番された優先順位"
                   >
-                    優先度 {c.priority_rank}位
+                    優先度 {c?.priority_rank ?? plannedRank.get(h.problem_id)}位
+                    {c?.priority_rank == null ? "（予定）" : ""}
                     {sel ? `（選別 ${sel.score}点）` : ""}
                   </span>
                 )}

@@ -93,7 +93,12 @@ check(
   routeSrc.includes("selectedActiveProblemIds("),
 );
 check("chat: 出典を取り込む", routeSrc.includes("sanitizeReferences("));
-check("chat: 出典なしの発言に印を付ける", routeSrc.includes("needsCitation(reply)"));
+check("chat: 出典なしの発言に印を付ける", routeSrc.includes("needsCitation(reply,"));
+// 担当者自身の証言を引用し返しただけで警告が出ていた（2026-08-31）
+check(
+  "chat: 直前の担当者の発言を出典判定に渡す",
+  routeSrc.includes("lastUserText") && routeSrc.includes("needsCitation(reply, lastUserText)"),
+);
 
 // ── 2.5 真因は「選定した課題ごとに」確定する ─────────────
 // JIS Q 9024 の要因解析は選定した課題1件ずつに行うもの。
@@ -171,7 +176,9 @@ check(
 );
 // 優先順位は選別スコアで決まる。仮説だけを見て「なぜこれが1位なのか」を
 // 追えるよう、順位と根拠の点数を並べて出す。
-check("画面: 仮説に優先順位を出す", /優先度 \{?c\.priority_rank/.test(clientSrc));
+check("画面: 仮説に優先順位を出す", clientSrc.includes("優先度 {c?.priority_rank ?? plannedRank"));
+// 書き出してから初めて順序を知る、という状態にしない
+check("画面: 書き出し前も予定順位を出す", clientSrc.includes("plannedRank") && clientSrc.includes("（予定）"));
 check("画面: 優先順位の根拠（選別スコア）も添える", clientSrc.includes("選別 ${sel.score}点"));
 check("画面: 仮説ビューに選別結果を渡している", clientSrc.includes("selection={record.selection}"));
 
@@ -275,6 +282,19 @@ try {
     "出典判定: 鉤括弧があっても資料を示す語が無ければ偽",
     m.needsCitation("担当者が「足がない」とおっしゃっていた点ですね") === false,
   );
+  // 担当者自身の証言を引用し返しただけなら、出典を求める対象ではない（2026-08-31）
+  {
+    const said =
+      "採算が合うかを確かめないまま公募をかけ、応募が無いのを事業者側の問題として繰り越してきたのが実態です。事業者意向調査の記録もありません。";
+    const reply =
+      "「採算が合うかを確かめないまま公募をかけ、応募が無いのを事業者側の問題として繰り越してきた」という構造が見えました。事業者意向調査をしていない点が要です。";
+    check("出典判定: 担当者の発言の引用返しは偽", m.needsCitation(reply, said) === false);
+    check("出典判定: 直前の発言を渡さなければ従来どおり真", m.needsCitation(reply) === true);
+    check(
+      "出典判定: 外部の固有名詞が混ざれば真のまま",
+      m.needsCitation(reply + " 厚生労働省「介護予防・日常生活圏域ニーズ調査」も参照できます。", said) === true,
+    );
+  }
 
   // 重点指向の破れ
   const probs2 = [

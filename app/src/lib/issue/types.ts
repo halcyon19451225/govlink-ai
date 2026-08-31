@@ -393,10 +393,20 @@ const CITATION_SOURCE_WORDS = [
   "調査", "ガイドライン", "指標", "白書", "統計", "研究", "報告書", "指針", "基準", "法", "省", "庁", "OECD", "WHO",
 ];
 
-export function needsCitation(text: string): boolean {
-  const quoted = /[「『][^」』]{3,60}[」』]/.test(text);
-  if (!quoted) return false;
-  return CITATION_SOURCE_WORDS.some((w) => text.includes(w));
+export function needsCitation(text: string, userText?: string): boolean {
+  const quotes = text.match(/[「『][^」』]{3,60}[」』]/g);
+  if (!quotes) return false;
+  if (!CITATION_SOURCE_WORDS.some((w) => text.includes(w))) return false;
+
+  // 担当者自身の証言を引用し返しただけの鉤括弧は、出典を求める対象ではない。
+  // AIが「採算が合うかを確かめないまま公募をかけ…」と担当者の言葉を引き、
+  // 同じ文に「事業者意向調査」の語が居たために警告が出た（2026-08-31）。
+  const said = userText ? normalizeForEcho(userText) : "";
+  const external = quotes.filter((q) => {
+    const inner = normalizeForEcho(q.slice(1, -1));
+    return inner.length > 0 && !(said.length > 0 && said.includes(inner));
+  });
+  return external.length > 0;
 }
 
 /** 選定と点数の矛盾（重点指向の破れ） */
