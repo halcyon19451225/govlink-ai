@@ -62,3 +62,26 @@ export async function waitForTurn<T extends TurnFields>(
     if (Date.now() - started > timeout) throw new Error(TURN_TIMEOUT_ERROR);
   }
 }
+
+/**
+ * AI処理の実体（step）を画面から起動する。
+ *
+ * 以前はサーバーが 202 を返したあと自分自身を fire-and-forget で呼んでいたが、
+ * Lambda はレスポンスを返した時点で実行を凍結するため、その呼び出しは
+ * 届かないことがあった（AIを一度も呼ばないままターンが固まる。2026-08-31）。
+ * ブラウザは凍結されないので、起動役を画面側へ移している。
+ *
+ * この応答は待たない — 結果は waitForTurn のポーリングで取り込む。
+ * 実行は30秒を超えることがあり、Amplify が応答を切っても
+ * サーバー側の処理は最後まで走って保存される。
+ * 送信に失敗しても握りつぶす（失効から再試行できる）。
+ */
+export function requestTurnStep(chatUrl: string): void {
+  void fetch(chatUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "step" }),
+  }).catch(() => {
+    // ポーリングが処理中のまま失効を検出し、再試行の導線に出る
+  });
+}

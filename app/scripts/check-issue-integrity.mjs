@@ -150,6 +150,25 @@ check("画面: 出典を表示する", clientSrc.includes("MessageSources"));
 check("画面: 出典なしの警告を出す", clientSrc.includes("出典が示されていません"));
 check("画面: 選定と点数の矛盾を知らせる", clientSrc.includes("SelectionInconsistencyNotice"));
 check("画面: 真因が未確定の課題を知らせる", clientSrc.includes("UnresolvedRootCauseNotice"));
+// 真因分析の最中に残っているのは工程が進んでいる証拠であって異常ではない。
+// 通常状態を赤い警告で出し続けると、本当の異常（仮説まで進んだのに欠けている）を見過ごす。
+check("画面: 真因の通知に工程を渡している", clientSrc.includes("step={selected.current_step}"));
+check(
+  "画面: 真因分析より前の工程では出さない",
+  /ISSUE_STEP_ORDER\.indexOf\(step\)[\s\S]{0,120}indexOf\("rootcause"\)[\s\S]{0,40}return null/.test(
+    clientSrc,
+  ),
+);
+check("画面: 真因分析中は進捗として出す（件数）", clientSrc.includes("真因 ${total - pending.length}"));
+check(
+  "画面: 仮説以降で残っていれば警告にする",
+  clientSrc.includes('const inProgress = step === "rootcause"'),
+);
+// 件数の食い違い（IDの最大値を件数と取り違える）を防ぐ
+check(
+  "課題仮説設定: 件数は一覧の行数を数えるよう指示する",
+  read(join(APP_ROOT, "src", "lib", "issue", "prompt.ts")).includes("IDの最大値は件数ではありません"),
+);
 // 優先順位は選別スコアで決まる。仮説だけを見て「なぜこれが1位なのか」を
 // 追えるよう、順位と根拠の点数を並べて出す。
 check("画面: 仮説に優先順位を出す", /優先度 \{?c\.priority_rank/.test(clientSrc));

@@ -182,21 +182,42 @@ export async function failTurn(
 }
 
 /**
- * 自分自身の /chat を step_token 付きで fire-and-forget 呼び出しする。
- * chain-fetch.ts と同じ理由で AbortController は使わず、await もしない。
- * keepalive:true によりレスポンス返却後でもパケット送出は保証される。
- * pathname は "/api/admin/projects/<id>/issue-dialogue/<dialogueId>/chat" の形。
+ * 処理中の行の turn_token を取り出す（画面からの step 要求用）。
+ * 呼ぶ前に必ずセッションと編集権限を検証すること — トークンは画面へ渡さない。
  */
-export function triggerTurnStep(pathname: string, token: string): void {
-  const base = process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
-  fetch(`${base}${pathname}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ step_token: token }),
-    keepalive: true,
-  }).catch((e: unknown) => {
-    console.error("[asyncTurn.triggerTurnStep] fetch failed:", e instanceof Error ? e.message : e);
-  });
+export async function currentTurnToken(
+  table: TurnTable,
+  id: string,
+  projectId: string,
+): Promise<string | null> {
+  const row = await queryOne<{ turn_token: string | null }>(
+    `SELECT turn_token FROM ${table}
+     WHERE id = $1 AND project_id = $2 AND turn_status = 'processing'`,
+    [id, projectId],
+  );
+  return row?.turn_token ?? null;
+}
+
+/**
+ * サーバーが自分自身の /chat を fire-and-forget 呼び出しする — **使ってはいけない**。
+ *
+ * 2026-08-31、AIターンが完了しなくなった原因がこれだと判明した。
+ * chain-fetch.ts のコメントは「keepalive:true により OSネットワーク層での
+ * パケット送出は保証される」としていたが、これはブラウザの fetch 仕様の話で、
+ * **Node（undici）の fetch には当てはまらない**。Lambda はレスポンスを返した
+ * 時点で実行を凍結するため、送信途中のリクエストはそのまま消える。
+ * 実際、失敗したターンは ai_usage_logs に成功・失敗いずれの記録も残らなかった
+ * ＝ Anthropic への呼び出しが一度も発生していなかった。
+ *
+ * 現在は画面から step を叩く方式に変えている（応急処置）。
+ * 恒久対策はジョブ表＋ワーカーの導入。復活させないためだけに残してある。
+ *
+ * @deprecated Lambda 上で確実に届かない。画面から step を要求すること。
+ */
+export function triggerTurnStep(): never {
+  throw new Error(
+    "triggerTurnStep は使用禁止です（Lambda 凍結により届きません）。画面から step を要求してください",
+  );
 }
 
 /** 利用者向けの「処理中」応答（202） */

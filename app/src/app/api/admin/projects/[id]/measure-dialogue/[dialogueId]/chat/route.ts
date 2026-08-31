@@ -22,7 +22,7 @@ import {
   claimStep,
   failTurn,
   isStepRequest,
-  triggerTurnStep,
+  currentTurnToken,
   turnDoneSql,
 } from "@/lib/ai/asyncTurn";
 import { buildGenerationContext } from "@/lib/logicmodel/generationContext";
@@ -67,7 +67,8 @@ type Params = { params: { id: string; dialogueId: string } };
 const bodySchema = z.object({
   message: z.string().trim().max(4000).nullish(),
   /** "retry": 失敗したターンを（発言を追加せず）やり直す */
-  action: z.enum(["retry"]).nullish(),
+  /** "retry": やり直し / "step": 画面からAI処理の実体を起動する */
+  action: z.enum(["retry", "step"]).nullish(),
 });
 
 const TURN_TABLE = "measure_dialogues" as const;
@@ -158,6 +159,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: null, error: "対話が見つかりません" }, { status: 404 });
   }
 
+  // ── 画面からの step 要求（AI処理の実体） ─────────────
+  // 起動役は画面側が担う。サーバーが自分自身を fire-and-forget で呼ぶ方式は
+  // Lambda がレスポンス後に実行を凍結するため届かないことがあり、
+  // AIを一度も呼ばないままターンが固まっていた（2026-08-31）。
+  if (parsed.data.action === "step") {
+    const token = await currentTurnToken(TURN_TABLE, params.dialogueId, params.id);
+    // トークンが無い＝既に完了しているか、別の要求が処理した。成功として返す
+    if (!token) return NextResponse.json({ data: { ok: true }, error: null });
+    try {
+      await runTurn(params, token);
+      return NextResponse.json({ data: { ok: true }, error: null });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "AI処理に失敗しました";
+      console.error("[measure-dialogue/chat step]", msg);
+      await failTurn(TURN_TABLE, params.dialogueId, token, msg);
+      return NextResponse.json({ data: null, error: msg }, { status: 500 });
+    }
+  }
+
   const isRetry = parsed.data.action === "retry";
   const trimmedMessage = parsed.data.message?.trim() ?? "";
 
@@ -213,10 +233,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  triggerTurnStep(
-    `/api/admin/projects/${params.id}/measure-dialogue/${params.dialogueId}/chat`,
-    begun.token,
-  );
   return NextResponse.json(acceptedPayload(begun.messages), { status: 202 });
 }
 

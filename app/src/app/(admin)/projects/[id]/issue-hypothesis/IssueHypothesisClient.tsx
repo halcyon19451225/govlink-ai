@@ -8,6 +8,7 @@ import CopyButton from "@/components/CopyButton";
 import { formatMessage, formatTranscript } from "@/lib/ai/transcript";
 import {
   isAcceptedTurn,
+  requestTurnStep,
   isTurnProcessing,
   waitForTurn,
   type TurnStatus,
@@ -835,20 +836,37 @@ function UnresolvedRootCauseNotice({
   problems,
   selection,
   rootCauses,
+  step,
 }: {
   problems: ProblemItem[];
   selection: SelectionItem[];
   rootCauses: RootCauseItem[];
+  step: IssueStep;
 }) {
   const pending = unresolvedRootCauseIds(problems, selection, rootCauses);
   if (pending.length === 0) return null;
+  // 真因分析の前は、まだ着手していないだけなので出さない。
+  const at = ISSUE_STEP_ORDER.indexOf(step);
+  if (at < ISSUE_STEP_ORDER.indexOf("rootcause")) return null;
+
+  // 真因分析の最中に残っているのは工程が進んでいるだけ＝進捗として淡く出す。
+  // それより先へ進んでいるのに残っているのは異常＝警告として出す。
+  // （工程の通常状態を赤い警告で出し続けると、本当の異常時に見過ごされる）
+  const total = selectedActiveProblemIds(problems, selection).length;
+  const inProgress = step === "rootcause";
+  const color = inProgress ? "#94a3b8" : "#f87171";
   return (
     <div
       className="rounded-lg border px-2 py-1.5 mb-2"
-      style={{ borderColor: "#f8717140", background: "#f8717110" }}
+      style={{
+        borderColor: inProgress ? "#94a3b840" : "#f8717140",
+        background: inProgress ? "#94a3b810" : "#f8717110",
+      }}
     >
-      <p className="text-[10px] font-semibold" style={{ color: "#f87171" }}>
-        ⚠ 真因まで掘れていない課題があります: {pending.join("、")}
+      <p className="text-[10px] font-semibold" style={{ color }}>
+        {inProgress
+          ? `真因 ${total - pending.length}/${total} 件｜未着手: ${pending.join("、")}`
+          : `⚠ 真因まで掘れていない課題があります: ${pending.join("、")}`}
       </p>
       <p className="text-[10px] text-slate-400 leading-snug mt-0.5">
         選定した課題は1件ずつ特性要因図となぜなぜ分析を行う工程です。欠けたままだと、その課題は現状整理から真因までの筋道が残りません
@@ -1246,6 +1264,8 @@ export default function IssueHypothesisClient({
           ),
         );
         accepted = true;
+        // AI処理の実体は画面から起動する（サーバーの自己呼び出しは Lambda 凍結で届かない）
+        requestTurnStep(`/api/admin/projects/${projectId}/issue-dialogue/${selected.id}/chat`);
       }
     } catch {
       // 送信自体が失敗した可能性もあるが、届いていれば再読み込みで反映される
@@ -1287,6 +1307,8 @@ export default function IssueHypothesisClient({
           ),
         );
         accepted = true;
+        // AI処理の実体は画面から起動する（サーバーの自己呼び出しは Lambda 凍結で届かない）
+        requestTurnStep(`/api/admin/projects/${projectId}/issue-dialogue/${selected.id}/chat`);
       }
     } catch {
       setError("通信エラーが発生しました");
@@ -1452,6 +1474,7 @@ export default function IssueHypothesisClient({
           problems={selected.problems}
           selection={selected.selection}
           rootCauses={selected.root_causes}
+          step={selected.current_step}
         />
         <div className="max-h-64 overflow-y-auto pr-1">
           <ProblemList

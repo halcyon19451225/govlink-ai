@@ -61,13 +61,19 @@ for (const [table, file] of Object.entries(routes)) {
   if (!existsSync(file)) continue;
   const src = read(file);
   check(`${label}: TURN_TABLE = "${table}"`, src.includes(`const TURN_TABLE = "${table}" as const`));
-  for (const fn of ["beginTurn", "claimStep", "failTurn", "isStepRequest", "triggerTurnStep", "turnDoneSql"]) {
+  for (const fn of ["beginTurn", "claimStep", "failTurn", "isStepRequest", "currentTurnToken", "turnDoneSql"]) {
     check(`${label}: ${fn} を使う`, new RegExp(`${fn}(<[^>]*>)?\\(`).test(src));
   }
+  // サーバーが自分自身を fire-and-forget で呼ぶ方式は復活させない。
+  // Lambda はレスポンスを返した時点で実行を凍結するため、その呼び出しは届かず、
+  // Anthropic を一度も呼ばないままターンが固まっていた（2026-08-31、ログに一行も残らず判明）。
+  // keepalive:true はブラウザの fetch 仕様であって Node（undici）では効かない。
+  check(`${label}: サーバーからの自己呼び出しを使っていない`, !src.includes("triggerTurnStep"));
+  check(`${label}: 画面からの step 要求を受け付ける`, /parsed\.data\.action === "step"/.test(src));
   check(`${label}: 202 で受理する`, /status: 202/.test(src));
   check(`${label}: runTurn を持つ`, /async function runTurn\(/.test(src));
   check(`${label}: 保存は turn_token 一致行のみ`, /AND turn_token = \$\d+/.test(src));
-  check(`${label}: 再試行（action: retry）を受け付ける`, src.includes('z.enum(["retry"])'));
+  check(`${label}: 再試行と step を受け付ける`, src.includes('z.enum(["retry", "step"])'));
   // runTurn の中で NextResponse を返してはいけない（例外で failTurn に流す）
   const runTurnBody = src.slice(src.indexOf("async function runTurn("));
   check(`${label}: runTurn 内に NextResponse.json が無い`, !runTurnBody.includes("NextResponse.json("));
@@ -103,6 +109,28 @@ for (const file of clients) {
   check(`${label}: 202 受理を判定する`, src.includes("isAcceptedTurn("));
   check(`${label}: 再読み込み後に待ち受けを再開する`, src.includes("isTurnProcessing(selected)"));
   check(`${label}: 再試行ボタンがある`, src.includes('action: "retry"'));
+  // 起動役は画面。202 を受理したどちらの経路（送信・再試行）でも step を叩くこと
+  check(
+    `${label}: 受理後に step を起動する（送信・再試行の2箇所）`,
+    (src.match(/requestTurnStep\(/g) ?? []).length >= 2,
+  );
+}
+
+// ── 4.2 起動役の所在 ────────────────────────────
+// サーバーの自己 fetch は Lambda 凍結で消えることがあり、AIを一度も呼ばないまま
+// ターンが固まった（2026-08-31）。恒久対策はジョブ表＋ワーカーだが、
+// それまでの間「起動役は画面」を崩さないよう固定する。
+{
+  const async_ = read(join(APP_ROOT, "src", "lib", "ai", "asyncTurn.ts"));
+  check("asyncTurn: turn_token を取り出す口がある", async_.includes("export async function currentTurnToken"));
+  check(
+    "asyncTurn: 自己呼び出しは使えないようにしてある",
+    /export function triggerTurnStep\(\): never/.test(async_),
+  );
+  check("asyncTurn: 自己呼び出しで fetch していない", !/fetch\(`\$\{base\}/.test(async_));
+  const client = read(join(APP_ROOT, "src", "lib", "ai", "turnClient.ts"));
+  check("turnClient: step を起動する口がある", client.includes("export function requestTurnStep"));
+  check("turnClient: step の応答は待たない", /requestTurnStep[\s\S]{0,200}void fetch\(/.test(client));
 }
 
 // ── 4.5 出力上限と空の返答の扱い ─────────────────

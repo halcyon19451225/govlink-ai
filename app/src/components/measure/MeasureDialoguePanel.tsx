@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import AiThinkingIndicator from "@/components/AiThinkingIndicator";
 import {
   isAcceptedTurn,
+  requestTurnStep,
   isTurnProcessing,
   waitForTurn,
   type TurnStatus,
@@ -349,6 +350,8 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
           ),
         );
         accepted = true;
+        // AI処理の実体は画面から起動する（サーバーの自己呼び出しは Lambda 凍結で届かない）
+        requestTurnStep(`/api/admin/projects/${projectId}/measure-dialogue/${selected.id}/chat`);
       }
     } catch {
       setError("通信エラーが発生しました。画面を再読み込みすると状態を確認できます");
@@ -389,6 +392,8 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
           ),
         );
         accepted = true;
+        // AI処理の実体は画面から起動する（サーバーの自己呼び出しは Lambda 凍結で届かない）
+        requestTurnStep(`/api/admin/projects/${projectId}/measure-dialogue/${selected.id}/chat`);
       }
     } catch {
       setError("通信エラーが発生しました");
