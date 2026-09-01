@@ -12,7 +12,10 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import OutcomeScoreboard from "@/components/outcome/OutcomeScoreboard";
+import type { ScoreboardKpi } from "@/lib/outcome/tiers";
 import MeasureDialoguePanel from "@/components/measure/MeasureDialoguePanel";
 import ExperimentResultsPanel from "@/components/measure/ExperimentResultsPanel";
 import MeasureDatasetPanel from "@/components/measure/MeasureDatasetPanel";
@@ -40,12 +43,29 @@ interface KpiRow {
   indicator_type: string | null;
 }
 
+/**
+ * 目標（長期アウトカム）から入ってきたときの絞り込み。
+ * 計画概要の「目的・目標を見る」で目標をタップすると付いてくる。
+ */
+export interface MeasureFocus {
+  /** タップされた目標そのもの */
+  kpi: ScoreboardKpi;
+  /** この目標に寄与すると宣言している下位指標（到達状況の読み筋になる） */
+  contributors: ScoreboardKpi[];
+  /** この目標に紐づく主要施策のID */
+  measureIds: string[];
+  planStartDate: string | null;
+  planEndDate: string | null;
+}
+
 interface Props {
   project: { id: string; title: string };
   projectId: string;
   initialMeasures: MeasureDesign[];
   hypotheses: HypothesisRow[];
   kpis: KpiRow[];
+  /** 指定が無いときは従来どおり全施策を表示する */
+  focus?: MeasureFocus | null;
 }
 
 const cardStyle: React.CSSProperties = {
@@ -101,11 +121,16 @@ export default function MeasureDesignClient({
   initialMeasures,
   hypotheses,
   kpis,
+  focus = null,
 }: Props) {
   const router = useRouter();
-  const [tab, setTab] = useState<"dialogue" | "list">("dialogue");
+  // 目標から入ってきたときは一覧（＝ロジックモデル詳細）を最初に開く
+  const [tab, setTab] = useState<"dialogue" | "list">(focus ? "list" : "dialogue");
   const [measures, setMeasures] = useState<MeasureDesign[]>(initialMeasures);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(
+    // この目標の施策が1件だけなら、詳細画面として開いた状態で見せる
+    focus && focus.measureIds.length === 1 ? (focus.measureIds[0] ?? null) : null,
+  );
   const [showLevels, setShowLevels] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -160,6 +185,20 @@ export default function MeasureDesignClient({
 
   const kpiById = useMemo(() => new Map(kpis.map((k) => [k.id, k])), [kpis]);
   const hypById = useMemo(() => new Map(hypotheses.map((h) => [h.id, h])), [hypotheses]);
+
+  // 目標から入ってきたときだけ絞る。絞り込みは表示だけで、
+  // 反映・確定・対話の各処理は従来どおり measures 全体を対象にしている。
+  const visibleMeasures = useMemo(() => {
+    if (!focus) return measures;
+    const ids = new Set(focus.measureIds);
+    return measures.filter((m) => ids.has(m.id));
+  }, [measures, focus]);
+
+  // 冒頭に出す到達状況は「該当する目標」と、それに寄与すると宣言された下位指標だけ
+  const focusKpis = useMemo(
+    () => (focus ? [focus.kpi, ...focus.contributors] : []),
+    [focus],
+  );
 
   const patch = async (id: string, body: Record<string, unknown>) => {
     setBusy(id);
@@ -249,6 +288,42 @@ export default function MeasureDesignClient({
 
   return (
     <div className="max-w-5xl space-y-6">
+      {/* 目標から入ってきたとき: その目標の到達状況を冒頭に置く */}
+      {focus && (
+        <>
+          <OutcomeScoreboard
+            kpis={focusKpis}
+            planStartDate={focus.planStartDate}
+            planEndDate={focus.planEndDate}
+            title={`アウトカム到達状況 — ${focus.kpi.label}`}
+          />
+          <div
+            className="rounded-xl border px-4 py-3 flex items-center justify-between gap-3 flex-wrap"
+            style={{ background: "#6366f110", borderColor: "#6366f140" }}
+          >
+            <p className="text-xs text-slate-300 leading-relaxed">
+              目標「<span className="text-slate-100 font-semibold">{focus.kpi.label}</span>」
+              に紐づく主要施策のロジックモデルを表示しています（
+              {visibleMeasures.length}件）。
+            </p>
+            <div className="flex items-center gap-3 shrink-0">
+              <Link
+                href={`/projects/${projectId}`}
+                className="text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                ← 計画概要
+              </Link>
+              <Link
+                href={`/projects/${projectId}/measure-design`}
+                className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                すべての施策を見る →
+              </Link>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ヘッダー */}
       <div className="rounded-2xl border p-6 space-y-3" style={cardStyle}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -311,7 +386,12 @@ export default function MeasureDesignClient({
         {(
           [
             { key: "dialogue", label: "AIと構築（対話）" },
-            { key: "list", label: `データセット一覧（${measures.length}）` },
+            {
+              key: "list",
+              label: focus
+                ? `この目標の施策（${visibleMeasures.length}）`
+                : `データセット一覧（${measures.length}）`,
+            },
           ] as const
         ).map((t) => (
           <button
@@ -364,17 +444,31 @@ export default function MeasureDesignClient({
       )}
 
       {/* 一覧 */}
-      {tab === "list" && (measures.length === 0 ? (
+      {tab === "list" && (visibleMeasures.length === 0 ? (
         <div className="rounded-2xl border border-dashed p-10 text-center" style={{ borderColor: "var(--border)" }}>
-          <p className="text-sm text-slate-500 mb-2">施策はまだありません。</p>
-          <p className="text-xs text-slate-600">
-            「AIと構築」タブで課題仮説（真因）から対話で組み立てるか、
-            「＋ 施策を起こす」で手動で作成してください。
-          </p>
+          {focus ? (
+            <>
+              <p className="text-sm text-slate-500 mb-2">
+                この目標に紐づく主要施策はまだありません。
+              </p>
+              <p className="text-xs text-slate-600">
+                課題仮説設定でこの指標の課題仮説を立て、「AIと構築」タブで真因から
+                施策を組み立てると、ここに現れます。
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500 mb-2">施策はまだありません。</p>
+              <p className="text-xs text-slate-600">
+                「AIと構築」タブで課題仮説（真因）から対話で組み立てるか、
+                「＋ 施策を起こす」で手動で作成してください。
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {measures.map((m) => {
+          {visibleMeasures.map((m) => {
             const open = openId === m.id;
             const evMeta = EVIDENCE_STATUS_META[m.evidence_status];
             const hyp = m.issue_hypothesis_id ? hypById.get(m.issue_hypothesis_id) : null;

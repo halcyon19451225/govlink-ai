@@ -4,7 +4,6 @@ import { useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import KnowledgePanel from "@/components/KnowledgePanel";
-import OutcomeScoreboard from "@/components/outcome/OutcomeScoreboard";
 import { normalizeIndicatorType, OUTCOME_TIER_META } from "@/lib/outcome/tiers";
 import { LOGIC_COLUMNS, elementTexts } from "@/lib/logicmodel/elements";
 
@@ -573,12 +572,13 @@ export default function ProjectOverviewClient({
     return (
       <div className="p-6 max-w-3xl space-y-6">
 
-        {/* アウトカム・スコアボード（三層の到達状況を常時表示） */}
-        <OutcomeScoreboard
-          kpis={kpis}
-          planStartDate={project.plan_start_date}
-          planEndDate={project.plan_end_date}
-        />
+        {/*
+          アウトカム到達状況は、計画全体を一枚に積む形をやめ、
+          目標（長期アウトカム）ごとの施策詳細画面の冒頭へ移した（2026-09）。
+          全指標を並べると「どの目標がどの施策で動くのか」が読めないため、
+          目標 → その目標に紐づく主要施策 → その目標の到達状況、の順で見せる。
+          動線は下の「目的・目標を見る」の各目標から。
+        */}
 
         {/* メインカード */}
         <div className="neu-card p-6 space-y-4">
@@ -742,13 +742,24 @@ export default function ProjectOverviewClient({
                         )}
                         {groupKpis.length > 0 && (
                           <ul className="ml-2 space-y-1.5">
+                            {/*
+                              目標（長期アウトカム）をタップすると、その目標に紐づく
+                              主要施策のロジックモデル詳細（施策構築の内容）へ入る。
+                              冒頭にこの目標の到達状況だけが出る。
+                            */}
                             {groupKpis.map((k) => (
                               <li key={k.id} className="flex items-start gap-2 text-xs"
                                 style={{ color: "var(--text-secondary)" }}>
                                 <span className="text-cyan-400 mt-0.5 shrink-0">└</span>
-                                <span className="leading-relaxed" style={{ color: "var(--text-primary)" }}>
+                                <Link
+                                  href={`/projects/${project.id}/measure-design?kpi=${k.id}`}
+                                  className="leading-relaxed rounded transition-colors hover:text-indigo-300"
+                                  style={{ color: "var(--text-primary)" }}
+                                  title="この目標に紐づく主要施策のロジックモデルを見る"
+                                >
                                   {fmtKpiSentence(k)}
-                                </span>
+                                  <span className="ml-1 text-indigo-400">›</span>
+                                </Link>
                               </li>
                             ))}
                           </ul>

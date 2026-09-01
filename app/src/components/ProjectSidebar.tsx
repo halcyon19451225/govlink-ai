@@ -19,8 +19,13 @@ const NAV_ITEMS = [
       { id: "asis-analysis",   label: "現状整理(As-Is)",     icon: "🧭", path: "asis-analysis" },
       { id: "issue-hypothesis",label: "課題仮説設定",        icon: "💡", path: "issue-hypothesis" },
       { id: "measure-design",  label: "施策構築(EBPM)",      icon: "🔬", path: "measure-design" },
-      { id: "logic-model",     label: "ロジックモデル",      icon: "🗺️", path: "logic-model" },
-      { id: "evidences",       label: "エビデンス管理",      icon: "🔍", path: "evidences" },
+      // ロジックモデル・エビデンス管理はメニューから外した（2026-09）。
+      //   ロジックモデル … 「計画概要」の目標（長期アウトカム）をタップすると、
+      //     その目標に紐づく主要施策のロジックモデル詳細（施策構築の内容）へ入る動線に統合した。
+      //     /logic-model のページと logic_models テーブルは、計画書の調製・プログラム評価・
+      //     リネージ・テンプレートが依存しているためそのまま残している（URL直打ちで到達可能）。
+      //   エビデンス管理 … エビデンスは施策データセット（measure_designs.evidence_items）側に
+      //     移ったため、独立メニューとしての役割が無くなった。ルートとテーブルは残す。
       { id: "schedule",        label: "スケジュール設定",    icon: "📅", path: "schedule" },
       { id: "pdca",            label: "PDCAサイクル全体図",  icon: "🔄", path: "pdca" },
       { id: "plan-document",   label: "計画書の調製",        icon: "📄", path: "plan-document" },

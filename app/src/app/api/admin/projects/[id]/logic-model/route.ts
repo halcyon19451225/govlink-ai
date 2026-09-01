@@ -81,14 +81,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (deny) return deny;
 
   const rows = await query(
+    // FILTER は集約関数にしか付けられない。json_build_object に付けていたため
+    // このGETは常に 500 になり、編集後の再読み込みが動いていなかった。
+    // 課題仮説が無いときに NULL を返すのは CASE で表す。
     `SELECT lm.*,
-            json_build_object(
-              'id', ih.id,
-              'title', ih.title,
-              'description', ih.description,
-              'root_cause', ih.root_cause,
-              'proposed_measures', ih.proposed_measures
-            ) FILTER (WHERE ih.id IS NOT NULL) AS upstream_hypothesis
+            CASE WHEN ih.id IS NULL THEN NULL ELSE
+              json_build_object(
+                'id', ih.id,
+                'title', ih.title,
+                'description', ih.description,
+                'root_cause', ih.root_cause,
+                'proposed_measures', ih.proposed_measures
+              )
+            END AS upstream_hypothesis
      FROM logic_models lm
      LEFT JOIN issue_hypotheses ih ON ih.id = lm.issue_hypothesis_id
      WHERE lm.project_id = $1
