@@ -243,5 +243,87 @@ try {
   check("API: 年度は4月始まりで数える", route.includes("getUTCMonth() + 1 >= 4"));
 }
 
+// ── 5. スケジュールへの反映 ─────────────────────
+{
+  const sch = read(join(APP_ROOT, "src", "lib", "measure", "schedule.ts"));
+  const route = read(
+    join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]",
+      "measure-design", "[measureId]", "dataset", "schedule", "route.ts"),
+  );
+  check("schedule.ts がある", sch.length > 0);
+  check("反映: 期限が無ければ反映しない", sch.includes("if (!a.due_date) return [];"));
+  check("反映: 繰り返しを回数分に展開する", sch.includes("export function planTasks"));
+  check("反映: 反映できなかったものを返す", sch.includes("skipped"));
+  check("API: 押す前に下見できる", /export async function GET/.test(route));
+  check("API: 反映を実行する", /export async function POST/.test(route));
+  check(
+    "API: 完了済みのタスクは消さない（実績が消えると指標No.5の分子が失われる）",
+    route.includes("completed_at == null"),
+  );
+  check("API: 施策IDを付けて登録する（進捗ボードとICSに載る）", route.includes("measure_design_id"));
+  check("API: 対応表に記録する", route.includes("INSERT INTO measure_activity_tasks"));
+
+  // 純粋ロジックの実挙動
+  const w2 = mkdtempSync(join(tmpdir(), "measure-schedule-"));
+  const out2 = join(w2, "schedule.mjs");
+  try {
+    execFileSync(
+      "npx",
+      [
+        "--no-install", "esbuild",
+        join(APP_ROOT, "src", "lib", "measure", "schedule.ts"),
+        "--bundle", "--format=esm", "--target=es2020", "--platform=neutral",
+        `--alias:@=${join(APP_ROOT, "src")}`,
+        `--outfile=${out2}`,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT },
+    );
+    const s2 = await import(pathToFileURL(out2).href);
+    const act = (over = {}) => ({
+      id: "a1", measure_work_id: "w1", title: "協議会での審議", note: null,
+      start_date: null, due_date: "2026-11-30", recurrence: "none", occurrences: null,
+      owner_department: "介護保険係", document_required: false, document_deadline: null,
+      document_offset_days: null, sort_order: 0, task_count: 0, ...over,
+    });
+
+    check("展開: 期限が無ければ0件", s2.planTasks(act({ due_date: null }), 3).length === 0);
+    check("展開: 繰り返し無しは1件", s2.planTasks(act(), 3).length === 1);
+    check("展開: 1件のときは回数を付けない", s2.planTasks(act(), 3)[0].title === "協議会での審議");
+
+    const yearly = s2.planTasks(act({ recurrence: "annual", occurrences: 4 }), 3);
+    check("展開: 毎年度×4回で4件", yearly.length === 4);
+    check("展開: 1年ずつ後ろへずらす", yearly.map((t) => t.due_date).join() ===
+      "2026-11-30,2027-11-30,2028-11-30,2029-11-30");
+    check("展開: 繰り返しは回数を添える", yearly[1].title === "協議会での審議（2回目）");
+
+    check("展開: 回数未指定なら計画年度数から決める",
+      s2.planTasks(act({ recurrence: "annual" }), 3).length === 3);
+    check("展開: 四半期なら年4回", s2.defaultOccurrences("quarterly", 2) === 8);
+    check("展開: 月次なら年12回", s2.defaultOccurrences("monthly", 1) === 12);
+
+    const doc = s2.planTasks(
+      act({ recurrence: "annual", occurrences: 2, document_required: true, document_offset_days: 30 }), 3);
+    check("成果物: 相対指定は各回の期限から数える",
+      doc[0].document_deadline === "2026-12-30" && doc[1].document_deadline === "2027-12-30");
+    const docAbs = s2.planTasks(act({ document_required: true, document_deadline: "2026-12-15" }), 3);
+    check("成果物: 単発は絶対日付をそのまま使う", docAbs[0].document_deadline === "2026-12-15");
+    check("成果物: 不要なら期限を付けない", s2.planTasks(act(), 3)[0].document_deadline === null);
+
+    check("日付: 月末は丸める（1/31＋1か月＝2/28）", s2.addMonths("2026-01-31", 1) === "2026-02-28");
+    check("日付: 年をまたぐ", s2.addMonths("2026-11-30", 12) === "2027-11-30");
+    check("日付: 日数を足す", s2.addDays("2026-12-31", 1) === "2027-01-01");
+
+    const pl = s2.planSchedule([act(), act({ id: "a2", title: "期限なし", due_date: null })], 3);
+    check("一括: 反映できるものとできないものを分ける",
+      pl.tasks.length === 1 && pl.skipped.length === 1 && pl.skipped[0].title === "期限なし");
+    check("展開: 回数の上限がある（暴走防止）",
+      s2.planTasks(act({ recurrence: "monthly", occurrences: 500 }), 3).length === 60);
+  } catch (e) {
+    check(`schedule.ts のバンドル/実行: ${e instanceof Error ? e.message : e}`, false);
+  } finally {
+    rmSync(w2, { recursive: true, force: true });
+  }
+}
+
 console.log(`\ncheck-measure-indicators: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
