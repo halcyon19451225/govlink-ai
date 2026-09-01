@@ -13,6 +13,9 @@ interface HypothesisRow {
   title: string;
   root_cause: string | null;
   status: string;
+  /** どの指標の課題仮説か（計画横断で並ぶため、指標名が無いと選べない） */
+  kpi_label: string | null;
+  priority_rank: number | null;
 }
 
 interface KpiRow {
@@ -50,10 +53,13 @@ export default async function MeasureDesignPage({ params }: { params: { id: stri
       [params.id],
     ).catch(() => [] as Record<string, unknown>[]),
     query<HypothesisRow>(
-      `SELECT id, title, root_cause, status
-       FROM issue_hypotheses
-       WHERE project_id = $1
-       ORDER BY priority_rank NULLS LAST, created_at`,
+      `SELECT h.id, h.title, h.root_cause, h.status, h.priority_rank,
+              k.label AS kpi_label
+       FROM issue_hypotheses h
+       LEFT JOIN issue_dialogues d ON d.id = h.issue_dialogue_id
+       LEFT JOIN kpis k ON k.id = d.kpi_id
+       WHERE h.project_id = $1
+       ORDER BY k.label NULLS LAST, h.priority_rank NULLS LAST, h.created_at`,
       [params.id],
     ).catch(() => [] as HypothesisRow[]),
     query<KpiRow>(

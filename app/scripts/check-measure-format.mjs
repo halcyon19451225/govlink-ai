@@ -201,7 +201,8 @@ const base = {
 }
 
 // ── 語彙の整合（設計のはしごとレベルの対応）────────────────
-check("実験設計は7種類", M.EXPERIMENT_DESIGNS.length === 7);
+// 2026-09-01: 割付ができない状況で使う手法（rdd / synthetic_control / iv / its）を追加した
+check("実験設計は11種類", M.EXPERIMENT_DESIGNS.length === 11);
 check(
   "RCT系はレベル4を与える",
   ["rct", "cluster_rct", "stepped_wedge", "waitlist"].every(
@@ -265,9 +266,9 @@ const dlgData = (approaches, evidence) => ({ approaches, evidence, experiments: 
     [{ approach_id: "a1", status: "sufficient", items: [] }],
   );
   check("ガード: 全評価済みなら experiment へ進める", D.guardMeasurePhase("experiment", "evidence", d) === "experiment");
-  // E4 で全フェーズ実装。ただし前提ガードにより done 要求は indicators で止まる
-  // （2段飛び制限 + 短期KPI未設定のため）
-  check("ガード: done を要求しても前提不足なら indicators で止まる", D.guardMeasurePhase("done", "experiment", d) === "indicators");
+  // E4 で全フェーズ実装。ただし前提ガードにより done 要求は experiment で止まる
+  // （2段飛び制限で indicators まで落ち、実験設計が未作成なので experiment へ引き戻される）
+  check("ガード: done を要求しても前提不足なら experiment で止まる", D.guardMeasurePhase("done", "experiment", d) === "experiment");
 }
 {
   const d = dlgData([appr("a1")], [{ approach_id: "a1", status: "none", items: [] }]);
@@ -315,7 +316,9 @@ const dlgData3 = (approaches, evidence, experiments, indicators = [], costs = []
     ],
     [],
   );
-  check("実験設計が必要なのは sufficient でないアプローチだけ", D.approachesNeedingExperiment(d).map((a) => a.id).join() === "a2");
+  // 2026-09-01: エビデンスの有無で絞らない。後の評価で因果を論じるには
+  // 比較の作り方を設計段階で決めておく必要があるため、全アプローチに設計を求める
+  check("実験設計は全アプローチに必要（sufficient でも省かない）", D.approachesNeedingExperiment(d).map((a) => a.id).join() === "a1,a2");
   check("ガード: 設計不足では indicators に進めない", D.guardMeasurePhase("indicators", "experiment", d) === "experiment");
 }
 {
@@ -325,21 +328,38 @@ const dlgData3 = (approaches, evidence, experiments, indicators = [], costs = []
       { approach_id: "a1", status: "sufficient", items: [] },
       { approach_id: "a2", status: "none", items: [] },
     ],
-    [{ approach_id: "a2", design: "did", rationale: "対照が作れないため近隣比較" }],
+    [
+      { approach_id: "a1", design: "rct", rationale: "個人割付が可能で規模も足りる" },
+      { approach_id: "a2", design: "did", rationale: "対照が作れないため近隣比較" },
+    ],
   );
   check("ガード: 必要な設計が揃えば indicators へ進める", D.guardMeasurePhase("indicators", "experiment", d) === "indicators");
   // E4: cost へは短期KPIが揃うまで進めない
   check("ガード: 短期KPIが無いと cost へ進めない", D.guardMeasurePhase("cost", "indicators", d) === "indicators");
 }
 {
-  // 全アプローチ sufficient → 実験設計ゼロでも indicators へ進める
+  // 全アプローチ sufficient でも実験設計は要る（2026-09-01 方針）
   const d = dlgData3(
     [appr("a1")],
     [{ approach_id: "a1", status: "sufficient", items: [] }],
     [],
   );
-  check("全て sufficient なら実験設計ゼロで indicators へ進める", D.guardMeasurePhase("indicators", "experiment", d) === "indicators");
-  check("全て sufficient は allExperimentsDesigned=true", D.allExperimentsDesigned(d) === true);
+  check("全て sufficient でも実験設計が無ければ indicators へ進めない", D.guardMeasurePhase("indicators", "experiment", d) === "experiment");
+  check("全て sufficient でも設計ゼロなら allExperimentsDesigned=false", D.allExperimentsDesigned(d) === false);
+  const d2 = dlgData3(
+    [appr("a1")],
+    [{ approach_id: "a1", status: "sufficient", items: [] }],
+    [{ approach_id: "a1", design: "prepost", rationale: "対照が作れないため" }],
+  );
+  check("設計を付ければ indicators へ進める", D.guardMeasurePhase("indicators", "experiment", d2) === "indicators");
+  check("選定理由が空なら allExperimentsDesigned=false",
+    D.allExperimentsDesigned(dlgData3([appr("a1")],
+      [{ approach_id: "a1", status: "sufficient", items: [] }],
+      [{ approach_id: "a1", design: "prepost", rationale: "  " }])) === false);
+  // 逆行の禁止（2026-08-31、cost から evidence へ巻き戻った）。
+  // 前提未達による引き戻しは残すので、ここでは前提を満たす範囲で確かめる
+  check("ガード: 要求された逆行は捨てる", D.guardMeasurePhase("evidence", "experiment", d2) === "experiment");
+  check("ガード: 逆行しても前提未達なら引き戻される", D.guardMeasurePhase("approach", "cost", d2) === "indicators");
 }
 {
   // E2 のガードは experiments フィールドを持つ形でも変わらない
@@ -386,12 +406,13 @@ const dlgData3 = (approaches, evidence, experiments, indicators = [], costs = []
   const withKpi = { approach_id: "a1", structure: [], process: [], outcome_initial: [{ label: "x", unit: "" }], outcome_intermediate: [] };
   const noKpi = { approach_id: "a1", structure: ["体制"], process: [], outcome_initial: [], outcome_intermediate: [] };
   const evOk = [{ approach_id: "a1", status: "sufficient", items: [] }];
-  check("短期KPIゼロの指標では allIndicatorsSet=false", D.allIndicatorsSet(dlgData3([appr("a1")], evOk, [], [noKpi])) === false);
-  const d1 = dlgData3([appr("a1")], evOk, [], [withKpi]);
+  const expOk = [{ approach_id: "a1", design: "prepost", rationale: "対照が作れないため" }];
+  check("短期KPIゼロの指標では allIndicatorsSet=false", D.allIndicatorsSet(dlgData3([appr("a1")], evOk, expOk, [noKpi])) === false);
+  const d1 = dlgData3([appr("a1")], evOk, expOk, [withKpi]);
   check("短期KPIが1件あれば allIndicatorsSet=true", D.allIndicatorsSet(d1) === true);
   check("ガード: 指標が揃えば cost へ進める", D.guardMeasurePhase("cost", "indicators", d1) === "cost");
   check("ガード: コスト未整理では done にできない", D.guardMeasurePhase("done", "cost", d1) === "cost");
-  const d2 = dlgData3([appr("a1")], evOk, [], [withKpi], [{ approach_id: "a1", cost_per_outcome_note: "式" }]);
+  const d2 = dlgData3([appr("a1")], evOk, expOk, [withKpi], [{ approach_id: "a1", cost_per_outcome_note: "式" }]);
   check("ガード: コストが揃えば done にできる", D.guardMeasurePhase("done", "cost", d2) === "done");
   check("全コスト判定", D.allCostsSet(d2) === true && D.allCostsSet(d1) === false);
 }

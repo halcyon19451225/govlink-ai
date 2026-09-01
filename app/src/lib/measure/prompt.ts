@@ -10,6 +10,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import {
   EVIDENCE_LEVELS,
   EXPERIMENT_DESIGNS,
+  activeApproaches,
+  duplicateApproachTitles,
   MEASURE_STEP_LABEL,
   STUDY_DESIGNS,
   type EvidenceItem,
@@ -40,7 +42,20 @@ const APPROACH_GUIDE = `【フェーズ1: アプローチの導出（approach）
 - 「真因に対応しない一般的な施策」（啓発の推進・連携の強化など）は提案しない。
   作用機序を説明できないアプローチは捨てる。
 - 担当者が内容に同意したアプローチが1件以上そろったら evidence へ進む。
-- 既存アプローチの修正は approach_updates（id 指定）で行う。`;
+- 既存アプローチの修正は approach_updates（id 指定）で行う。
+
+**アプローチIDの扱い（厳守）**
+- 【これまでの整理内容】に出ているアプローチID（a1, a2, …）が正本です。
+  **返答の中で番号を振り直さないでください。**
+- 担当者から「まとめてほしい」「これは別施策として後で扱う」と言われたら、
+  **retire_approaches で取り下げます**（approach_id と理由を渡す）。
+  **返答の文章の中だけで取り下げたことにしてはいけません。**
+  取り下げた行は消えず、一覧に「取り下げ」と表示され、確定の対象から外れます。
+- **保存されているものを「含まれていません」と説明してはいけません。**
+  データセットの中身を述べるときは、必ず【これまでの整理内容】の一覧に従うこと。
+- 複数のアプローチを1本にまとめる場合は、残す側を approach_updates で書き直し、
+  たたむ側を retire_approaches で取り下げます。
+- **同じ measure_title を2件作らないでください。**画面で見分けが付かなくなります。`;
 
 const EVIDENCE_GUIDE = `【フェーズ2: エビデンス探索（evidence）】
 アプローチ**ひとつずつ**について、効果の根拠を探します。
@@ -82,40 +97,59 @@ const DESIGN_LADDER = EXPERIMENT_DESIGNS.map(
 ).join("\n");
 
 const EXPERIMENT_GUIDE = `【フェーズ3: 実験設計（experiment）】
-エビデンス評価が sufficient で**ない**アプローチについて、
-「エビデンスを作りながら実施する」ための効果検証の設計を提案します。
-sufficient のアプローチには実験設計は不要です（飛ばしてよい）。
+**生存中のすべてのアプローチに、効果検証の設計を必ず付けます。**
+参照できるエビデンスが揃っている（sufficient）場合でも省略しません。
+他所で効いたことと、この町のこの対象で効いたことは別であり、
+後の評価で「この変化は取組によるものか」を論じるには、比較の作り方を
+事業の設計段階で決めておく必要があるためです。
+**名簿・ベースライン・比較群は、事業が始まってからでは取り直せません。**
 
-設計は次の「はしご」を上から順に検討し、当てはまる最初のものを選びます。
-自治体の規模・提供形態・倫理・運用の制約から、なぜその設計になるのかを
-rationale で必ず説明してください。
+設計は次のはしごを上から順に検討し、**当てはまる最初のもの**を選びます。
+RCT に限りません。自治体の規模・提供形態・閾値の有無・使えるデータから、
+その状況で最も強い比較が作れる手法を選んでください。
 
 ${DESIGN_LADDER}
 
 検討の手順（アプローチひとつずつ）:
 (1) 対象規模の確認 — target に記録した人数を使う。不明なら担当者に確認する。
-(2) 検出力の概算 — 割合の指標なら 1群あたり n ≈ 16×p(1−p)÷d²
+(2) 割り付けられるか — 個人単位で無作為に割り付けられるなら rct。
+    検出力の概算は、割合の指標なら 1群あたり n ≈ 16×p(1−p)÷d²
     （α=0.05・検出力80%、p=平均的な発生割合、d=検出したい差）。
-    例: 参加率20%→30%の改善を見たいなら p̄=0.25, d=0.10 → 1群約300人。
-    概算の式と結論を sample_size_note に書く。対象規模で足りない場合は
-    「個人RCTでは検出力が不足する」と明記して、はしごを下る。
-(3) 提供単位の確認 — 会場・地区単位でしか提供できないならクラスター化を検討。
+    例: 参加率20%→30%なら p̄=0.25, d=0.10 → 1群約300人。
+    式と結論を sample_size_note に書く。足りないなら「個人RCTでは検出力が不足する」
+    と明記してはしごを下る。
+(3) 提供単位の確認 — 会場・地区単位でしか提供できないなら cluster_rct。
     ただし**クラスター化は必要数をむしろ増やす**（級内相関のため）。
-    クラスターを選ぶ理由は提供単位の制約であって、必要数の節約ではない。
+    選ぶ理由は提供単位の制約であって、必要数の節約ではない。
 (4) 倫理と公平性 — 行政サービスの意図的な不提供は説明が難しい。
-    **全員に最終的に行き渡る設計**（ステップド・ウェッジ／待機リスト）を優先的に
-    検討し、ethical_note に同意の取り方・不利益回避を書く。
-(5) 対照が作れない場合 — 差の差（近隣自治体・未実施地区・過去トレンド）→
-    マッチング → 前後比較の順に落とす。**落ちた場合は「得られるのはレベル◯まで」と
-    担当者に明示する**（レベルを隠して立派に見せない）。
+    **全員に最終的に行き渡る設計**（stepped_wedge／waitlist）を優先的に検討し、
+    ethical_note に同意の取り方・不利益回避を書く。
+(5) 割付ができない場合 — 順に当てはめる。
+    ・対象の可否が**閾値**で決まる（年齢・所得段階・要介護度・点数）→ rdd
+    ・**比較できる他集団**がある（近隣自治体・未実施地区）→ did
+    ・介入する単位が**1つだけ**で、似た自治体が多数ある → synthetic_control
+    ・参加が任意で、参加の決まり方を説明できる属性が揃う → matching
+    ・参加に影響するが結果に直接影響しない要因がある（距離・無作為の勧奨）→ iv
+    ・比較できる他集団が無く、**介入前の時系列が長い**（月次12点以上）→ its
+    ・いずれも取れない → prepost（最終手段）
+(6) 落ちた場合は「得られるのはレベル◯まで」と担当者に明示する。
+    レベルを隠して立派に見せない。
 
-- experiments フィールドに approach_id 単位で記録する。
-  design / rationale は必須。unit / arms / sample_size_note / primary_outcome /
-  duration / cost_estimate / ethical_note / fallback を埋める。
+記録の仕方:
+- experiments フィールドに approach_id 単位で記録する。design / rationale は必須。
+- **RCT 以外を選んだときは considered に、検討したが採らなかった設計と理由を必ず入れる。**
+  少なくとも rct を含め、なぜ採れないのか（規模・割付の可否・倫理）を書く。
+  「はしごを下った経緯」が残らない設計は受け付けられない。
+- data_design に、名簿・ベースライン・共変量を**いつ・どう取るか**を書く。
+  ここが空だと、事業開始後に比較群を作れなくなる。
+- assumption_check に、その設計が成り立つ前提と確かめ方を書く
+  （did なら介入前の並行トレンド、rdd なら閾値付近の人数と閾値の操作可能性、
+  its なら介入前の点数、matching なら共変量の重なり）。
+- unit / arms / sample_size_note / primary_outcome / duration / cost_estimate /
+  ethical_note / fallback も埋める。
 - primary_outcome には「どの指標で効果を判定するか」を書く（次フェーズのKPIの種になる）。
 - 1ターンに1アプローチずつ、設計案を提示して担当者の合意を得る。
-- 実験設計が必要な全アプローチに設計が付いたら phase=indicators とし、
-  「指標とコストの設定は次の実装段で追加されます」と伝えて締める。`;
+- 生存中の全アプローチに設計が付いたら phase=indicators とする。`;
 
 const INDICATORS_GUIDE = `【フェーズ4: 指標の設定（indicators）】
 アプローチごとに、評価に使う指標を三層（Donabedian）で決めます。
@@ -187,7 +221,8 @@ function dataSummary(d: MeasureDialogueData): string {
       : `アプローチ:\n${d.approaches
           .map(
             (a) =>
-              `  ${a.id} 「${a.measure_title}」 真因: ${a.root_cause.slice(0, 60)} / 作用機序: ${a.approach.slice(0, 80)}`,
+              `  ${a.id} 「${a.measure_title}」${a.retired ? "【取り下げ済 — 以降のIDとして使わない】" : ""} ` +
+              `真因: ${a.root_cause.slice(0, 60)} / 作用機序: ${a.approach.slice(0, 80)}`,
           )
           .join("\n")}`,
   );
@@ -207,11 +242,21 @@ function dataSummary(d: MeasureDialogueData): string {
   } else {
     lines.push("エビデンス評価: （まだなし）");
   }
-  const unassessed = d.approaches.filter(
-    (a) => !d.evidence.some((e) => e.approach_id === a.id),
-  );
-  if (d.approaches.length > 0 && unassessed.length > 0) {
+  const alive = activeApproaches(d.approaches);
+  const unassessed = alive.filter((a) => !d.evidence.some((e) => e.approach_id === a.id));
+  if (alive.length > 0 && unassessed.length > 0) {
     lines.push(`未評価のアプローチ: ${unassessed.map((a) => a.id).join(", ")}`);
+  }
+  // 実験設計はエビデンスの有無に関わらず全アプローチに必要（2026-09-01 方針）
+  const undesigned = alive.filter(
+    (a) => !d.experiments.some((e) => e.approach_id === a.id && e.design),
+  );
+  if (alive.length > 0 && undesigned.length > 0) {
+    lines.push(`⚠ 実験設計が未作成のアプローチ: ${undesigned.map((a) => a.id).join(", ")}`);
+  }
+  const dupes = duplicateApproachTitles(d.approaches);
+  if (dupes.length > 0) {
+    lines.push(`⚠ 同じ施策名のアプローチが複数あります: ${dupes.join(" / ")}（統合するか名称を分けること）`);
   }
   if (d.experiments.length > 0) {
     lines.push(
@@ -497,8 +542,11 @@ const EXPERIMENT_ENTRY_SCHEMA = {
     approach_id: { type: "string", description: "対象のアプローチID（a1 など）" },
     design: {
       type: "string",
-      enum: ["rct", "cluster_rct", "stepped_wedge", "waitlist", "did", "matching", "prepost"],
-      description: "設計のはしごから選ぶ",
+      enum: [
+        "rct", "cluster_rct", "stepped_wedge", "waitlist", "rdd",
+        "did", "synthetic_control", "matching", "iv", "its", "prepost",
+      ],
+      description: "設計のはしごから選ぶ（RCTに限らない）",
     },
     rationale: {
       type: "string",
@@ -518,6 +566,36 @@ const EXPERIMENT_ENTRY_SCHEMA = {
       description: "同意の取り方・不利益回避（待機リスト方式など、行政で説明可能な形）",
     },
     fallback: { type: "string", description: "その設計が崩れたときの次善策" },
+    considered: {
+      type: "array",
+      description:
+        "検討したが採らなかった設計と理由。RCT以外を選んだときは必須（最低でも rct を含める）",
+      items: {
+        type: "object" as const,
+        properties: {
+          design: {
+            type: "string",
+            enum: [
+              "rct", "cluster_rct", "stepped_wedge", "waitlist", "rdd",
+              "did", "synthetic_control", "matching", "iv", "its", "prepost",
+            ],
+          },
+          rejected_because: {
+            type: "string",
+            description: "なぜ採れないのか（規模・割付の可否・データの有無・倫理）",
+          },
+        },
+        required: ["design", "rejected_because"],
+      },
+    },
+    data_design: {
+      type: "string",
+      description: "測定の設計 — 名簿・ベースライン・共変量を、いつ・どう取るか",
+    },
+    assumption_check: {
+      type: "string",
+      description: "その設計が成り立つ前提と確かめ方（並行トレンド・閾値付近の人数など）",
+    },
   },
   required: ["approach_id", "design", "rationale"],
 };
@@ -620,6 +698,19 @@ export const RECORD_MEASURE_TURN_TOOL: Anthropic.Tool = {
         description: "今回合意した新しいアプローチ（approach フェーズ）。既出は含めない",
         items: APPROACH_ITEM_SCHEMA,
       },
+      retire_approaches: {
+        type: "array",
+        description:
+          "アプローチの取り下げ。担当者が「別施策として後で扱う」「まとめる」と言ったときに使う。行は消えず取り下げ済みとして残り、確定の対象から外れる",
+        items: {
+          type: "object" as const,
+          properties: {
+            approach_id: { type: "string", description: "取り下げるアプローチID（a2 など）" },
+            reason: { type: "string", description: "取り下げの理由（別施策として扱う・a1に統合 等）" },
+          },
+          required: ["approach_id", "reason"],
+        },
+      },
       approach_updates: {
         type: "array",
         description: "既存アプローチの修正（id 指定の上書き）",
@@ -633,7 +724,7 @@ export const RECORD_MEASURE_TURN_TOOL: Anthropic.Tool = {
       experiments: {
         type: "array",
         description:
-          "実験設計（experiment フェーズ）。エビデンスが sufficient でないアプローチに必須。approach_id 単位で上書きされる",
+          "実験設計（experiment フェーズ）。**エビデンスの有無に関わらず、生存中の全アプローチに必須**。approach_id 単位で上書きされる",
         items: EXPERIMENT_ENTRY_SCHEMA,
       },
       indicators: {

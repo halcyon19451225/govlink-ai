@@ -11,6 +11,7 @@
 
 import {
   MEASURE_STEP_ORDER,
+  activeApproaches,
   normalizeEvidenceItems,
   normalizeExperiment,
   type ApproachCost,
@@ -83,6 +84,33 @@ export function applyApproachUpdates(
     });
   }
   return base.map((a) => byId.get(a.id) ?? a);
+}
+
+/**
+ * アプローチの取り下げ（retire_approaches）。行は消さず retired を立てる。
+ *
+ * 2026-08-31、担当者が「Cは別施策として後で扱う」と伝えたのに構造上取り下げる
+ * 手段が無く、AIが「データセットには含まれていません」と事実と違う説明をした。
+ * 課題仮説設定の merge_problems と同じ理由で、行は残して印だけ立てる
+ * （エビデンス・実験・指標・コストが approach_id で参照しているため）。
+ */
+export function applyApproachRetirements(
+  base: ApproachItem[],
+  arr: unknown,
+): ApproachItem[] {
+  if (!Array.isArray(arr)) return base;
+  const reasons = new Map<string, string>();
+  for (const it of arr) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const id = str(o.approach_id ?? o.id, 20);
+    if (!id) continue;
+    reasons.set(id, str(o.reason, 200));
+  }
+  if (reasons.size === 0) return base;
+  return base.map((a) =>
+    reasons.has(a.id) ? { ...a, retired: true, retired_reason: reasons.get(a.id) || "" } : a,
+  );
 }
 
 function evidenceStatus(v: unknown): EvidenceStatus {
@@ -165,14 +193,18 @@ export function upsertExperiments(
  * 確定条件（canConfirm / DBのCHECK）と同じ規則。
  */
 export function approachesNeedingExperiment(data: MeasureDialogueData): ApproachItem[] {
-  const statusOf = new Map(data.evidence.map((e) => [e.approach_id, e.status]));
-  return data.approaches.filter((a) => (statusOf.get(a.id) ?? "none") !== "sufficient");
+  // エビデンスの有無で絞らない — 参照できる研究があっても、
+  // この町のこの対象で効いたかを後から言うには比較の設計が要る（2026-09-01 方針）
+  return activeApproaches(data.approaches);
 }
 
-/** 実験設計が必要な全アプローチに設計が付いているか */
+/** 生存中の全アプローチに実験設計（手法と選定理由）が付いているか */
 export function allExperimentsDesigned(data: MeasureDialogueData): boolean {
-  const designed = new Set(data.experiments.map((e) => e.approach_id));
-  return approachesNeedingExperiment(data).every((a) => designed.has(a.id));
+  const byId = new Map(data.experiments.map((e) => [e.approach_id, e]));
+  return approachesNeedingExperiment(data).every((a) => {
+    const e = byId.get(a.id);
+    return e != null && !!e.design && (e.rationale ?? "").trim().length > 0;
+  });
 }
 
 function strArray(v: unknown, maxItems: number, maxLen: number): string[] {
@@ -291,9 +323,10 @@ export function upsertByApproach<T extends { approach_id: string }>(
  * 年次評価（図6フロー）に乗らず、C工程で評価不能になるため。
  */
 export function allIndicatorsSet(data: MeasureDialogueData): boolean {
-  if (data.approaches.length === 0) return false;
+  const alive = activeApproaches(data.approaches);
+  if (alive.length === 0) return false;
   const byId = new Map(data.indicators.map((i) => [i.approach_id, i]));
-  return data.approaches.every((a) => {
+  return alive.every((a) => {
     const ind = byId.get(a.id);
     return ind != null && ind.outcome_initial.length > 0;
   });
@@ -301,9 +334,10 @@ export function allIndicatorsSet(data: MeasureDialogueData): boolean {
 
 /** 全アプローチにコストが付いているか */
 export function allCostsSet(data: MeasureDialogueData): boolean {
-  if (data.approaches.length === 0) return false;
+  const alive = activeApproaches(data.approaches);
+  if (alive.length === 0) return false;
   const set = new Set(data.costs.map((c) => c.approach_id));
-  return data.approaches.every((a) => set.has(a.id));
+  return alive.every((a) => set.has(a.id));
 }
 
 // ─── フェーズ進行のガード ─────────────────────────────────
@@ -321,9 +355,10 @@ export function parseMeasurePhase(v: unknown, fallback: MeasureStep): MeasureSte
 
 /** 全アプローチにエビデンス評価が付いているか */
 export function allApproachesAssessed(data: MeasureDialogueData): boolean {
-  if (data.approaches.length === 0) return false;
+  const alive = activeApproaches(data.approaches);
+  if (alive.length === 0) return false;
   const assessed = new Set(data.evidence.map((e) => e.approach_id));
-  return data.approaches.every((a) => assessed.has(a.id));
+  return alive.every((a) => assessed.has(a.id));
 }
 
 /**
@@ -342,13 +377,21 @@ export function guardMeasurePhase(
   current: MeasureStep,
   data: MeasureDialogueData,
 ): MeasureStep {
+  // 逆行の禁止。2026-08-31、コスト整理まで進んだ対話が AI の返答ひとつで
+  // エビデンス探索へ戻り、担当者から見ると工程が巻き戻った。
+  // 前提未達による引き戻しはこの下で行うので、要求された後退はここで捨てる。
+  const notBack =
+    measureStepIndex(requested) < measureStepIndex(current) ? current : requested;
   const nextIdx = Math.min(measureStepIndex(current) + 1, MEASURE_STEP_ORDER.length - 1);
   let phase =
-    measureStepIndex(requested) > measureStepIndex(current) + 1
-      ? (MEASURE_STEP_ORDER[nextIdx] ?? requested)
-      : requested;
+    measureStepIndex(notBack) > measureStepIndex(current) + 1
+      ? (MEASURE_STEP_ORDER[nextIdx] ?? notBack)
+      : notBack;
 
-  if (measureStepIndex(phase) >= measureStepIndex("evidence") && data.approaches.length === 0) {
+  if (
+    measureStepIndex(phase) >= measureStepIndex("evidence") &&
+    activeApproaches(data.approaches).length === 0
+  ) {
     phase = "approach";
   }
   if (

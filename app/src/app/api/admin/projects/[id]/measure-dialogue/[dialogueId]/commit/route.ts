@@ -18,6 +18,7 @@ import type {
   MeasureMessage,
   MeasureStep,
 } from "@/lib/measure/types";
+import { measureCommitGaps, describeMeasureGaps, activeApproaches } from "@/lib/measure/types";
 
 type Params = { params: { id: string; dialogueId: string } };
 
@@ -64,9 +65,26 @@ export async function POST(_req: NextRequest, { params }: Params) {
   if (!row) {
     return NextResponse.json({ data: null, error: "対話が見つかりません" }, { status: 404 });
   }
-  if (row.approaches.length === 0) {
+  // 取り下げたアプローチは書き出さない（行は残るが確定の対象から外れる）
+  const liveApproaches = activeApproaches(row.approaches);
+  if (liveApproaches.length === 0) {
     return NextResponse.json(
       { data: null, error: "書き出せるアプローチがまだありません。対話でアプローチを固めてください" },
+      { status: 422 },
+    );
+  }
+
+  // 区画の欠けたデータセットを書き出させない。
+  // 下流（ロジックモデルの活動・産出・アウトカム、C評価の効率性、A改善）は
+  // 揃っている前提で動くため、空のまま流すとKPIの無い活動が並ぶ（2026-08-31）。
+  const gaps = measureCommitGaps(row);
+  if (gaps.length > 0) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: `施策データセットに未記入の区画があります — ${describeMeasureGaps(gaps)}。対話で埋めてから書き出してください`,
+        gaps,
+      },
       { status: 422 },
     );
   }
@@ -138,8 +156,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return id;
     };
 
-    for (let i = 0; i < row.approaches.length; i++) {
-      const a = row.approaches[i] as ApproachItem;
+    for (let i = 0; i < liveApproaches.length; i++) {
+      const a = liveApproaches[i] as ApproachItem;
       const ev = evidenceByApproach.get(a.id) ?? null;
       const evidenceStatus = ev?.status ?? "none";
       const evidenceItems = ev?.items ?? [];

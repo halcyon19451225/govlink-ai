@@ -26,6 +26,10 @@ import {
   MEASURE_STEP_HINT,
   MEASURE_STEP_LABEL,
   MEASURE_STEP_ORDER,
+  activeApproaches,
+  duplicateApproachTitles,
+  measureCommitGaps,
+  describeMeasureGaps,
   type ApproachCost,
   type ApproachEvidence,
   type ApproachExperiment,
@@ -58,6 +62,15 @@ interface HypOption {
   id: string;
   title: string;
   root_cause: string | null;
+  /** どの指標の課題仮説か。計画横断で並ぶので、これが無いと選び分けられない */
+  kpi_label?: string | null;
+  /** 対話ごとの優先順位（選別スコアの降順） */
+  priority_rank?: number | null;
+}
+
+/** 長い文はぶつ切りにせず省略記号を付ける */
+function truncate(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n)}…` : s;
 }
 
 interface Props {
@@ -160,10 +173,26 @@ function ApproachCard({
         >
           {a.id}
         </span>
-        <span className="text-xs font-semibold text-slate-100 leading-snug flex-1 min-w-0">
+        <span
+          className="text-xs font-semibold leading-snug flex-1 min-w-0"
+          style={
+            a.retired
+              ? { color: "#64748b", textDecoration: "line-through" }
+              : { color: "#f1f5f9" }
+          }
+        >
           {a.measure_title}
         </span>
-        {a.measure_design_id && (
+        {a.retired && (
+          <span
+            className="text-[10px] shrink-0 px-1.5 rounded"
+            style={{ background: "#64748b20", color: "#94a3b8" }}
+            title={a.retired_reason || "取り下げ済み"}
+          >
+            取り下げ
+          </span>
+        )}
+        {a.measure_design_id && !a.retired && (
           <span className="text-[10px] shrink-0" style={{ color: "#10b981" }}>
             書出済
           </span>
@@ -441,6 +470,21 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
   const suggestions = lastAssistant?.suggestions ?? [];
   const done = selected != null && selected.current_step === "done";
   const canCommit = selected != null && selected.approaches.length > 0;
+  // 区画が欠けたまま書き出すと、下流にKPIの無い活動が並ぶ。
+  // サーバー側の 422 と同じ規則で、押す前に何が足りないかを見せる。
+  const commitGaps = selected ? measureCommitGaps(selected) : [];
+
+  // 課題仮説を指標ごとに束ねる（優先順位は対話ごとの採番なので、束ねないと 1位 が複数現れる）
+  const hypothesisGroups = (() => {
+    const byKpi = new Map<string, HypOption[]>();
+    for (const h of hypotheses) {
+      const key = h.kpi_label?.trim() || "指標の紐付けなし";
+      const list = byKpi.get(key);
+      if (list) list.push(h);
+      else byKpi.set(key, [h]);
+    }
+    return Array.from(byKpi.entries());
+  })();
 
   return (
     <div className="space-y-4">
@@ -462,11 +506,18 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
               style={inputStyle}
             >
               <option value="">（選択しない — 対話の中で真因を確認します）</option>
-              {hypotheses.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.title}
-                  {h.root_cause ? ` — 真因: ${h.root_cause.slice(0, 40)}` : ""}
-                </option>
+              {/* 課題仮説は計画（指標）ごとに立てるが、この一覧は計画横断で並ぶ。
+                  優先順位も対話ごとの採番なので、指標名で束ねないと 1位が複数現れて読めない */}
+              {hypothesisGroups.map(([kpiLabel, items]: [string, HypOption[]]) => (
+                <optgroup key={kpiLabel} label={kpiLabel}>
+                  {items.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.priority_rank != null ? `優先度${h.priority_rank}位  ` : ""}
+                      {h.title}
+                      {h.root_cause ? ` — 真因: ${truncate(h.root_cause, 40)}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
@@ -550,8 +601,26 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
                 {selected.approaches.length > 0 && (
                   <div className="mt-4 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
                     <p className="text-[11px] font-semibold text-slate-400 mb-2">
-                      アプローチ {selected.approaches.length}件
+                      アプローチ {activeApproaches(selected.approaches).length}件
+                      {selected.approaches.length > activeApproaches(selected.approaches).length && (
+                        <span className="text-slate-500 font-normal">
+                          （取り下げ {selected.approaches.length - activeApproaches(selected.approaches).length}件）
+                        </span>
+                      )}
                     </p>
+                    {duplicateApproachTitles(selected.approaches).length > 0 && (
+                      <div
+                        className="rounded-lg border px-2 py-1.5 mb-2"
+                        style={{ borderColor: "#fbbf2440", background: "#fbbf2410" }}
+                      >
+                        <p className="text-[10px] font-semibold" style={{ color: "#fbbf24" }}>
+                          ⚠ 同じ施策名のアプローチがあります: {duplicateApproachTitles(selected.approaches).join(" / ")}
+                        </p>
+                        <p className="text-[10px] text-slate-400 leading-snug mt-0.5">
+                          画面で見分けが付きません。統合するか名称を分けるようAIに依頼してください
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                       {selected.approaches.map((a) => (
                         <ApproachCard
@@ -625,12 +694,34 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
                       一覧タブから内容を確認して確定できます。
                     </div>
                   )}
+                  {canCommit && commitGaps.length > 0 && (
+                    <div
+                      className="rounded-lg border px-3 py-2 mb-2"
+                      style={{ borderColor: "#f59e0b40", background: "#f59e0b10" }}
+                    >
+                      <p className="text-[11px] font-semibold" style={{ color: "#f59e0b" }}>
+                        書き出しに必要な区画が埋まっていません
+                      </p>
+                      <ul className="mt-1 space-y-0.5">
+                        {commitGaps.map((g) => (
+                          <li key={g.approach_id} className="text-[10px] text-slate-400 leading-snug">
+                            {g.measure_title}: {g.missing.join("・")}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 flex-wrap">
                     {canCommit && (
                       <button
                         type="button"
                         onClick={() => void commit()}
-                        disabled={committing}
+                        disabled={committing || commitGaps.length > 0}
+                        title={
+                          commitGaps.length > 0
+                            ? `未記入の区画があります — ${describeMeasureGaps(commitGaps)}`
+                            : "施策データセットとして書き出します"
+                        }
                         className="text-xs px-4 py-2 rounded-lg font-medium disabled:opacity-50"
                         style={{
                           background: "#10b98118",

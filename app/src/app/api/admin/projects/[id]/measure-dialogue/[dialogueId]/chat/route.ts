@@ -37,6 +37,7 @@ import {
   type ExistingKpiSummary,
 } from "@/lib/measure/prompt";
 import {
+  applyApproachRetirements,
   applyApproachUpdates,
   approachesNeedingExperiment,
   guardMeasurePhase,
@@ -400,12 +401,16 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
     input: Record<string, unknown>,
     current: MeasureDialogueData,
   ): MeasureDialogueData => {
-    const approaches = applyApproachUpdates(
-      [
-        ...current.approaches,
-        ...sanitizeApproaches(input.new_approaches, current.approaches.length),
-      ],
-      input.approach_updates,
+    // 取り下げは行を消さず印を立てるだけ（下流が approach_id で参照しているため）
+    const approaches = applyApproachRetirements(
+      applyApproachUpdates(
+        [
+          ...current.approaches,
+          ...sanitizeApproaches(input.new_approaches, current.approaches.length),
+        ],
+        input.approach_updates,
+      ),
+      input.retire_approaches,
     );
     const validIds = new Set(approaches.map((a) => a.id));
     return {

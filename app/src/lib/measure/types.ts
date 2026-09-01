@@ -125,8 +125,12 @@ export type ExperimentDesignKey =
   | "cluster_rct"
   | "stepped_wedge"
   | "waitlist"
+  | "rdd"
   | "did"
+  | "synthetic_control"
   | "matching"
+  | "iv"
+  | "its"
   | "prepost";
 
 export interface ExperimentDesignMeta {
@@ -169,21 +173,60 @@ export const EXPERIMENT_DESIGNS: ExperimentDesignMeta[] = [
     level: 4,
   },
   {
+    key: "rdd",
+    label: "回帰不連続（RDD）",
+    when:
+      "対象の可否が閾値で決まる（年齢・所得段階・要介護度・チェックリスト点数など）。" +
+      "閾値の前後は他の条件が似ているため、割付をしなくても比較群が手に入る。" +
+      "閾値付近に十分な人数（目安: 前後それぞれ数十人以上）が必要",
+    level: 4,
+  },
+  {
     key: "did",
     label: "差の差（DiD）",
     when: "全域一斉で対照群が作れない。近隣自治体・未実施地区・過去トレンドと比較する",
     level: 3,
   },
   {
+    key: "synthetic_control",
+    label: "合成対照法（SCM）",
+    when:
+      "介入する単位が1つしかない（1保険者・1自治体まるごとの制度変更など）。" +
+      "似た他自治体を重み付けして合成した『介入しなかった場合の自分』と比べる。" +
+      "介入前の期間が複数期（目安5期以上）そろっていることが条件",
+    level: 3,
+  },
+  {
     key: "matching",
-    label: "マッチング比較",
-    when: "参加が任意で無作為化できない。属性の近い非参加者と比較する（自己選択バイアスに注意）",
+    label: "マッチング比較（傾向スコア）",
+    when:
+      "参加が任意で無作為化できない。参加の決まり方を説明できる属性が手元にある場合に、" +
+      "属性の近い非参加者と比較する（説明できない動機が残るぶん自己選択バイアスに注意）",
+    level: 3,
+  },
+  {
+    key: "iv",
+    label: "操作変数法（IV）",
+    when:
+      "参加の有無に影響するが結果には直接影響しない要因がある" +
+      "（会場までの距離、勧奨通知を無作為に送った、制度改正の時期差など）。" +
+      "その要因を使って参加の効果を取り出す",
+    level: 3,
+  },
+  {
+    key: "its",
+    label: "中断時系列（ITS）",
+    when:
+      "比較できる他集団がまったく無いが、介入前の時系列が十分に長い" +
+      "（目安: 介入前に月次12点以上）。導入時点で水準・傾きが変わったかを見る",
     level: 3,
   },
   {
     key: "prepost",
     label: "前後比較＋モニタリング",
-    when: "上記のいずれも困難な場合の最終手段。他要因を除けないことを明記した上で使う",
+    when:
+      "上記のいずれも困難な場合の最終手段。同時期に起きた他の出来事と区別できないため、" +
+      "外部要因（制度改正・報酬改定・人口動態・他事業）を記録し続けることを設計に含める",
     level: 2,
   },
 ];
@@ -193,6 +236,13 @@ export const EXPERIMENT_DESIGN_META: Record<ExperimentDesignKey, ExperimentDesig
     ExperimentDesignKey,
     ExperimentDesignMeta
   >;
+
+/** 検討したが採らなかった設計と、その理由 */
+export interface ConsideredDesign {
+  design: ExperimentDesignKey;
+  /** なぜ採れないのか（規模・割付の可否・データの有無・倫理） */
+  rejected_because: string;
+}
 
 export interface ExperimentPlan {
   design: ExperimentDesignKey;
@@ -212,6 +262,16 @@ export interface ExperimentPlan {
   ethical_note?: string;
   /** その設計が崩れたときの次善策 */
   fallback?: string;
+  /**
+   * 検討したが採らなかった設計と理由。
+   * 「エビデンスの有無に関わらず実験は必ず設計する」方針の実質を担保するための欄で、
+   * RCT 以外を選んだときは、なぜ RCT が採れないのかがここに残る。
+   */
+  considered?: ConsideredDesign[];
+  /** 測定の設計 — 名簿・ベースライン・共変量を、いつ・どう取るか */
+  data_design?: string;
+  /** その設計が成り立つ前提と、その確かめ方（並行トレンド・閾値操作の有無など） */
+  assumption_check?: string;
 }
 
 // ─── 指標（Donabedian 三層）───────────────────────────────
@@ -457,9 +517,34 @@ export function normalizeExperiment(v: unknown): ExperimentPlan | null {
     "cost_estimate",
     "ethical_note",
     "fallback",
+    "data_design",
+    "assumption_check",
   ] as const) {
     const val = strOrNull(o[key]);
     if (val) out[key] = val;
+  }
+  const considered = normalizeConsideredDesigns(o["considered"]);
+  if (considered.length > 0) out.considered = considered;
+  return out;
+}
+
+/** 検討したが採らなかった設計（最大6件・既知のキーのみ） */
+export function normalizeConsideredDesigns(v: unknown): ConsideredDesign[] {
+  if (!Array.isArray(v)) return [];
+  const out: ConsideredDesign[] = [];
+  const seen = new Set<string>();
+  for (const it of v.slice(0, 8)) {
+    const o = asObject(it);
+    if (!o) continue;
+    const design = EXPERIMENT_DESIGNS.some((d) => d.key === o["design"])
+      ? (o["design"] as ExperimentDesignKey)
+      : null;
+    if (!design || seen.has(design)) continue;
+    const because = str(o["rejected_because"]).trim().slice(0, 300);
+    if (!because) continue;
+    seen.add(design);
+    out.push({ design, rejected_because: because });
+    if (out.length >= 6) break;
   }
   return out;
 }
@@ -596,6 +681,36 @@ export interface ApproachItem {
   intervention: string;
   /** commit 済みの場合、書き出し先の measure_designs.id */
   measure_design_id?: string | null;
+  /**
+   * 取り下げたアプローチ。行は消さずにこの印を立てる。
+   * エビデンス・実験・指標・コストが approach_id で参照しているため、
+   * 行を消すと下流が黙って壊れる（課題仮説設定の merge_problems と同じ方式）。
+   */
+  retired?: boolean;
+  /** 取り下げの理由（別施策として扱う・統合した 等） */
+  retired_reason?: string;
+}
+
+/** 取り下げていないアプローチ */
+export function activeApproaches(items: ApproachItem[]): ApproachItem[] {
+  return items.filter((a) => !a.retired);
+}
+
+/**
+ * 同じ名前のアプローチが並んでいないか。
+ * 2026-08-31、担当者の「1本にまとめて」という依頼に対しAIが a1 と同名の a2 を
+ * 追加してしまい、画面上は見分けが付かなくなった。名前で気づけるようにする。
+ */
+export function duplicateApproachTitles(items: ApproachItem[]): string[] {
+  const seen = new Map<string, number>();
+  for (const a of activeApproaches(items)) {
+    const key = a.measure_title.trim();
+    if (!key) continue;
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  return Array.from(seen.entries())
+    .filter(([, n]) => n > 1)
+    .map(([t]) => t);
 }
 
 /** アプローチごとのエビデンス評価 */
@@ -713,4 +828,85 @@ export interface MeasureDialogue {
   committed_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ─── 書き出しの完成度 ─────────────────────────────────────
+
+/** 1アプローチについて、施策データセットに欠けている区画 */
+export interface MeasureGap {
+  approach_id: string;
+  measure_title: string;
+  missing: string[];
+}
+
+/**
+ * 施策データセットとして書き出せる状態か検査する（純粋関数・画面とAPIの共用）。
+ *
+ * 2026-08-31 まで、commit の検査は「アプローチが1件以上あるか」だけだった。
+ * エビデンスも実験設計も指標もコストも空のまま書き出せてしまい、しかも
+ * 「施策データセットとして書き出す」ボタンはエビデンス探索の段階から出ていた。
+ * 下流（ロジックモデルの活動・産出・アウトカム、C評価の効率性、A改善）は
+ * データセットが揃っている前提で動くため、空のまま流れると
+ * 「KPIの付いていない活動」がロジックモデルに並ぶことになる。
+ * 課題仮説設定の真因ガードと同じ型の穴。
+ *
+ * 実験設計は、参照できるエビデンスの有無に関わらず必須とする（2026-09-01 方針）。
+ * 既存研究が他所で効いたことと、この町のこの対象で効くことは別で、
+ * 後の評価で因果を論じるには比較の作り方を事業の設計段階で決めておく必要がある。
+ * 名簿・ベースライン・比較群は、事業が始まってからでは取り直せない。
+ */
+export function measureCommitGaps(d: {
+  approaches: ApproachItem[];
+  evidence: ApproachEvidence[];
+  experiments: ApproachExperiment[];
+  indicators: ApproachIndicators[];
+  costs: ApproachCost[];
+}): MeasureGap[] {
+  const ev = new Map(d.evidence.map((x) => [x.approach_id, x]));
+  const ex = new Map(d.experiments.map((x) => [x.approach_id, x]));
+  const ind = new Map(d.indicators.map((x) => [x.approach_id, x]));
+  const cost = new Map(d.costs.map((x) => [x.approach_id, x]));
+
+  const gaps: MeasureGap[] = [];
+  for (const a of activeApproaches(d.approaches)) {
+    const missing: string[] = [];
+
+    const e = ev.get(a.id);
+    if (!e || !e.status) missing.push("エビデンス評価");
+
+    // 実験設計は「エビデンスがあるかどうか」に関わらず必須。
+    // 後の評価で因果を論じるには、比較の作り方を事業の設計段階で決めておく必要がある
+    // （名簿・ベースライン・比較群は、始まってからでは取り直せない）。
+    const x = ex.get(a.id);
+    if (!x?.design) missing.push("実験設計");
+    else {
+      if (!x.rationale?.trim()) missing.push("実験設計の選定理由");
+      // RCT 以外を選ぶなら、なぜ採れないのかを残す
+      if (x.design !== "rct" && (x.considered ?? []).length === 0) {
+        missing.push("採らなかった設計とその理由");
+      }
+    }
+
+    const i = ind.get(a.id);
+    if (!i) missing.push("指標");
+    else {
+      if (i.structure.length + i.process.length === 0) missing.push("ストラクチャー／プロセス指標");
+      if (i.outcome_initial.filter((k) => k.label.trim().length > 0).length === 0) {
+        missing.push("短期アウトカムKPI");
+      }
+    }
+
+    const c = cost.get(a.id);
+    if (!c || c.cost_per_outcome_note.trim().length === 0) missing.push("コスト（算定式）");
+
+    if (missing.length > 0) {
+      gaps.push({ approach_id: a.id, measure_title: a.measure_title || a.id, missing });
+    }
+  }
+  return gaps;
+}
+
+/** 422 や画面表示に使う一文にまとめる */
+export function describeMeasureGaps(gaps: MeasureGap[]): string {
+  return gaps.map((g) => `${g.measure_title}: ${g.missing.join("・")}`).join(" / ");
 }
