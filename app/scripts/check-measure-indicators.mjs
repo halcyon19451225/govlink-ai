@@ -156,9 +156,16 @@ try {
   const g = m.indicatorGaps(works, missingOne, "施策");
   check("不足: 取組ごとに名指しで返す", g.length === 1 && g[0].work_id === "w2");
   check("不足: 欠けたカテゴリを番号と名前で返す", g[0].missing[0].no === 7 && g[0].missing[0].name === "初期アウトカム指標");
+  // 行はあるのに目標だけ無い場合と、そもそも作っていない場合を区別する
+  check("不足: そもそも無ければ「未作成」", g[0].missing[0].reason === "未作成");
+  const noTarget = full.map((i) =>
+    i.measure_work_id === "w2" && i.category_no === 7 ? { ...i, target_value: null, unit: null } : i,
+  );
+  const g2 = m.indicatorGaps(works, noTarget, "施策");
+  check("不足: 行はあるが目標が無ければ「目標値が未設定」", g2[0].missing[0].reason === "目標値が未設定");
   check(
-    "不足: 説明文は取組名から始まる",
-    m.describeIndicatorGaps(g).startsWith("様式の改訂: 7 初期アウトカム指標"),
+    "不足: 説明文は取組名と理由を出す",
+    m.describeIndicatorGaps(g).startsWith("様式の改訂: 7 初期アウトカム指標（未作成）"),
   );
   check(
     "不足: 取り下げた取組は要求しない",

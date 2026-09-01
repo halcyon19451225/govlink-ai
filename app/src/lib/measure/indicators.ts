@@ -374,7 +374,18 @@ export interface IndicatorGap {
   /** 取組ID。主要施策レベルなら null */
   work_id: string | null;
   work_label: string;
-  missing: { no: number; name: string }[];
+  missing: IndicatorMissing[];
+}
+
+/**
+ * 欠けている理由まで返す。
+ * 指標の行はあるのに目標が入っていないだけ、という状態が多く、
+ * 「不足」とだけ出されると担当者は何を直せばよいのか分からない（2026-09-01、実機で確認）。
+ */
+export interface IndicatorMissing {
+  no: number;
+  name: string;
+  reason: "未作成" | "目標値が未設定";
 }
 
 export function indicatorGaps(
@@ -384,10 +395,21 @@ export function indicatorGaps(
 ): IndicatorGap[] {
   const gaps: IndicatorGap[] = [];
 
+  const missingOf = (rows: IndicatorLike[], no: number): IndicatorMissing | null => {
+    const mine = rows.filter((i) => i.category_no === no);
+    if (mine.some((i) => indicatorHasTarget(i))) return null;
+    return {
+      no,
+      name: INDICATOR_BY_NO[no]!.name,
+      // 行はあるのに目標だけ無い場合と、そもそも作っていない場合を区別する
+      reason: mine.length > 0 ? "目標値が未設定" : "未作成",
+    };
+  };
+
   const measureLevel = indicators.filter((i) => !i.measure_work_id);
   const measureMissing = requiredCategoryNos("measure")
-    .filter((no) => !measureLevel.some((i) => i.category_no === no && indicatorHasTarget(i)))
-    .map((no) => ({ no, name: INDICATOR_BY_NO[no]!.name }));
+    .map((no) => missingOf(measureLevel, no))
+    .filter((x): x is IndicatorMissing => x != null);
   if (measureMissing.length > 0) {
     gaps.push({ work_id: null, work_label: measureTitle, missing: measureMissing });
   }
@@ -396,8 +418,8 @@ export function indicatorGaps(
     if (w.retired) continue;
     const mine = indicators.filter((i) => i.measure_work_id === w.id);
     const missing = requiredCategoryNos("work")
-      .filter((no) => !mine.some((i) => i.category_no === no && indicatorHasTarget(i)))
-      .map((no) => ({ no, name: INDICATOR_BY_NO[no]!.name }));
+      .map((no) => missingOf(mine, no))
+      .filter((x): x is IndicatorMissing => x != null);
     if (missing.length > 0) {
       gaps.push({ work_id: w.id, work_label: w.title, missing });
     }
@@ -408,7 +430,7 @@ export function indicatorGaps(
 /** 画面と 422 に出す一文 */
 export function describeIndicatorGaps(gaps: IndicatorGap[]): string {
   return gaps
-    .map((g) => `${g.work_label}: ${g.missing.map((m) => `${m.no} ${m.name}`).join("・")}`)
+    .map((g) => `${g.work_label}: ${g.missing.map((m) => `${m.no} ${m.name}（${m.reason}）`).join("・")}`)
     .join(" / ");
 }
 

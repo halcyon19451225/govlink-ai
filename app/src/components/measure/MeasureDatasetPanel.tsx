@@ -38,7 +38,7 @@ import {
 } from "@/lib/measure/dataset";
 
 interface Gaps {
-  indicators: { work_id: string | null; work_label: string; missing: { no: number; name: string }[] }[];
+  indicators: { work_id: string | null; work_label: string; missing: { no: number; name: string; reason: string }[] }[];
   activitiesWithoutDue: { id: string; title: string }[];
   fundingMismatch: number[];
   noWorks: boolean;
@@ -390,7 +390,7 @@ export default function MeasureDatasetPanel({
           <ul className="mt-1 space-y-0.5">
             {ds.gaps.indicators.map((g) => (
               <li key={g.work_id ?? "measure"} className="text-[11px] text-slate-400">
-                {g.work_label}: {g.missing.map((m) => `${m.no} ${m.name}`).join("・")}
+                {g.work_label}: {g.missing.map((m) => `${m.no} ${m.name}（${m.reason}）`).join("・")}
               </li>
             ))}
           </ul>
