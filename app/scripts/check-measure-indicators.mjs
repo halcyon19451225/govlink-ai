@@ -325,5 +325,44 @@ try {
   }
 }
 
+// ── 6. 画面 ────────────────────────────────
+{
+  const panel = read(join(APP_ROOT, "src", "components", "measure", "MeasureDatasetPanel.tsx"));
+  const client = read(
+    join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "measure-design", "MeasureDesignClient.tsx"),
+  );
+  check("画面: データセットのパネルがある", panel.length > 0);
+  check("画面: 施策構築の画面に組み込まれている", client.includes("<MeasureDatasetPanel"));
+  check("画面: 確定済みの施策は編集させない", client.includes('canEdit={m.status !== "confirmed"}'));
+
+  check("画面: 取組を編集できる", panel.includes("＋ 取組を追加"));
+  check("画面: 取組は取り下げ（行は消さない）", panel.includes("行は消さず、取り下げとして残します"));
+  check("画面: 実施項目を編集できる", panel.includes("＋ 実施項目を追加"));
+  check("画面: 繰り返しを選べる", panel.includes("RECURRENCE_LABEL"));
+  check("画面: 期限未設定を知らせる", panel.includes("期限未設定"));
+  check("画面: スケジュールに反映できる", panel.includes("スケジュールに反映"));
+  check("画面: 反映しなかった項目を伝える", panel.includes("期限未設定で反映しなかった項目"));
+  check("画面: 完了済みを残したことを伝える", panel.includes("完了済み"));
+
+  check("画面: 17カテゴリから指標を足せる", panel.includes("INDICATOR_CATEGORIES.filter"));
+  check("画面: 必須・推奨・任意を出し分ける", panel.includes("REQUIREMENT_LABEL[r.requirement]"));
+  check("画面: 自動で入れた値に印を付ける", panel.includes('<Chip kind="auto">自動</Chip>'));
+  check("画面: 手で直したら自動の印を外す", panel.includes("auto_filled: false"));
+  check("画面: 必須の不足を名指しで出す", panel.includes("評価に必要な指標が埋まっていません"));
+
+  check("画面: 測定頻度を選べる", panel.includes("FREQUENCY_LABEL"));
+  check("画面: 評価時点を足せる", panel.includes("＋ 評価時点を追加"));
+  check("画面: 相対年次で指定できる", panel.includes("第N年度"));
+  check("画面: 絶対日付でも指定できる", panel.includes("絶対日付"));
+  check("画面: 年次評価をしない計画でも足りると伝える", panel.includes("計画期間ごと」だけで足ります"));
+
+  check("画面: 年度別の事業費を編集できる", panel.includes("年度別の事業費と財源"));
+  check("画面: 財源を5区分で持つ", panel.includes("FUNDING_SOURCES.map"));
+  check("画面: 財源の食い違いを知らせる", panel.includes("財源内訳の合計が一致しない年度"));
+  check("画面: 積算内訳を年度別に持つ", panel.includes("積算内訳（費目 × 年度）"));
+  check("画面: 和暦の年度で見せる", panel.includes("fiscalYearLabel"));
+  check("画面: 下書きを起こせる", panel.includes("前の工程から下書きを起こす"));
+}
+
 console.log(`\ncheck-measure-indicators: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

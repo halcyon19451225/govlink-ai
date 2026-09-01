@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import MeasureDialoguePanel from "@/components/measure/MeasureDialoguePanel";
 import ExperimentResultsPanel from "@/components/measure/ExperimentResultsPanel";
+import MeasureDatasetPanel from "@/components/measure/MeasureDatasetPanel";
 import {
   MEASURE_SECTIONS,
   EVIDENCE_LEVELS,
@@ -532,8 +533,15 @@ export default function MeasureDesignClient({
                       />
                     </Section>
 
-                    {/* E. 指標 */}
-                    <Section title="E. 指標（ストラクチャー／プロセス／アウトカム）" grade={comp.indicators}>
+                    {/* 取組・指標17カテゴリ・年度別コスト（057）。
+                        評価フロー図6は取組ごと、図7は主要施策ごとに回るため、
+                        ここで二層に分けて持ち、スケジュール設定へも反映する */}
+                    <Section title="E. 取組と指標（プログラム評価指標一覧）">
+                      <MeasureDatasetPanel projectId={projectId} measureId={m.id} canEdit={m.status !== "confirmed"} />
+                    </Section>
+
+                    {/* E-2. 対話で決めた三層指標（従来の区画。参照用に残す） */}
+                    <Section title="E-2. 対話で決めた指標（三層）" grade={comp.indicators}>
                       <div className="grid gap-3 md:grid-cols-3">
                         <IndicatorList label="ストラクチャー（体制・投入）" items={m.structure_indicators.map((s) => s.text)} />
                         <IndicatorList label="プロセス（実施量・実施率）" items={m.process_indicators.map((s) => s.text)} />
@@ -790,13 +798,16 @@ function Section({
   children,
 }: {
   title: string;
-  grade: 0 | 1 | 2;
+  /** 区画の充足度。持たない区画（自前で不足を出すもの）は省略できる */
+  grade?: 0 | 1 | 2;
   children: React.ReactNode;
 }) {
   return (
     <div>
       <p className="text-xs font-semibold mb-2 flex items-center gap-2" style={{ color: "#94a3b8" }}>
-        <span className="h-2 w-2 rounded-full inline-block" style={{ background: GRADE_COLOR[grade] }} />
+        {grade != null && (
+          <span className="h-2 w-2 rounded-full inline-block" style={{ background: GRADE_COLOR[grade] }} />
+        )}
         {title}
       </p>
       <div className="pl-4">{children}</div>
