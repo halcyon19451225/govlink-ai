@@ -1,10 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { formatElapsed } from "@/lib/ai/turnClient";
+
 /**
  * AI思考中インジケータ（対話型モジュール共通）
  *
  * 視覚弱者にも分かりやすいよう、高コントラストの波形バー + テキストラベルで構成。
  * prefers-reduced-motion 環境ではアニメーションを停止し静的表示にする。
+ *
+ * 経過時間を出すのは、待っている人が「止まった」と誤解して再試行するのを防ぐため。
+ * 再試行は turn_token を差し替えるので、走っているターンの結果が捨てられる
+ * （2026-09-01、実測 41〜159秒のターンを3分で見限って再試行し、
+ *   AIは毎回正常に応答しているのに画面には何も出ない状態が続いた）。
  */
 export default function AiThinkingIndicator({
   label,
@@ -13,6 +21,14 @@ export default function AiThinkingIndicator({
   label: string;
   sub?: string;
 }) {
+  // このコンポーネントは処理中だけ描画されるので、マウントからの経過を数えれば足りる
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const t = setInterval(() => setElapsedMs(Date.now() - started), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
     <div
       role="status"
@@ -72,6 +88,13 @@ export default function AiThinkingIndicator({
         {sub && (
           <p className="text-[11px] mt-0.5" style={{ color: "#94a3b8" }}>
             {sub}
+          </p>
+        )}
+        {/* 20秒を超えたら経過を出す。長いターンは2〜3分かかることがある */}
+        {elapsedMs >= 20_000 && (
+          <p className="text-[11px] mt-0.5" style={{ color: "#94a3b8" }}>
+            経過 {formatElapsed(elapsedMs)}
+            {elapsedMs >= 90_000 && "（長い工程では3分ほどかかることがあります。そのままお待ちください）"}
           </p>
         )}
       </div>

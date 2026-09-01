@@ -211,9 +211,10 @@ try {
   retired.approaches.push(ap("a2", "取り下げた案", { retired: true }));
   check("完成度: 取り下げたアプローチは要求しない", m.measureCommitGaps(retired).length === 0);
 
+  // 同名のアプローチが並ぶと名前だけでは区別が付かないので、IDを先に出す
   check(
-    "完成度: 不足の説明文がIDではなく施策名で出る",
-    m.describeMeasureGaps(m.measureCommitGaps(noExp)).startsWith("施策: "),
+    "完成度: 不足の説明文はIDと施策名の両方を出す",
+    m.describeMeasureGaps(m.measureCommitGaps(noExp)).startsWith("a1「施策」: "),
   );
 
   // 手法メタ

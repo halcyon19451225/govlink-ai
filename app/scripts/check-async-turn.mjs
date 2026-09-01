@@ -116,6 +116,25 @@ for (const file of clients) {
   );
 }
 
+// ── 4.15 失効までの猶予 ──────────────────────────
+// 実測でAIターンは 41〜159秒かかる。失効が短すぎると、担当者がまだ走っている
+// ターンを見限って再試行し、再試行が turn_token を差し替えるため、直後に返ってきた
+// 結果が `WHERE turn_token = $token` に一致せず黙って捨てられる（2026-09-01、4回連続）。
+{
+  const async_ = read(join(APP_ROOT, "src", "lib", "ai", "asyncTurn.ts"));
+  const m = async_.match(/TURN_STALE_MINUTES = (\d+)/);
+  const stale = m ? Number(m[1]) : 0;
+  check("asyncTurn: 失効までの猶予が実測（159秒）より十分長い", stale >= 6);
+  const client = read(join(APP_ROOT, "src", "lib", "ai", "turnClient.ts"));
+  const p = client.match(/TURN_POLL_TIMEOUT_MS = (\d+) \* 60_000/);
+  const poll = p ? Number(p[1]) : 0;
+  check("turnClient: ポーリングの上限が失効より長い", poll > stale);
+  check("turnClient: 経過時間の整形がある", client.includes("export function formatElapsed"));
+  const ind = read(join(APP_ROOT, "src", "components", "AiThinkingIndicator.tsx"));
+  check("画面: 待っている間に経過時間を出す", ind.includes("formatElapsed(elapsedMs)"));
+  check("画面: 長い工程だと伝える", ind.includes("そのままお待ちください"));
+}
+
 // ── 4.2 起動役の所在 ────────────────────────────
 // サーバーの自己 fetch は Lambda 凍結で消えることがあり、AIを一度も呼ばないまま
 // ターンが固まった（2026-08-31）。恒久対策はジョブ表＋ワーカーだが、

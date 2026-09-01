@@ -908,5 +908,7 @@ export function measureCommitGaps(d: {
 
 /** 422 や画面表示に使う一文にまとめる */
 export function describeMeasureGaps(gaps: MeasureGap[]): string {
-  return gaps.map((g) => `${g.measure_title}: ${g.missing.join("・")}`).join(" / ");
+  // IDを先に置く。同名のアプローチが並ぶと、名前だけではどちらの不足か分からない
+  // （2026-09-01、実機で a1 と a2 が同名のまま並び、警告文が読めなかった）
+  return gaps.map((g) => `${g.approach_id}「${g.measure_title}」: ${g.missing.join("・")}`).join(" / ");
 }

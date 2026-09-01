@@ -32,7 +32,18 @@ export type TurnTable =
   | "measure_dialogues"
   | "improvement_dialogues";
 
-export const TURN_STALE_MINUTES = 3;
+/**
+ * 処理中のまま何分過ぎたら「届かなかった」と見なすか。
+ *
+ * 3分では短すぎた（2026-09-01）。ai_usage_logs 上、施策構築の1ターンは
+ * 実測で 41秒〜159秒かかっている。3分で失効表示にすると、担当者は
+ * まだ走っているターンを失敗だと思って再試行する。再試行は turn_token を
+ * 差し替えるため、直後に返ってきた結果は `WHERE turn_token = $token` に
+ * 一致せず**黙って捨てられる**。これが繰り返されると、AIは毎回正常に
+ * 応答しているのに画面には何も出ない、という状態が続く（実際に4回続いた）。
+ * 実測の上限に余裕を足してある。
+ */
+export const TURN_STALE_MINUTES = 10;
 
 /** 画面へ返す turn 状態 */
 export interface TurnState {

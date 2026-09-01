@@ -14,11 +14,18 @@ export interface TurnFields {
 }
 
 export const TURN_POLL_INTERVAL_MS = 2000;
-/** サーバー側の失効（3分）より少し長く待つ */
-export const TURN_POLL_TIMEOUT_MS = 4 * 60_000;
+/** サーバー側の失効（TURN_STALE_MINUTES = 10分）より少し長く待つ */
+export const TURN_POLL_TIMEOUT_MS = 11 * 60_000;
 
 export const TURN_TIMEOUT_ERROR =
   "AIの応答待ちがタイムアウトしました。画面を再読み込みするか、再試行してください";
+
+/** 経過時間の表示（待っている人が「止まった」と誤解しないように） */
+export function formatElapsed(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(sec / 60);
+  return m > 0 ? `${m}分${String(sec % 60).padStart(2, "0")}秒` : `${sec}秒`;
+}
 
 export function isTurnProcessing(rec: TurnFields | null | undefined): boolean {
   return rec?.turn_status === "processing";
