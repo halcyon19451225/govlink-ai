@@ -330,12 +330,17 @@ export async function POST(_req: NextRequest, { params }: Params) {
       }
     }
 
-    // 対話側に書き出し先IDを控え、committed_at を刻む
+    // 対話側に書き出し先IDを控え、committed_at を刻む。
+    // 取り下げた行は書き出しの対象外だが、**消してはいけない**。
+    // エビデンス・実験・指標・コストが approach_id で参照しており、
+    // 「取り下げた」という担当者の判断そのものが記録として要る（2026-09-01、実機で消えた）。
+    const byId = new Map(nextApproaches.map((a) => [a.id, a]));
+    const merged = row.approaches.map((a) => byId.get(a.id) ?? a);
     await client.query(
       `UPDATE measure_dialogues
        SET approaches = $1::jsonb, committed_at = now()
        WHERE id = $2 AND project_id = $3`,
-      [JSON.stringify(nextApproaches), row.id, params.id],
+      [JSON.stringify(merged), row.id, params.id],
     );
 
     return { created, updated, kpis_created: kpisCreated };

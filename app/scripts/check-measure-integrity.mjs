@@ -69,6 +69,12 @@ check("prompt: 文章だけの取り下げを禁じている", promptSrc.include
 check("prompt: 保存済みを「含まれていない」と説明させない", promptSrc.includes("含まれていません」と説明してはいけません"));
 check("prompt: 取り下げ済みを整理内容に明示する", promptSrc.includes("取り下げ済"));
 check("commit: 取り下げたアプローチを書き出さない", commitSrc.includes("activeApproaches(row.approaches)"));
+// 書き出しの対象外にするのと、行を消すのは別。取り下げた記録も残すこと（2026-09-01、実機で消えた）
+check(
+  "commit: 書き出し後も取り下げた行を残す",
+  commitSrc.includes("const merged = row.approaches.map((a) => byId.get(a.id) ?? a)") &&
+    commitSrc.includes("JSON.stringify(merged)"),
+);
 check("画面: 取り下げを取り消し線で残す", panelSrc.includes("line-through") && panelSrc.includes("取り下げ"));
 
 // ── 2. 同名アプローチの検出 ─────────────────────
