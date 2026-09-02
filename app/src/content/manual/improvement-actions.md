@@ -68,19 +68,39 @@ stateDiagram-v2
 
 > **AIの応答待ちについて** — AIの応答には数十秒〜数分かかることがあります。送信した発言は即座に保存され、画面は「AIが考えています」の表示のまま結果を待ちます（画面を再読み込みしても待ち受けは再開されます）。「AI処理に失敗しました」と出た場合は「🔁 AI処理を再試行」で、発言を再入力せずにやり直せます。
 
-## ⑥ 用語と判定基準
+## ⑥ 改善フレームワークの選び方（図7-5）
+
+改善策は、評価の判定が示す**課題の所在**（Ⅰ実行／Ⅱ論理／Ⅲ効率）に合わせて道具を選びます。
+下図はその対応表です。**用いなかった判断も記録に残す**のが要件です（推奨であり必須ではない）。
+
+<div class="manual-figure">
+  <p class="cap"><b>図7-5</b> フレームワーク選択のガイダンス</p>
+  <div class="frame">
+    <a href="/help/figures/fig7-5-framework-guidance.png" target="_blank" rel="noopener noreferrer">
+      <img src="/help/figures/fig7-5-framework-guidance.png" alt="図7-5 フレームワーク選択のガイダンス" width="2160">
+    </a>
+  </div>
+  <a class="zoom" href="/help/figures/fig7-5-framework-guidance.png" target="_blank" rel="noopener noreferrer">⧉ 図を大きく表示</a>
+</div>
+
+選択の4原則は、①課題の所在に合わせる ②順序を守る ③上流から下流へ ④使わない判断も記録する。
+似たフレームワークの使い分け（なぜなぜ分析とロジックツリー、単価分解ツリーと取組ポートフォリオ、
+メカニズム記述と移植先選定マトリクス、トレンド外挿とストレッチ目標のカリブレーション）は
+図の下段にまとめてあります。
+
+## ⑦ 用語と判定基準
 
 - **期限超過**: 期限を過ぎて done/dropped でないもの（isOverdue）
 - **carry_over**: 期内に完了しない改善を次期へ申し送るフラグ（引き継ぎパッケージに入る）
 
-## ⑦ 実装メモ
+## ⑧ 実装メモ
 
 - テーブル: improvement_actions（source 5種・反映先FK 4系統・plan_handover_id）・plan_handovers
 - 関連する実装記録: `claude/coe-ca-p4.md`・`coe-ca-p5.md`・`claude/coe-pl1.md`（P①P②）
 
 - 対話のAIターンは非同期（migration 055・`lib/ai/asyncTurn.ts`）: 発言保存→202→自己呼び出しでAI処理→画面がポーリング。Amplify の30秒応答上限の対策。検査: `check:asyncturn`
 
-## ⑧ 更新履歴
+## ⑨ 更新履歴
 
 - 2026-08-26 v1 — M2 初版
 - 2026-08-29 v1.1 — 対話AIターンの非同期化（通信エラー対策・再試行ボタン）

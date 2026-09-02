@@ -500,3 +500,63 @@ body {
   border-radius: 8px; padding: 12px; margin: 10px 0; overflow-x: auto; }
 .manual-body .manual-mermaid svg { max-width: 100%; height: auto; }
 .manual-body b, .manual-body strong { color: var(--text-primary, #e2e8f0); }
+
+/* ─── マニュアルの図（CA2-4改）───────────────────────────────
+   「❓ヘルプ」ドロワーの中でフロー図・様式図を読ませるための体裁。
+   ①画像図（評価1で作成した図をそのまま載せる）は横スクロール＋クリックで拡大
+   ②フロー図（工程の連なり）はHTMLで組み、ドロワーの幅でも縦に読めるようにする */
+.manual-body .manual-figure { margin: 14px 0; }
+.manual-body .manual-figure .cap {
+  font-size: 12px; color: var(--text-secondary, #94a3b8); margin: 0 0 6px;
+}
+.manual-body .manual-figure .cap b { color: var(--text-primary, #e2e8f0); }
+.manual-body .manual-figure .frame {
+  border: 1px solid var(--border, #1e293b); border-radius: 10px;
+  background: #ffffff; overflow-x: auto; padding: 0;
+}
+.manual-body .manual-figure img { display: block; max-width: none; height: auto; }
+.manual-body .manual-figure .zoom {
+  display: inline-block; margin-top: 6px; font-size: 12px; color: #22d3ee;
+}
+
+/* フロー図（工程の連なり） */
+.manual-body .mflow { margin: 12px 0; }
+.manual-body .mflow .n {
+  border: 1px solid var(--border, #1e293b); border-radius: 10px;
+  background: var(--bg-secondary, #12151f); padding: 10px 12px;
+}
+.manual-body .mflow .n.auto { border-color: #22d3ee55; background: #22d3ee0d; }
+.manual-body .mflow .n.opt { border-style: dashed; background: transparent; }
+.manual-body .mflow .n.end { border-color: #b4530955; background: #b453090d; }
+.manual-body .mflow .n .st {
+  font-size: 11px; color: var(--text-secondary, #94a3b8); font-weight: 600; letter-spacing: .03em;
+}
+.manual-body .mflow .n .q { font-size: 13.5px; font-weight: 700; margin: 2px 0 0; line-height: 1.55; }
+.manual-body .mflow .n .sr { font-size: 12px; color: var(--text-secondary, #94a3b8); margin-top: 4px; line-height: 1.7; }
+.manual-body .mflow .tg {
+  display: inline-block; font-size: 10.5px; font-weight: 700; padding: 0 6px;
+  border-radius: 99px; margin-left: 6px; vertical-align: 1px;
+}
+.manual-body .mflow .tg.a { background: #22d3ee18; color: #22d3ee; border: 1px solid #22d3ee40; }
+.manual-body .mflow .tg.o { background: #64748b18; color: #94a3b8; border: 1px solid #64748b40; }
+.manual-body .mflow .tg.e { background: #b4530918; color: #e0913a; border: 1px solid #b4530940; }
+.manual-body .mflow .ar { text-align: center; color: #475569; font-size: 14px; line-height: 1.2; margin: 4px 0; }
+.manual-body .mflow .br { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 4px 0; }
+@media (max-width: 560px) { .manual-body .mflow .br { grid-template-columns: 1fr; } }
+.manual-body .mflow .br div {
+  border: 1px solid var(--border, #1e293b); border-radius: 8px; padding: 6px 9px;
+  font-size: 12px; line-height: 1.6; color: var(--text-secondary, #94a3b8);
+}
+.manual-body .mflow .br div b { display: block; font-size: 11.5px; margin-bottom: 1px; }
+.manual-body .mflow .br .g { border-color: #10b98140; background: #10b9810d; }
+.manual-body .mflow .br .g b { color: #34d399; }
+.manual-body .mflow .br .w { border-color: #f59e0b40; background: #f59e0b0d; }
+.manual-body .mflow .br .w b { color: #fbbf24; }
+.manual-body .mflow .br .r { border-color: #ef444440; background: #ef44440d; }
+.manual-body .mflow .br .r b { color: #f87171; }
+.manual-body .mgoal {
+  border: 1px solid #0f6e5655; background: #0f6e560d; border-radius: 10px;
+  padding: 10px 12px; margin: 12px 0;
+}
+.manual-body .mgoal .t { font-size: 12px; font-weight: 700; color: #3fb894; margin-bottom: 4px; }
+.manual-body .mgoal ol { margin: 0; padding-left: 20px; font-size: 12.5px; }

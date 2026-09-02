@@ -378,26 +378,14 @@ export default function WorkEvaluationWizard({
           {measure.title} ／ {fiscalYearLabel(fiscalYear)}
         </p>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {/* 評価1の設計アーティファクトと同じビジュアルのフロー全体図（CA2-4） */}
-        <a
-          href="/help/flow-fig6.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs px-3 py-1.5 rounded-lg"
-          style={{ background: "var(--bg-input)", color: "#818cf8", border: "1px solid var(--border)" }}
-        >
-          🗺 フロー全体図
-        </a>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-xs px-3 py-1.5 rounded-lg"
-          style={{ background: "var(--bg-input)", color: "#94a3b8", border: "1px solid var(--border)" }}
-        >
-          ✕ 閉じる
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="text-xs px-3 py-1.5 rounded-lg shrink-0"
+        style={{ background: "var(--bg-input)", color: "#94a3b8", border: "1px solid var(--border)" }}
+      >
+        ✕ 閉じる
+      </button>
     </div>
   );
 

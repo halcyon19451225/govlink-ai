@@ -137,18 +137,7 @@ export default function WorkEvaluationClient({
   return (
     <div className="p-6 max-w-4xl space-y-5">
       <div>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-2xl font-bold text-slate-100">取組評価（年次）</h2>
-          <a
-            href="/help/flow-fig6.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs px-3 py-1.5 rounded-lg shrink-0"
-            style={{ background: "var(--bg-input)", color: "#818cf8", border: "1px solid var(--border)" }}
-          >
-            🗺 フロー全体図を見る
-          </a>
-        </div>
+        <h2 className="text-2xl font-bold text-slate-100">取組評価（年次）</h2>
         <p className="text-xs text-slate-500 mt-1">
           取組毎に、担当者レベルで年次評価（図6）を回します。目的は次年度以降の取組の効果性向上
           （初期アウトカム指標の改善）と、取組の改善だけでは解消できない課題の

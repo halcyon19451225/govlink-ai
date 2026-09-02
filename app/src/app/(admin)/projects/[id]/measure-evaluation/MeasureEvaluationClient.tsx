@@ -126,18 +126,7 @@ export default function MeasureEvaluationClient({
   return (
     <div className="p-6 max-w-4xl space-y-5">
       <div>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-2xl font-bold text-slate-100">主要施策評価（計画期間）</h2>
-          <a
-            href="/help/flow-fig7.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs px-3 py-1.5 rounded-lg shrink-0"
-            style={{ background: "var(--bg-input)", color: "#818cf8", border: "1px solid var(--border)" }}
-          >
-            🗺 フロー全体図を見る
-          </a>
-        </div>
+        <h2 className="text-2xl font-bold text-slate-100">主要施策評価（計画期間）</h2>
         <p className="text-xs text-slate-500 mt-1">
           主要施策毎に、一計画期間の評価（図7）を回します。中間アウトカム指標が確定したタイミングで、
           取組評価から委任された課題を踏まえて実施します。目的は次期計画における処遇

@@ -281,19 +281,32 @@ const wePage = read(join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", 
 check("取組評価ページが評価予定を組み立てる", /buildDueList/.test(wePage));
 check("主要施策評価ページが評価予定を組み立てる", /buildDueList/.test(mePage));
 
-// ── フロー全体図（CA2-4）──────────────────────────
-for (const f of ["flow-fig6.html", "flow-fig7.html", "_flow.css"]) {
-  check(`ヘルプのフロー図 ${f} がある`, existsSync(join(APP_ROOT, "public", "help", f)));
-}
-const fig6Html = read(join(APP_ROOT, "public", "help", "flow-fig6.html"));
-const fig7Html = read(join(APP_ROOT, "public", "help", "flow-fig7.html"));
-check("図6の全体図に評価の目的が書いてある", /この評価の目的/.test(fig6Html) && /委任/.test(fig6Html));
-check("図7の全体図に処遇と引き継ぎが書いてある",
-  /処遇/.test(fig7Html) && /ニーズ評価・セオリー評価/.test(fig7Html));
-check("図7の全体図は現行計画を書き換えないと明記する",
-  /施策構築の内容）は評価では書き換えません/.test(fig7Html));
-check("ウィザードからフロー全体図へ行ける",
-  /help\/flow-fig6\.html/.test(wizard2) && /help\/flow-fig7\.html/.test(meWizard));
+// ── フロー全体図はヘルプ（❓）の中に置く（CA2-4改）────────
+// 画面のヘッダに別リンクを置くのではなく、各メニューの「❓ヘルプ」ドロワーで読ませる。
+// マニュアル本文（src/content/manual/*.md）に図を埋め、/manual/<id> の全画面でも同じ図が出る。
+const manDir = join(APP_ROOT, "src", "content", "manual");
+const manWork = read(join(manDir, "work-evaluation.md"));
+const manMeasure = read(join(manDir, "measure-evaluation.md"));
+check("取組評価のヘルプにフロー全体図がある",
+  /## ③ フロー全体図（図6）/.test(manWork) && /class="mflow"/.test(manWork));
+check("主要施策評価のヘルプにフロー全体図がある",
+  /## ③ フロー全体図（図7）/.test(manMeasure) && /class="mflow"/.test(manMeasure));
+check("フロー図に評価の目的が載っている",
+  /class="mgoal"/.test(manWork) && /class="mgoal"/.test(manMeasure));
+check("図7のヘルプは現行計画を書き換えないと明記する",
+  /施策構築の内容）は評価では書き換えません/.test(manMeasure));
+check("図の体裁は manual-body の CSS で持つ",
+  /\.manual-body \.mflow/.test(read(join(APP_ROOT, "src", "app", "globals.css"))));
+check("画面ヘッダに別立てのフロー図リンクを置かない",
+  !/flow-fig6\.html/.test(wizard2) && !/flow-fig7\.html/.test(meWizard));
+// 評価1で作成した図（画像）はヘルプに埋めて拡大できるようにする
+const manImprove = read(join(manDir, "improvement-actions.md"));
+check("改善のヘルプに図7-5（フレームワーク選択）がある",
+  /manual-figure/.test(manImprove) && /fig7-5-framework-guidance\.png/.test(manImprove));
+check("図の画像が public に置かれている",
+  existsSync(join(APP_ROOT, "public", "help", "figures", "fig7-5-framework-guidance.png")));
+check("図はクリックで拡大できる", /⧉ 図を大きく表示/.test(manImprove));
+
 
 const legacyWizard = read(join(APP_ROOT, "src", "components", "program-eval", "EvaluationWizard.tsx"));
 check("旧プログラム評価の画面に図6v2 を出さない",
