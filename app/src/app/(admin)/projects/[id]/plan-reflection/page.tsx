@@ -10,11 +10,11 @@ export const dynamic = "force-dynamic";
  */
 
 import { notFound } from "next/navigation";
-import { buildH1Data } from "@/lib/evaluation/reflectionData";
+import { buildH1Data, buildReflectionData } from "@/lib/evaluation/reflectionData";
 import PlanReflectionClient from "./PlanReflectionClient";
 
 export default async function PlanReflectionPage({ params }: { params: { id: string } }) {
-  const h1 = await buildH1Data(params.id);
-  if (!h1) notFound();
-  return <PlanReflectionClient projectId={params.id} h1={h1} />;
+  const [h1, refl] = await Promise.all([buildH1Data(params.id), buildReflectionData(params.id)]);
+  if (!h1 || !refl) notFound();
+  return <PlanReflectionClient projectId={params.id} h1={h1} initialReflection={refl} />;
 }

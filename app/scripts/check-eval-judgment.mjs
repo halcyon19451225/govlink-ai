@@ -255,6 +255,58 @@ try {
     { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT },
   );
   const rd = await import(pathToFileURL(out2).href);
+
+  // ── 7. G1／G2／G4／H3（migration 061）────────────────
+  const mig61 = read(join(ROOT, "infra", "migrations", "061_plan_reflection.sql"));
+  check("migration 061 がある", mig61.length > 0);
+  check("061 に BEGIN/COMMIT を書かない", !/^\s*(BEGIN|COMMIT)\s*;/m.test(mig61));
+  check("plan_reflections は evaluation_id で一意（報告書1件=1行）", /evaluation_id\s+UUID\s+NOT NULL UNIQUE/.test(mig61));
+  check("G1-8 の反映先は measure/chapter/not_adopted", /reflect_kind IN \('measure', 'chapter', 'not_adopted'\)/.test(mig61));
+  check("G2-4 の採否語彙", /adoption IN \('adopted', 'partial', 'rejected'\)/.test(mig61));
+  check("H3 の状態機械（deferred/re_proposed/adopted/dropped）", /status IN \('deferred', 're_proposed', 'adopted', 'dropped'\)/.test(mig61));
+  check("061 に判定・処遇の本体（report_no 等）を持たない（program_evaluations が正）", !/report_no|standard_treatment/.test(mig61.replace(/--.*$/gm, "")));
+  const reflApi = read(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "plan-reflection", "[evaluationId]", "route.ts"));
+  check("不採用には理由が必須（行き先として有効にする）", /不採用とする場合は理由を記入してください/.test(reflApi));
+  check("反映先の施策はこの計画のクローンに限る", /cloned_from_project_id = \$2/.test(reflApi));
+  check("処遇の変更は履歴（decision_history）に stage 付きで追記", /decision_history/.test(reflApi) && /stage: d\.decision_stage/.test(reflApi));
+  check("確定段階で理由書が無ければ拒否", /理由書（H4）が必須です/.test(reflApi));
+  check("PATCH は施策構築のデータを書き換えない", !/UPDATE measure_designs|UPDATE measure_indicators/.test(reflApi));
+  const defApi = read(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "plan-reflection", "deferred", "[itemId]", "route.ts"));
+  check("H3 は行を消さず、取り下げに理由必須", /取り下げには理由/.test(defApi) && !/DELETE FROM plan_deferred_items/.test(defApi));
+  check("H3 の遷移表（deferred→re_proposed/dropped, re_proposed→adopted/deferred/dropped）", /deferred: \["re_proposed", "dropped"\]/.test(defApi) && /re_proposed: \["adopted", "deferred", "dropped"\]/.test(defApi));
+  check("G1 docx は照合結果と理由書の過半判定を刷る", /行き先のない報告書が/.test(read(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "plan-reflection", "g1", "route.ts"))));
+  check("G2 docx は例外の件数（過半→ルール改定）を刷る", /過半を超えています/.test(read(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "plan-reflection", "g2", "route.ts"))));
+  check("G4 は①〜⑦自動・⑧〜⑫手入力（g4Sections が12節）", /heading: "⑫ 答申後の反映先"/.test(refl) && /heading: "① 諮問の基本事項"/.test(refl));
+  check("G4-⑩ 諮問事項はルートから定型選択（INQUIRY_ITEMS）", /inquiry_items: route \? INQUIRY_ITEMS\[route\]/.test(refl));
+  const tabs = read(join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "plan-reflection", "ReflectionTabs.tsx"));
+  check("G4 の入力欄は内側コンポーネントではなく関数（フォーカス喪失の回避）", /const field = \(label: string/.test(tabs) && !/<Field /.test(tabs));
+
+  const baseReport = {
+    evaluation_id: "e1", measure_id: "m1", measure_title: "施策A", owner_department: "福祉課", status: "approved", frozen: true,
+    fiscal_year: 2028, evaluated_at: "2029-05-01", evaluated_by: "担当", path: "A→E→K", report_no: 8, report_title: "目標達成・効率化報告書（圧縮・統廃合）",
+    state: "達成・寄与あり。財政効果率100%未満", route: "D", route_name: "構造（費用再設計）", review: "費用計画の承認",
+    standard_treatment: "達成水準を維持目標へ・圧縮し他施策へ再配分", decided_treatment: "達成水準を維持目標へ・圧縮し他施策へ再配分", rationale_required: false, rationale: null,
+    outcome: { label: "認定率", baseline: "5.1%", target: "4.8%", result: "4.7%", natural_baseline: "5.0%", x: "-0.3%" }, comparison_grade: "C",
+    cost_total: 1000000, fiscal_effect: 800000, fiscal_rate: 80, fiscal_mark: "K", pathways: "認定率: ¥800,000", exemption: null,
+    inquiry_items: ["ア 案の妥当性", "カ 費用計画の可否"],
+    reflection: { id: null, decision_history: [], reflect_kind: null, reflect_measure_id: null, reflect_location: null, reflect_reason: null, adoption: null, inquiry_no: null, inquiry_date: null, reply_due: null, opinions: {}, stakeholder_opinions: null, resource_change: {}, reply_result: null, reply_date: null, decided_on: null, decision_meeting: null, set_notes: {} },
+    adoption_effective: "adopted", reconciled: false, reconcile_note: "未対応 — 反映箇所（または不採用・理由）が未記入",
+  };
+  const g1 = rd.g1RowText(baseReport, []);
+  check("G1 行は9列（G1-1〜G1-9）", g1.length === 9 && rd.G1_HEADERS.length === 9);
+  check("G1 の反映箇所が未記入なら「未対応」", g1[8].startsWith("未対応") && g1[7] === "（未記入）");
+  const done = { ...baseReport, reconciled: true, reflection: { ...baseReport.reflection, reflect_kind: "not_adopted", reflect_reason: "法定必須のため現行維持" } };
+  check("不採用・理由は行き先として有効", rd.g1RowText(done, [])[7].startsWith("不採用・理由:") && rd.g1RowText(done, [])[8] === "対応済み");
+  const linked = { ...baseReport, reflection: { ...baseReport.reflection, reflect_kind: "measure", reflect_measure_id: "n1", reflect_location: "第4章 p.42" } };
+  check("次期施策へのリンクは施策名と箇所を併記", rd.g1RowText(linked, [{ id: "n1", title: "次期施策A", cloned_from_measure_id: "m1" }])[7] === "次期施策「次期施策A」／第4章 p.42");
+  const g2 = rd.g2RowText({ ...baseReport, adoption_effective: "partial", rationale: "現場の意見により対象を絞る" }, []);
+  check("G2 は標準処遇に対する採否で書き、理由は理由書の要旨", g2[3] === "一部採用" && g2[4] === "現場の意見により対象を絞る");
+  check("G2 で標準どおりなら理由は「－」", rd.g2RowText(baseReport, [])[4] === "－");
+  const g4 = rd.g4Sections(baseReport, []);
+  check("G4 は12節（①〜⑫）", g4.length === 12 && g4[0].heading.startsWith("①") && g4[11].heading.startsWith("⑫"));
+  check("G4-⑩ はルートDの定型（ア・カ）", g4[9].kv[0].value === "ア 案の妥当性／カ 費用計画の可否");
+  check("G4-⑦ は標準どおりなら「標準処遇のとおり」", g4[6].kv[1].value === "標準処遇のとおり");
+
   const row = {
     set_no: 1, measure_id: "m", measure_title: "施策", work_id: "w", work_code: "W-1", work_title: "取組",
     output: { indicator_id: "i6", label: "回数", target: "2回", result: "1回", baseline: "0回", achieved: "×", shared: false },

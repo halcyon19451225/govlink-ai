@@ -5,10 +5,11 @@
  * H1 は全様式の最上流（転記元）。表は実データ（reflectionData）から組み、判定は保存値を写すだけ。
  */
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ROUTE_META } from "@/lib/evaluation/judgment";
 import { fiscalYearLabel } from "@/lib/measure/indicators";
-import type { H1Data, H1IndicatorCell, H1Row } from "@/lib/evaluation/reflectionData";
+import type { H1Data, H1IndicatorCell, H1Row, ReflectionData } from "@/lib/evaluation/reflectionData";
+import { G1Tab, G2Tab, G4Tab, H3Tab } from "./ReflectionTabs";
 
 const TABS = [
   { id: "h1", label: "H1 評価総括表", stage: "段階1" },
@@ -56,10 +57,22 @@ function JudgmentCell({ r }: { r: H1Row }) {
   );
 }
 
-export default function PlanReflectionClient({ projectId, h1 }: { projectId: string; h1: H1Data }) {
+export default function PlanReflectionClient({ projectId, h1, initialReflection }: { projectId: string; h1: H1Data; initialReflection: ReflectionData }) {
   const [tab, setTab] = useState<TabId>("h1");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refl, setRefl] = useState<ReflectionData>(initialReflection);
+
+  /** 手入力を保存したあと、材料を取り直す（判定は評価側の保存値なので変わらない） */
+  const reload = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/plan-reflection`, { cache: "no-store" });
+      const j = (await res.json()) as { data: ReflectionData | null };
+      if (j.data) setRefl(j.data);
+    } catch {
+      /* 取り直せなくても画面は保つ */
+    }
+  }, [projectId]);
 
   const download = async (path: string, fallback: string) => {
     if (busy) return;
@@ -239,14 +252,10 @@ export default function PlanReflectionClient({ projectId, h1 }: { projectId: str
         </section>
       )}
 
-      {tab !== "h1" && (
-        <section className="rounded-2xl border p-6" style={card}>
-          <p className="text-sm text-slate-300 font-semibold">{TABS.find((t) => t.id === tab)?.label}</p>
-          <p className="text-xs text-slate-500 mt-1">
-            この様式は次のフェーズで実装します（G1 → G4（＋H4）→ G2 → H3 の順）。転記元となるH1の判定が揃っていることが前提です。
-          </p>
-        </section>
-      )}
+      {tab === "g1" && <G1Tab projectId={projectId} data={refl} reload={reload} download={download} busy={busy} setError={setError} />}
+      {tab === "g4" && <G4Tab projectId={projectId} data={refl} reload={reload} download={download} busy={busy} setError={setError} />}
+      {tab === "g2" && <G2Tab projectId={projectId} data={refl} reload={reload} download={download} busy={busy} setError={setError} />}
+      {tab === "h3" && <H3Tab projectId={projectId} data={refl} reload={reload} download={download} busy={busy} setError={setError} />}
     </div>
   );
 }
