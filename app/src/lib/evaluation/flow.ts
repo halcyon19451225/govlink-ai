@@ -15,7 +15,7 @@
 //
 // UI はこの定義を読んで描画するだけなので、フローの改訂はこのファイルで完結する。
 
-export type FlowKey = "fig6" | "fig7" | "fig6v2";
+export type FlowKey = "fig6" | "fig7" | "fig6v2" | "fig7v2";
 
 /** どのカラムへ書き出すか。保存時に評価レコードの各列へ振り分ける */
 export type FlowTarget =
@@ -47,9 +47,10 @@ export interface FlowStep {
    * choice     … 選択肢から選ぶ
    * auto       … KPI・指標の実績からシステムが判定し、担当者が確認・上書きする
    * text       … 記述のみ
-   * delegation … 上位評価へ委任する課題の記入（図6v2 — evaluation_delegations へ）
+   * delegation … 上位（または次期計画）へ委任する課題の記入（evaluation_delegations へ）
+   * delegation_review … 委任されてきた課題の消化（扱った／次期へ引き継ぐ を1件ずつ記録）
    */
-  kind: "choice" | "auto" | "text" | "delegation";
+  kind: "choice" | "auto" | "text" | "delegation" | "delegation_review";
   options?: FlowOption[];
   next?: string | null; // null = 終了
   notePrompt?: string;
@@ -62,6 +63,8 @@ export interface FlowStep {
    * （「評価フローが止まるものだけを必須にする」の工程版）
    */
   requiresIndicator?: number[];
+  /** 比較先（ベンチマーク）が1件も無ければ工程ごとスキップする（図7v2 工程3-2） */
+  requiresBenchmark?: boolean;
   /**
    * auto ステップの判定材料（figv2系）:
    *   activity_rate … No.5 実施率（タスク完了実績の自動集計）
@@ -470,7 +473,154 @@ export const FIG6V2: EvaluationFlow = {
   },
 };
 
-export const FLOWS: Record<FlowKey, EvaluationFlow> = { fig6: FIG6, fig7: FIG7, fig6v2: FIG6V2 };
+// ─── 図7v2: 主要施策毎評価（CA2-3・設計 coe-ca2-design.md §1・§6）────────────
+//
+// 一計画期間の単位で、中間アウトカム指標が確定したタイミングで行う。
+// 入力は取組毎評価から委任された課題。目的は
+//   ①主要施策の次期計画における処遇（廃止・改変・統合・継続）を決める
+//   ②次期計画の主要施策形成時の効果性向上（中間アウトカム指標の改善）
+//   ③主要施策の改善だけでは解消できない課題を、次期計画のニーズ評価・セオリー評価へ引き継ぐ
+export const FIG7V2: EvaluationFlow = {
+  key: "fig7v2",
+  label: "主要施策評価 — 計画期間",
+  subtitle: "主要施策毎に、中間アウトカムの達成と効率性を確認し、次期計画での処遇を決める",
+  tier: "outcome_intermediate",
+  cycleNote: "中間アウトカム指標（No.8）の評価時点に従う",
+  start: "mid_met",
+  steps: {
+    mid_met: {
+      id: "mid_met",
+      section: "1. 中間アウトカムの達成",
+      question: "中間アウトカム指標は目標値に達しましたか？",
+      help: "中間アウトカム指標（No.8）の実績と目標値からシステムが判定します。この評価は本来、この指標が確定したタイミングで行います。",
+      kind: "auto",
+      autoSource: "indicator",
+      autoIndicator: 8,
+      options: [
+        { value: "met", label: "達した", tone: "good", next: "delegated_issues" },
+        { value: "not_met", label: "達していない", tone: "bad", next: "caused_by_initial" },
+      ],
+    },
+    caused_by_initial: {
+      id: "caused_by_initial",
+      section: "2. 初期アウトカムとの関係",
+      question: "未達の要因は、取組（初期アウトカム）の側にありますか？",
+      help: "この施策の取組毎評価（図6）の結果を右に集めています。連鎖のどこで途切れたかを見極めます。",
+      kind: "choice",
+      options: [
+        { value: "chain_failed", label: "取組も未達で、連鎖して届いていない", tone: "bad", requiresNote: true },
+        { value: "chain_broken", label: "取組は達成しているが、中間に結びついていない", tone: "warn", requiresNote: true },
+        { value: "external", label: "取組とは別の外部要因による", tone: "warn", requiresNote: true },
+        { value: "unknown", label: "取組評価が不足していて判断できない", tone: "neutral", requiresNote: true },
+      ],
+      notePrompt: "そう判断した根拠を書いてください（因果仮説の見直しが必要かどうかも含めて）",
+      noteTarget: "findings",
+      next: "delegated_issues",
+    },
+    delegated_issues: {
+      id: "delegated_issues",
+      section: "3. 委任された課題",
+      question: "取組評価から委任された課題を、この評価でどう扱いますか？",
+      help: "課題ごとに「この評価で扱った」か「次期計画へ引き継ぐ」かを記録します。委任が無ければこの工程は飛ばされます。",
+      kind: "delegation_review",
+      next: "cost_appropriate",
+    },
+    cost_appropriate: {
+      id: "cost_appropriate",
+      section: "4. コストと効率性",
+      question: "投入した人員と予算は、得られた成果に見合っていましたか？",
+      help: "単位コスト（No.15）・インプット（No.3）と計画期間の事業費を確認します。",
+      kind: "choice",
+      options: [
+        { value: "appropriate", label: "見合っていた", tone: "good" },
+        { value: "excessive", label: "投入が過大だった", tone: "warn", requiresNote: true },
+        { value: "insufficient", label: "投入が過少だった", tone: "warn", requiresNote: true },
+        { value: "unknown", label: "判断できる材料がない", tone: "neutral", requiresNote: true },
+      ],
+      notePrompt: "根拠となる数値や状況を書いてください",
+      noteTarget: "barrier_factors",
+      next: "benchmark",
+    },
+    benchmark: {
+      id: "benchmark",
+      section: "4. コストと効率性",
+      question: "他団体との比較では、この施策の水準はどうでしたか？",
+      help: "登録された比較先（全国平均・県平均・人口同規模平均など）との比較表を材料にします。比較先が未登録なら、この工程は飛ばされます。",
+      kind: "choice",
+      requiresBenchmark: true,
+      options: [
+        { value: "better", label: "同規模比で良好", tone: "good" },
+        { value: "similar", label: "同等", tone: "neutral" },
+        { value: "worse", label: "同規模比で低い", tone: "warn", requiresNote: true },
+      ],
+      notePrompt: "差の要因として考えられることを書いてください",
+      noteTarget: "findings",
+      next: "cost_effectiveness",
+    },
+    cost_effectiveness: {
+      id: "cost_effectiveness",
+      section: "4. コストと効率性",
+      question: "費用対効果（費用便益）はどう評価しますか？",
+      help: "費用対効果指標（No.16）を設定している場合の工程です。",
+      kind: "choice",
+      requiresIndicator: [16],
+      options: [
+        { value: "positive", label: "効果が費用を上回る", tone: "good" },
+        { value: "marginal", label: "見合いは限界的", tone: "warn", requiresNote: true },
+        { value: "negative", label: "効果が費用に見合わない", tone: "bad", requiresNote: true },
+      ],
+      notePrompt: "算定の前提と結果を書いてください",
+      noteTarget: "findings",
+      next: "policy_direction",
+    },
+    policy_direction: {
+      id: "policy_direction",
+      section: "5. 次期計画での処遇",
+      question: "この主要施策を、次期計画でどう扱いますか？",
+      help: "図7フローの結論その1。ここで決めた処遇が、改善メニュー「主要施策の再構築」の出発点になります（現行計画の施策データは書き換えません）。",
+      kind: "choice",
+      options: [
+        { value: "continue", label: "継続する", tone: "neutral" },
+        { value: "revise", label: "改変する", tone: "warn", requiresNote: true },
+        { value: "merge", label: "他施策と統合する", tone: "warn", requiresNote: true },
+        { value: "abolish", label: "廃止する", tone: "bad", requiresNote: true },
+      ],
+      notePrompt: "その処遇とした理由を書いてください",
+      noteTarget: "next_steps",
+      next: "plan_level_issues",
+    },
+    plan_level_issues: {
+      id: "plan_level_issues",
+      section: "6. 次期計画への引き継ぎ",
+      question: "主要施策の改善だけでは解消できない課題（計画全体のロジックモデルの見直しが要るもの）はありますか？",
+      help: "図7フローの結論その2。ここで記入した課題は、次期計画策定時のニーズ評価・セオリー評価へ引き継がれます。",
+      kind: "delegation",
+      options: [
+        { value: "none", label: "ない（施策レベルで対応できる）", tone: "good" },
+        { value: "has", label: "ある（課題を記入して引き継ぐ）", tone: "warn" },
+      ],
+      next: "handover",
+    },
+    handover: {
+      id: "handover",
+      section: "6. 次期計画への引き継ぎ",
+      question: "次期計画へ引き継ぐ事項を記入してください。",
+      help: "評価報告書にまとめ、次期計画策定の入力にします。",
+      kind: "text",
+      notePrompt: "例: 通いの場は箇所数では足りており、次期は参加の質（継続率）を中間アウトカムに置く",
+      noteRequired: true,
+      noteTarget: "next_steps",
+      next: null,
+    },
+  },
+};
+
+export const FLOWS: Record<FlowKey, EvaluationFlow> = {
+  fig6: FIG6,
+  fig7: FIG7,
+  fig6v2: FIG6V2,
+  fig7v2: FIG7V2,
+};
 
 /**
  * 指標の有無で工程をスキップした後の実効の次ステップを返す。
@@ -480,17 +630,18 @@ export function nextAvailableStep(
   flow: EvaluationFlow,
   fromStepId: string | null,
   presentCategories: Set<number>,
+  ctx?: { hasBenchmark?: boolean; hasDelegations?: boolean },
 ): string | null {
   let cursor = fromStepId ?? flow.start;
   for (let guard = 0; guard < 50; guard++) {
     const step: FlowStep | undefined = flow.steps[cursor];
     if (!step) return null;
-    if (
-      !step.requiresIndicator ||
-      step.requiresIndicator.some((no) => presentCategories.has(no))
-    ) {
-      return cursor;
-    }
+    const indicatorOk =
+      !step.requiresIndicator || step.requiresIndicator.some((no) => presentCategories.has(no));
+    const benchmarkOk = !step.requiresBenchmark || ctx?.hasBenchmark === true;
+    // 委任の消化は、委任されてきた課題があるときだけ問う
+    const delegationOk = step.kind !== "delegation_review" || ctx?.hasDelegations === true;
+    if (indicatorOk && benchmarkOk && delegationOk) return cursor;
     if (step.next == null) return null;
     cursor = step.next;
   }
@@ -522,6 +673,7 @@ export function getFlow(key: string | null | undefined): EvaluationFlow | null {
   if (key === "fig6") return FIG6;
   if (key === "fig7") return FIG7;
   if (key === "fig6v2") return FIG6V2;
+  if (key === "fig7v2") return FIG7V2;
   return null;
 }
 

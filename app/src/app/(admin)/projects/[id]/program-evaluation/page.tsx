@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -138,6 +139,27 @@ export default async function ProgramEvaluationPage({
       <div className="mb-6">
         <p className="text-sm text-slate-500">{project.title}</p>
         <h2 className="text-2xl font-bold text-slate-100 mt-1">プログラム評価</h2>
+      </div>
+
+      {/* CA2-3: 評価は「取組評価（年次）」「主要施策評価（計画期間）」の2メニューに分けた。
+          この画面はメニューから外し、既存リンク（チェックポイント詳細・リネージ等）の
+          到達先として存置している。過去の評価の閲覧と、三層以外の評価（needs/theory/
+          process/efficiency）の記録にはそのまま使える。 */}
+      <div
+        className="mb-6 rounded-xl border px-4 py-3"
+        style={{ background: "#6366f10d", borderColor: "#6366f150" }}
+      >
+        <p className="text-xs text-slate-300">
+          アウトカム評価は
+          <Link href={`/projects/${project.id}/work-evaluation`} className="mx-1 font-semibold" style={{ color: "#818cf8" }}>
+            取組評価（年次・図6）
+          </Link>
+          と
+          <Link href={`/projects/${project.id}/measure-evaluation`} className="mx-1 font-semibold" style={{ color: "#818cf8" }}>
+            主要施策評価（計画期間・図7）
+          </Link>
+          に分かれました。この画面は過去の評価の閲覧と、ニーズ・セオリー・プロセス・効率性の評価の記録に使います。
+        </p>
       </div>
 
       {/* 評価の前提として、三層アウトカムの到達状況を先に示す */}

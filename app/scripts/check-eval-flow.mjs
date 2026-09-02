@@ -102,6 +102,51 @@ try {
   check("旧図6は従来の3工程構成のまま",
     m.FIG6.start === "implemented" && m.FIG6.steps.improvement.next === null);
   check("getFlow が fig6v2 を引ける", m.getFlow("fig6v2")?.key === "fig6v2");
+
+  // ── 図7v2（主要施策評価 — CA2-3）────────────────────
+  const g = m.FIG7V2;
+  check("FIG7V2 が定義されている", g && g.key === "fig7v2");
+  check("tier は outcome_intermediate（計画期間・主要施策）", g.tier === "outcome_intermediate");
+  check("実施時期は指標の評価時点に従う（3年目を直書きしない）",
+    !g.cycleNote.includes("3年目") && g.cycleNote.includes("評価時点"));
+  for (const id of [
+    "mid_met", "caused_by_initial", "delegated_issues", "cost_appropriate",
+    "benchmark", "cost_effectiveness", "policy_direction", "plan_level_issues", "handover",
+  ]) {
+    check(`図7v2 工程 ${id} がある`, Boolean(g.steps[id]));
+  }
+  check("工程1は No.8 の実績 vs 目標",
+    g.steps.mid_met.autoSource === "indicator" && g.steps.mid_met.autoIndicator === 8);
+  check("委任の消化は delegation_review", g.steps.delegated_issues.kind === "delegation_review");
+  check("他団体比較は比較先があるときだけ", g.steps.benchmark.requiresBenchmark === true);
+  check("費用対効果は No.16 が前提", (g.steps.cost_effectiveness.requiresIndicator ?? []).join() === "16");
+  check("処遇は4択（継続・改変・統合・廃止）",
+    g.steps.policy_direction.options.map((o) => o.value).join() === "continue,revise,merge,abolish");
+  check("処遇は理由を必須にする（継続以外）",
+    g.steps.policy_direction.options.filter((o) => o.requiresNote).length === 3);
+  check("次期への引き継ぎ課題は delegation kind",
+    g.steps.plan_level_issues.kind === "delegation");
+  check("最後は引き継ぎ事項の記入で終わる",
+    g.steps.handover.next === null && g.steps.handover.noteRequired === true);
+  check("getFlow が fig7v2 を引ける", m.getFlow("fig7v2")?.key === "fig7v2");
+
+  // スキップの規則（図7v2）
+  const catsWithMid = new Set([8]);
+  check("比較先が無ければ他団体比較を飛ばす",
+    m.nextAvailableStep(g, "benchmark", catsWithMid, { hasBenchmark: false, hasDelegations: false })
+      === "policy_direction");
+  check("比較先があれば他団体比較に入る",
+    m.nextAvailableStep(g, "benchmark", catsWithMid, { hasBenchmark: true, hasDelegations: false })
+      === "benchmark");
+  check("委任が無ければ消化の工程を飛ばす",
+    m.nextAvailableStep(g, "delegated_issues", catsWithMid, { hasBenchmark: false, hasDelegations: false })
+      === "cost_appropriate");
+  check("委任があれば消化の工程に入る",
+    m.nextAvailableStep(g, "delegated_issues", catsWithMid, { hasBenchmark: false, hasDelegations: true })
+      === "delegated_issues");
+  check("No.16 が無ければ費用対効果を飛ばす",
+    m.nextAvailableStep(g, "cost_effectiveness", catsWithMid, { hasBenchmark: false, hasDelegations: false })
+      === "policy_direction");
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
@@ -145,6 +190,33 @@ check("取組評価ウィザードがある", wizard.length > 0);
 check("実績の確認・記入フェーズを持つ", /実績の確認/.test(wizard));
 check("システム判定の上書きを記録する", /overridden: value !== sys/.test(wizard));
 check("委任の記入がある", /委任する課題/.test(wizard));
+
+// 委任の起票と消化（図7v2）
+check("委任の起票に level を持たせる（to_measure / to_next_plan）",
+  /level: z\.enum\(\["to_measure", "to_next_plan"\]\)/.test(postRoute));
+check("委任の消化は open のものだけ進める",
+  /SET status = \$1, addressed_in_evaluation_id = \$2[\s\S]*?status = 'open'/.test(postRoute));
+check("委任の消化語彙は to_status（評価の status と混同しない）",
+  /to_status: z\.enum\(\["addressed", "carried_over"\]\)/.test(postRoute));
+
+const mePage = read(join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "measure-evaluation", "page.tsx"));
+check("主要施策評価ページがある", mePage.length > 0);
+check("主要施策評価は取組が紐づかない中間アウトカム評価を並べる",
+  /measure_work_id IS NULL[\s\S]*?evaluation_tier = 'outcome_intermediate'/.test(mePage));
+
+const meWizard = read(join(APP_ROOT, "src", "components", "program-eval", "MeasureEvaluationWizard.tsx"));
+check("主要施策評価ウィザードがある", meWizard.length > 0);
+check("取組評価のロールアップを出す", /この施策の取組評価/.test(meWizard));
+check("次期への引き継ぎは to_next_plan で送る", /level: "to_next_plan" as const/.test(meWizard));
+
+check("サイドバーCに主要施策評価（計画期間）がある",
+  /measure-evaluation/.test(sidebar) && sidebar.includes("主要施策評価（計画期間）"));
+check("旧プログラム評価はメニューから外れている",
+  !/\{ id: "program-evaluation", label:/.test(sidebar));
+
+const legacyPage = read(join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "program-evaluation", "page.tsx"));
+check("旧プログラム評価の画面が新メニューへ案内する",
+  /work-evaluation/.test(legacyPage) && /measure-evaluation/.test(legacyPage));
 
 const legacyWizard = read(join(APP_ROOT, "src", "components", "program-eval", "EvaluationWizard.tsx"));
 check("旧プログラム評価の画面に図6v2 を出さない",

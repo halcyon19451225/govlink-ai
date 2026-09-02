@@ -53,9 +53,11 @@ const NAV_ITEMS = [
       { id: "report-requests", label: "実績報告依頼",       icon: "📮", path: "report-requests" },
       // CA2（設計 claude/coe-ca2-design.md §8）: 評価は二層に分ける。
       //   取組評価（年次・図6）… 担当者レベル。初期アウトカムの改善と、上位への課題委任
-      //   主要施策評価（計画期間・図7）… CA2-3 で追加し、プログラム評価メニューを置き換える
+      //   主要施策評価（計画期間・図7）… 次期計画での処遇と、次期への課題引き継ぎ
+      // 旧「プログラム評価」はメニューから外した（2026-09）。ルート /program-evaluation は
+      //   チェックポイント詳細・リネージ等の既存リンクのために存置し、画面冒頭で新メニューへ案内する。
       { id: "work-evaluation", label: "取組評価（年次）",   icon: "☑️", path: "work-evaluation" },
-      { id: "program-evaluation", label: "プログラム評価",   icon: "✅", path: "program-evaluation" },
+      { id: "measure-evaluation", label: "主要施策評価（計画期間）", icon: "✅", path: "measure-evaluation" },
       { id: "ebpm",               label: "EBPMダッシュボード",icon: "📉", path: "ebpm" },
       { id: "lineage",            label: "リネージグラフ",   icon: "🕸️", path: "lineage" },
     ],
@@ -122,6 +124,7 @@ export default function ProjectSidebar({ projectId }: Props) {
     "asis-analysis": "gap-analysis",   // 現状整理(As-Is) → ギャップ分析
     "issue-hypothesis": "gap-analysis",// 課題仮説設定 → ギャップ分析
     "logic-model": "overview",      // ロジックモデル編集 → 計画概要
+    "program-evaluation": "measure-evaluation", // 旧プログラム評価 → 主要施策評価
   };
   const activeSegment = SEGMENT_ALIAS[rawSegment] ?? rawSegment;
 

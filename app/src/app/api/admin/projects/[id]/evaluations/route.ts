@@ -63,16 +63,32 @@ const bodySchema = z.object({
   measure_design_id: z.string().uuid().optional().nullable(),
   // 取組毎評価（図6v2・CA2-2）の対象取組。指定時は指標スナップショットを保存時に写し取る
   measure_work_id: z.string().uuid().optional().nullable(),
-  // 図6v2 の結論その2: 主要施策毎評価へ委任する課題（evaluation_delegations — 058）
+  // 委任の起票（evaluation_delegations — 058）
+  //   図6v2 の結論その2 … level='to_measure'（主要施策毎評価へ）
+  //   図7v2 の結論その2 … level='to_next_plan'（次期計画のニーズ・セオリー評価へ）
   delegations: z
     .array(
       z.object({
         title: z.string().min(1).max(200),
         detail: z.string().max(2000).optional().nullable(),
         root_cause: z.string().max(2000).optional().nullable(),
+        level: z.enum(["to_measure", "to_next_plan"]).optional(),
       }),
     )
     .max(20)
+    .optional()
+    .nullable(),
+  // 委任されてきた課題の消化（図7v2 工程3）。open のものだけを進める
+  delegation_updates: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        // 委任の消化後の状態。program_evaluations.status とは別語彙なので
+        // フィールド名を to_status にしている（check:vocab の取り違え防止）
+        to_status: z.enum(["addressed", "carried_over"]),
+      }),
+    )
+    .max(50)
     .optional()
     .nullable(),
   // PDCAチェックポイント（029 で NULL 許容化。未指定は随時評価）
@@ -237,20 +253,37 @@ export async function POST(req: NextRequest, { params }: Params) {
   // 主要施策毎評価（図7）側が status を進める。
   if (d.delegations && d.delegations.length > 0) {
     for (const del of d.delegations) {
+      // 既定は取組評価からの委任。図7v2 は level='to_next_plan' を明示する
+      const level = del.level ?? (d.measure_work_id ? "to_measure" : "to_next_plan");
       await query(
         `INSERT INTO evaluation_delegations
            (project_id, from_evaluation_id, measure_design_id, measure_work_id,
             level, title, detail, root_cause)
-         VALUES ($1, $2, $3, $4, 'to_measure', $5, $6, $7)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           params.id,
           row.id,
           d.measure_design_id ?? null,
           d.measure_work_id ?? null,
+          level,
           del.title,
           del.detail ?? null,
           del.root_cause ?? null,
         ],
+      );
+    }
+  }
+
+  // ── 委任されてきた課題の消化（図7v2 工程3）──────────────
+  // open のものだけを進める（再評価で既に決着した課題を蒸し返さない）。
+  // 行は消さず、状態と「どの評価で扱ったか」を残す。
+  if (d.delegation_updates && d.delegation_updates.length > 0) {
+    for (const upd of d.delegation_updates) {
+      await query(
+        `UPDATE evaluation_delegations
+            SET status = $1, addressed_in_evaluation_id = $2, updated_at = now()
+          WHERE id = $3 AND project_id = $4 AND status = 'open'`,
+        [upd.to_status, row.id, upd.id, params.id],
       );
     }
   }
