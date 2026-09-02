@@ -9,6 +9,7 @@ import { recordArtifact, resolveArtifactIds } from "@/lib/modules/recordArtifact
 import { ARTIFACT_TYPES } from "@/lib/modules/artifact-types";
 import { requireModulePermission } from "@/lib/permissions";
 import { aggregateRate, buildKpiSnapshot } from "@/lib/evaluation/snapshot";
+import { buildIndicatorSnapshot } from "@/lib/evaluation/indicatorSnapshot";
 
 type Params = { params: { id: string } };
 
@@ -60,6 +61,20 @@ const bodySchema = z.object({
   logic_model_id: z.string().uuid().optional().nullable(),
   // この評価が対象にした施策データセット（EBPM・E5）
   measure_design_id: z.string().uuid().optional().nullable(),
+  // 取組毎評価（図6v2・CA2-2）の対象取組。指定時は指標スナップショットを保存時に写し取る
+  measure_work_id: z.string().uuid().optional().nullable(),
+  // 図6v2 の結論その2: 主要施策毎評価へ委任する課題（evaluation_delegations — 058）
+  delegations: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(200),
+        detail: z.string().max(2000).optional().nullable(),
+        root_cause: z.string().max(2000).optional().nullable(),
+      }),
+    )
+    .max(20)
+    .optional()
+    .nullable(),
   // PDCAチェックポイント（029 で NULL 許容化。未指定は随時評価）
   checkpoint_id: z.string().uuid().optional().nullable(),
   // efficiency tier の場合のみ参照（cost_efficiency_records へ連動）
@@ -140,15 +155,47 @@ export async function POST(req: NextRequest, { params }: Params) {
   const computedRate = aggregateRate(kpiSnapshot);
   const effectiveRate = d.achievement_rate ?? (computedRate == null ? null : Math.max(0, Math.min(100, computedRate)));
 
+  // ── 取組毎評価（図6v2・CA2-2）────────────────────────────
+  // 取組の帰属を確かめ（他計画・他施策の取組を指せない）、
+  // 指標スナップショットを保存時点で写し取る。実績（058）と No.5 自動集計が材料。
+  if (d.measure_work_id) {
+    if (!d.measure_design_id) {
+      return NextResponse.json(
+        { data: null, error: "取組を指定するときは施策（measure_design_id）も指定してください" },
+        { status: 400 },
+      );
+    }
+    const work = await queryOne<{ id: string }>(
+      `SELECT id FROM measure_works
+        WHERE id = $1 AND project_id = $2 AND measure_design_id = $3`,
+      [d.measure_work_id, params.id, d.measure_design_id],
+    );
+    if (!work) {
+      return NextResponse.json({ data: null, error: "取組が見つかりません" }, { status: 404 });
+    }
+  }
+  const indicatorSnapshot = d.measure_design_id
+    ? (
+        await buildIndicatorSnapshot(
+          params.id,
+          d.measure_design_id,
+          d.measure_work_id ?? null,
+          d.fiscal_year ?? null,
+        )
+      ).items
+    : [];
+
   const row = await queryOne<{ id: string }>(
     `INSERT INTO program_evaluations
        (project_id, evaluation_tier, fiscal_year, status, result,
         achievement_rate, findings, success_factors, barrier_factors,
         improvement_actions, next_steps, flow_decision_path, kpi_ids, logic_model_id,
         measure_design_id,
-        checkpoint_id, kpi_snapshot, computed_achievement_rate)
+        checkpoint_id, kpi_snapshot, computed_achievement_rate,
+        measure_work_id, indicator_snapshot)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-             COALESCE($13::uuid[], '{}'::uuid[]), $14, $15, $16, $17::jsonb, $18)
+             COALESCE($13::uuid[], '{}'::uuid[]), $14, $15, $16, $17::jsonb, $18,
+             $19, $20::jsonb)
      RETURNING id`,
     [
       params.id,
@@ -169,11 +216,36 @@ export async function POST(req: NextRequest, { params }: Params) {
       d.checkpoint_id ?? null,
       JSON.stringify(kpiSnapshot),
       computedRate,
+      d.measure_work_id ?? null,
+      JSON.stringify(indicatorSnapshot),
     ],
   );
 
   if (!row) {
     return NextResponse.json({ data: null, error: "DB登録に失敗しました" }, { status: 500 });
+  }
+
+  // ── 委任の起票（図6v2 → 図7。evaluation_delegations — 058）──────
+  // 行は消さない主義に合わせ、ここでは追加だけを行う。消化（addressed / carried_over）は
+  // 主要施策毎評価（図7）側が status を進める。
+  if (d.delegations && d.delegations.length > 0) {
+    for (const del of d.delegations) {
+      await query(
+        `INSERT INTO evaluation_delegations
+           (project_id, from_evaluation_id, measure_design_id, measure_work_id,
+            level, title, detail, root_cause)
+         VALUES ($1, $2, $3, $4, 'to_measure', $5, $6, $7)`,
+        [
+          params.id,
+          row.id,
+          d.measure_design_id ?? null,
+          d.measure_work_id ?? null,
+          del.title,
+          del.detail ?? null,
+          del.root_cause ?? null,
+        ],
+      );
+    }
   }
 
   const inserted = await queryOne(

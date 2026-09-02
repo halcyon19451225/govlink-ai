@@ -42,6 +42,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
   { id: "documents", label: "ドキュメント管理", menuPath: "/projects/[id]/documents", section: "D" },
   // C: 評価
   { id: "report-requests", label: "実績報告依頼", menuPath: "/projects/[id]/report-requests", section: "C" },
+  { id: "work-evaluation", label: "取組評価（年次）", menuPath: "/projects/[id]/work-evaluation", section: "C" },
   { id: "program-evaluation", label: "プログラム評価", menuPath: "/projects/[id]/program-evaluation", section: "C" },
   { id: "ebpm", label: "EBPMダッシュボード", menuPath: "/projects/[id]/ebpm", section: "C" },
   { id: "lineage", label: "リネージグラフ", menuPath: "/projects/[id]/lineage", section: "C" },

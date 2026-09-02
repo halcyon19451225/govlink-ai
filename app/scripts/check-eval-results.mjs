@@ -144,6 +144,12 @@ try {
   const monthly = { ...annual, id: "a4", due_date: "2027-01-31", recurrence: "monthly", occurrences: 3 };
   const y3 = m.plannedCountInYear([monthly], 4, 2026);
   check("月末は丸める（1/31→2/28→3/31 の3件が同一年度）", y3.planned === 3);
+
+  // 計画年数はJSで数える（SQLの日付演算は型混在で500を出した — 2026-09-02）
+  check("計画年数: 2024-04〜2027-03 は3年", m.planYearsBetween("2024-04-01", "2027-03-31") === 3);
+  check("計画年数: 終了日なしは1年", m.planYearsBetween("2026-04-01", null) === 1);
+  check("計画年数: 逆転や不正は安全側", m.planYearsBetween("2026-04-01", "2025-01-01") === 1
+    && m.planYearsBetween("bad", null) === 3);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
@@ -154,6 +160,7 @@ check("activityStats が存在する", stats.length > 0);
 check("分子は schedule_tasks.completed_at から数える",
   /completed_at IS NOT NULL/.test(stats));
 check("分母0のとき rate は null（0%と区別）", /rate: planned > 0 \?/.test(stats));
+check("年数の算出はSQLでなくJS（planYearsBetween）", /planYearsBetween\(/.test(stats) && !/CEIL\((?!interval\))/.test(stats));
 check("計算部（純粋関数）は activityMath に分離",
   /from "\.\/activityMath"/.test(stats));
 

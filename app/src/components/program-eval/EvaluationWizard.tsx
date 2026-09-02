@@ -349,7 +349,8 @@ export default function EvaluationWizard({
           </p>
         </div>
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))" }}>
-          {(Object.keys(FLOWS) as FlowKey[]).map((k) => {
+          {/* 図6v2（取組評価）は専用メニューのウィザードで実施する — ここには出さない */}
+          {(["fig6", "fig7"] as FlowKey[]).map((k) => {
             const f = FLOWS[k];
             return (
               <button

@@ -6,6 +6,19 @@
 import { planTasks } from "@/lib/measure/schedule";
 import type { MeasureActivity } from "@/lib/measure/dataset";
 
+/**
+ * 計画期間の年度数。SQLで日付演算をすると date/timestamp の型混在で落ちやすいので
+ * （実機で CEIL(interval) の500を踏んだ）、日付文字列からJSで数える。
+ * 終了日が無ければ1年とみなす。
+ */
+export function planYearsBetween(startIso: string, endIso: string | null): number {
+  const start = Date.parse(`${startIso}T00:00:00Z`);
+  if (Number.isNaN(start)) return 3;
+  const end = endIso ? Date.parse(`${endIso}T00:00:00Z`) : start + 365 * 86_400_000;
+  if (Number.isNaN(end) || end <= start) return 1;
+  return Math.max(1, Math.ceil((end - start) / (365.25 * 86_400_000)));
+}
+
 /** 年度の窓（4月始まり）。fiscalYear は開始西暦年（2026 = 令和8年度） */
 export function fiscalYearWindow(fiscalYear: number): { start: string; end: string } {
   return { start: `${fiscalYear}-04-01`, end: `${fiscalYear + 1}-03-31` };

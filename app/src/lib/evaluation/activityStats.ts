@@ -13,9 +13,9 @@
 
 import { query } from "@/lib/db";
 import type { MeasureActivity } from "@/lib/measure/dataset";
-import { fiscalYearWindow, plannedCountInYear } from "./activityMath";
+import { fiscalYearWindow, plannedCountInYear, planYearsBetween } from "./activityMath";
 
-export { fiscalYearWindow, inFiscalYear, plannedCountInYear } from "./activityMath";
+export { fiscalYearWindow, inFiscalYear, plannedCountInYear, planYearsBetween } from "./activityMath";
 
 export interface ActivityRateResult {
   fiscal_year: number;
@@ -50,11 +50,12 @@ export async function computeActivityRate(
         ORDER BY a.sort_order`,
       [projectId, measureWorkId],
     ),
-    query<{ years: number }>(
-      `SELECT GREATEST(1, CEIL(
-                (COALESCE(plan_end_date, plan_start_date + INTERVAL '1 year') - plan_start_date)
-                / 365.0))::int AS years
-         FROM projects WHERE id = $1 AND plan_start_date IS NOT NULL`,
+    // 年数の算出はJS側（planYearsBetween）。SQLの日付演算は date/timestamp の型混在で
+    // CEIL(interval) になり500を出した（2026-09-02 実機で確認）ので、日付だけ取る
+    query<{ start: string | null; end: string | null }>(
+      `SELECT to_char(plan_start_date, 'YYYY-MM-DD') AS start,
+              to_char(plan_end_date,   'YYYY-MM-DD') AS "end"
+         FROM projects WHERE id = $1`,
       [projectId],
     ),
     query<{ measure_activity_id: string; completed: number }>(
@@ -72,7 +73,9 @@ export async function computeActivityRate(
     ),
   ]);
 
-  const planYears = planRow[0]?.years ?? 3;
+  const planYears = planRow[0]?.start
+    ? planYearsBetween(planRow[0].start, planRow[0].end)
+    : 3;
   const { planned, byActivity } = plannedCountInYear(activities, planYears, fiscalYear);
   const completedBy = new Map(completedRows.map((r) => [r.measure_activity_id, r.completed]));
 

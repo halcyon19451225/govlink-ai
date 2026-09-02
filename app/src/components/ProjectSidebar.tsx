@@ -51,6 +51,10 @@ const NAV_ITEMS = [
     color: "#0f6e56",
     items: [
       { id: "report-requests", label: "実績報告依頼",       icon: "📮", path: "report-requests" },
+      // CA2（設計 claude/coe-ca2-design.md §8）: 評価は二層に分ける。
+      //   取組評価（年次・図6）… 担当者レベル。初期アウトカムの改善と、上位への課題委任
+      //   主要施策評価（計画期間・図7）… CA2-3 で追加し、プログラム評価メニューを置き換える
+      { id: "work-evaluation", label: "取組評価（年次）",   icon: "☑️", path: "work-evaluation" },
       { id: "program-evaluation", label: "プログラム評価",   icon: "✅", path: "program-evaluation" },
       { id: "ebpm",               label: "EBPMダッシュボード",icon: "📉", path: "ebpm" },
       { id: "lineage",            label: "リネージグラフ",   icon: "🕸️", path: "lineage" },
