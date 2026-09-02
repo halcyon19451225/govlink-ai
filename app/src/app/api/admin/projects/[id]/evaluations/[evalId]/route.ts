@@ -10,6 +10,7 @@ import { aggregateRate, buildKpiSnapshot } from "@/lib/evaluation/snapshot";
 import { buildIndicatorSnapshot } from "@/lib/evaluation/indicatorSnapshot";
 import { fiscalYearWindow } from "@/lib/evaluation/activityMath";
 import { computeActivityRate } from "@/lib/evaluation/activityStats";
+import { treatmentDiffers } from "@/lib/evaluation/judgment";
 
 type Params = { params: { id: string; evalId: string } };
 
@@ -36,6 +37,9 @@ const patchSchema = z.object({
   kpi_ids: z.array(z.string().uuid()).optional().nullable(),
   logic_model_id: z.string().uuid().optional().nullable(),
   measure_design_id: z.string().uuid().optional().nullable(),
+  // 処遇の確定（様式G1-6・H4 — 060）。答申による修正はここを更新する
+  decided_treatment: z.string().max(500).optional().nullable(),
+  rationale: z.string().max(4000).optional().nullable(),
 });
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -81,6 +85,37 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (d.flow_decision_path !== undefined) addField("flow_decision_path", d.flow_decision_path);
   if (d.logic_model_id !== undefined) addField("logic_model_id", d.logic_model_id);
   if (d.measure_design_id !== undefined) addField("measure_design_id", d.measure_design_id);
+  if (d.rationale !== undefined) addField("rationale", d.rationale?.trim() || null);
+
+  // ── 処遇の変更（comply or explain）─────────────────────
+  // 決定処遇が標準処遇と異なれば理由書が要る（rationale_required）。標準に戻せば不要
+  let requiredNow: boolean | null = null;
+  if (d.decided_treatment !== undefined) {
+    const cur = await queryOne<{ standard_treatment: string | null }>(
+      `SELECT standard_treatment FROM program_evaluations WHERE id = $1 AND project_id = $2`,
+      [params.evalId, params.id],
+    );
+    const decided = d.decided_treatment?.trim() || null;
+    requiredNow = treatmentDiffers(cur?.standard_treatment ?? null, decided);
+    addField("decided_treatment", decided);
+    addField("rationale_required", requiredNow);
+  }
+
+  // ── 承認の前提: 理由書が要るのに無ければ確定させない（様式H4の必須化）──
+  if (d.status === "approved") {
+    const gate = await queryOne<{ rationale_required: boolean; rationale: string | null }>(
+      `SELECT rationale_required, rationale FROM program_evaluations WHERE id = $1 AND project_id = $2`,
+      [params.evalId, params.id],
+    );
+    const required = requiredNow ?? gate?.rationale_required ?? false;
+    const rationaleText = d.rationale !== undefined ? (d.rationale?.trim() ?? "") : (gate?.rationale ?? "");
+    if (required && !rationaleText) {
+      return NextResponse.json(
+        { data: null, error: "標準処遇と異なる決定処遇には理由書（様式H4）が必須です。理由を記入してから承認してください" },
+        { status: 400 },
+      );
+    }
+  }
   if (d.kpi_ids !== undefined) {
     const kpiIds = d.kpi_ids && d.kpi_ids.length > 0 ? d.kpi_ids : null;
     fields.push(`kpi_ids = COALESCE($${idx++}::uuid[], '{}'::uuid[])`);

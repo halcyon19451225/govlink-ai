@@ -1,17 +1,23 @@
 "use client";
 
 /**
- * 主要施策評価（図7v2）のウィザード — CA2-3（設計 claude/coe-ca2-design.md §1・§6）。
+ * 主要施策評価（図7e1 ＝ 図E1をそのまま実装）のウィザード — CA2-3改。
  *
  * 一計画期間の単位。中間アウトカム指標（No.8）が確定したタイミングで行う。
- * 入力は取組毎評価（図6v2）から委任された課題。結論は
- *   ①次期計画での処遇（継続・改変・統合・廃止）
- *   ②計画全体のロジックモデルの見直しが要る課題の、次期計画への引き継ぎ
+ * 工程1〜4は様式集（claude/coe-eval-report-forms.md §1）の4つの問い:
+ *   ①目標到達（自動・A/B） ②接近＝3か年傾向（自動・C/I） ③初期アウトカム起因（D/E）
+ *   ④a 別要因の再現可能性（F/G/H）／④b 財政効果率100%以上か（自動・J/K）
+ * 記号列→報告書No.→ルート→標準処遇は lib/evaluation/judgment.ts が機械的に導く。
+ * 「この施策をどうするか」は裁量ではなく判定から定まり、裁量は
+ * 「標準処遇に従わない理由を書く」ところにだけ置く（comply or explain・様式H4）。
+ *
+ * 保存する値のうち、判定・処遇・比較の段・財政効果の実績は評価側（program_evaluations・060）。
+ * 施策構築(EBPM)のデータ（measure_designs / measure_indicators）はここから書き換えない。
  */
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  FIG7V2,
+  FIG7E1,
   collectTargets,
   needsNote,
   nextAvailableStep,
@@ -20,15 +26,34 @@ import {
   type FlowAnswer,
   type FlowStep,
 } from "@/lib/evaluation/flow";
+import {
+  COMPARISON_GRADE_META,
+  EXEMPTION_META,
+  ROUTE_META,
+  comparisonGradeOfDesign,
+  fiscalEffectRate,
+  judge,
+  partialPath,
+  sumFiscalEffect,
+  trendJudgment,
+  type ComparisonGrade,
+  type FiscalEffectPathwayAmount,
+  type JudgmentAnswers,
+  type StoredFiscalEffect,
+  type StoredJudgment,
+  type TrendJudgment,
+} from "@/lib/evaluation/judgment";
+import { judgmentAnswersFromFlow } from "@/lib/evaluation/judgmentFromFlow";
 import { isAchieved } from "@/lib/stats/achievement";
-import { INDICATOR_BY_NO, fiscalYearLabel } from "@/lib/measure/indicators";
+import { fiscalYearLabel } from "@/lib/measure/indicators";
 import {
   latestResult,
+  latestResultByYear,
   resultDisplay,
   type IndicatorBenchmarkRow,
   type IndicatorResultRow,
 } from "@/lib/measure/results";
-import type { MeasureIndicatorRow, MeasureCostYear } from "@/lib/measure/dataset";
+import type { MeasureIndicatorRow, MeasureCostYear, MeasureJudgmentSetup } from "@/lib/measure/dataset";
 import type { DelegationRow, MeasureRow, WorkEvalSummary } from "@/app/(admin)/projects/[id]/measure-evaluation/page";
 
 interface DelegationDraft {
@@ -48,6 +73,19 @@ const inputClass =
   "w-full rounded-lg border px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors";
 const inputStyle: React.CSSProperties = { background: "var(--bg-input)", borderColor: "var(--border)" };
 const cardStyle: React.CSSProperties = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
+const boxStyle: React.CSSProperties = { borderColor: "var(--border)", background: "var(--bg-primary)" };
+
+const EMPTY_SETUP: MeasureJudgmentSetup = {
+  contribution_pathways: [],
+  fiscal_effect_estimates: [],
+  judgment_exemption: null,
+  preconditions: [],
+};
+
+/** 回答（fig7e1 の工程ID）→ 図E1の4問。judgmentFromFlow と同じ写し取り */
+function judgmentSoFar(answers: FlowAnswer[]): Partial<JudgmentAnswers> | null {
+  return judgmentAnswersFromFlow("fig7e1", answers).answers;
+}
 
 export default function MeasureEvaluationWizard({
   projectId,
@@ -67,10 +105,11 @@ export default function MeasureEvaluationWizard({
   onSaved: () => void;
 }) {
   const base = `/api/admin/projects/${projectId}/measure-design/${measure.id}/dataset`;
-  const flow = FIG7V2;
+  const flow = FIG7E1;
 
   const [indicators, setIndicators] = useState<MeasureIndicatorRow[] | null>(null);
   const [costYears, setCostYears] = useState<MeasureCostYear[]>([]);
+  const [setup, setSetup] = useState<MeasureJudgmentSetup>(EMPTY_SETUP);
   const [results, setResults] = useState<IndicatorResultRow[]>([]);
   const [benchmarks, setBenchmarks] = useState<IndicatorBenchmarkRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -83,6 +122,12 @@ export default function MeasureEvaluationWizard({
   const [delegations, setDelegations] = useState<DelegationDraft[]>([]);
   /** 委任されてきた課題の消化（id → addressed / carried_over） */
   const [reviewed, setReviewed] = useState<Record<string, "addressed" | "carried_over">>({});
+  /** 工程3で記録する「実際に行った比較の段」（初期値は実験設計から） */
+  const [comparisonGrade, setComparisonGrade] = useState<ComparisonGrade | "">("");
+  /** 工程4b: 寄与経路ごとの期末実績（円）。初期値は事前推計 */
+  const [actuals, setActuals] = useState<FiscalEffectPathwayAmount[]>([]);
+  /** 工程7: 標準処遇と異なる決定処遇（事務局案） */
+  const [decidedTreatment, setDecidedTreatment] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,7 +139,7 @@ export default function MeasureEvaluationWizard({
         fetch(`${base}/benchmarks`, { cache: "no-store" }),
       ]);
       const ds = (await dsRes.json()) as {
-        data: { indicators: MeasureIndicatorRow[]; costYears: MeasureCostYear[] } | null;
+        data: { indicators: MeasureIndicatorRow[]; costYears: MeasureCostYear[]; setup?: MeasureJudgmentSetup } | null;
         error: string | null;
       };
       if (!ds.data) {
@@ -103,6 +148,16 @@ export default function MeasureEvaluationWizard({
       }
       setIndicators(ds.data.indicators);
       setCostYears(ds.data.costYears);
+      const st = ds.data.setup ?? EMPTY_SETUP;
+      setSetup(st);
+      // 期末実績の初期値は事前推計（担当者が期末の値に直す）
+      setActuals(
+        st.contribution_pathways.map((pw) => {
+          const est = st.fiscal_effect_estimates.find((e) => e.pathway_key === pw.key);
+          return { pathway_key: pw.key, label: pw.label, annual: est?.annual ?? null, cumulative: est?.cumulative ?? null, basis: est?.basis ?? null };
+        }),
+      );
+      setComparisonGrade(comparisonGradeOfDesign(measure.experiment?.design) ?? "");
       const rj = (await resRes.json()) as { data: IndicatorResultRow[] | null };
       if (rj.data) setResults(rj.data);
       const bj = (await bmRes.json()) as { data: IndicatorBenchmarkRow[] | null };
@@ -110,7 +165,7 @@ export default function MeasureEvaluationWizard({
     } catch {
       setLoadError("通信エラーが発生しました");
     }
-  }, [base]);
+  }, [base, measure.experiment?.design]);
 
   useEffect(() => {
     void load();
@@ -153,6 +208,10 @@ export default function MeasureEvaluationWizard({
   const latestFor = (indicatorId: string): IndicatorResultRow | null =>
     latestResult(resultsByIndicator.get(indicatorId) ?? []);
 
+  // 主たる中間アウトカム（No.8 の先頭）。複数ある場合はこれで一本化する（様式集 §2）
+  const midIndicators = measureIndicators.filter((i) => i.category_no === 8);
+  const primaryMid = midIndicators[0] ?? null;
+
   const categoryVerdict = (categoryNo: number): "met" | "not_met" | null => {
     const targets = measureIndicators.filter(
       (i) => i.category_no === categoryNo && i.target_value != null,
@@ -168,10 +227,37 @@ export default function MeasureEvaluationWizard({
     return judged.every(Boolean) ? "met" : "not_met";
   };
 
-  const systemVerdictFor = (step: FlowStep): string | null =>
-    step.autoSource === "indicator" && step.autoIndicator != null
-      ? categoryVerdict(step.autoIndicator)
-      : null;
+  // ② 3か年傾向（主たる中間アウトカムの年度別実績）
+  const trend: TrendJudgment | null = primaryMid
+    ? trendJudgment(
+        Array.from(latestResultByYear(resultsByIndicator.get(primaryMid.id) ?? []).entries())
+          .filter(([, r]) => r.value != null)
+          .map(([fiscal_year, r]) => ({ fiscal_year, value: r.value as number })),
+        primaryMid.achievement_condition,
+        primaryMid.target_value,
+        primaryMid.baseline_value,
+      )
+    : null;
+
+  // ④b 財政効果率（期末実績 ÷ 事業費累計）
+  const totalCost = costYears.reduce((s, c) => s + (c.total_amount ?? 0), 0);
+  const effectTotal = sumFiscalEffect(actuals);
+  const fe = fiscalEffectRate({ fiscalEffect: effectTotal, totalCost: totalCost > 0 ? totalCost : null });
+  const fiscalVerdict: "efficient" | "inefficient" | null =
+    fe.mark === "J" ? "efficient" : fe.mark === "K" ? "inefficient" : null;
+
+  const systemVerdictFor = (s: FlowStep): string | null => {
+    if (s.autoSource === "indicator" && s.autoIndicator != null) return categoryVerdict(s.autoIndicator);
+    if (s.autoSource === "trend") return trend?.verdict ?? null;
+    if (s.autoSource === "fiscal_effect") return fiscalVerdict ?? "pending";
+    return null;
+  };
+
+  // ここまでの判定（記号列・報告書No.・標準処遇）
+  const jsf = judgmentSoFar(answers);
+  const judged = jsf?.q1 ? judge(jsf as JudgmentAnswers) : null;
+  const pathSoFar = partialPath(jsf);
+  const exemption = setup.judgment_exemption;
 
   const step: FlowStep | null = stepId ? (flow.steps[stepId] ?? null) : null;
 
@@ -183,11 +269,22 @@ export default function MeasureEvaluationWizard({
     setStepId(nextAvailableStep(flow, null, presentCats, skipCtx));
   };
 
+  /** 補足が必須か（図E1固有: 暫定・単年の傾向判定、システム判定の上書き、処遇の変更） */
+  const noteRequired = (s: FlowStep, value: string): boolean => {
+    if (needsNote(s, value)) return true;
+    if (s.kind === "auto") {
+      const sys = systemVerdictFor(s);
+      if (sys != null && sys !== value) return true; // 上書きの理由
+      if (s.autoSource === "trend" && trend && trend.confidence !== "confirmed") return true;
+    }
+    return false;
+  };
+
   const goNext = () => {
     if (!step) return;
     const value = step.kind === "text" ? "" : step.kind === "delegation_review" ? "reviewed" : choice;
 
-    if ((step.kind === "choice" || step.kind === "auto" || step.kind === "delegation") && !value) {
+    if ((step.kind === "choice" || step.kind === "auto" || step.kind === "delegation" || step.kind === "treatment") && !value) {
       setError("選択してください");
       return;
     }
@@ -198,8 +295,20 @@ export default function MeasureEvaluationWizard({
         return;
       }
     }
-    if (needsNote(step, value) && !note.trim()) {
-      setError("補足の記入が必要です");
+    if (noteRequired(step, value) && !note.trim()) {
+      setError(
+        step.kind === "treatment"
+          ? "標準処遇と異なる処遇には理由書（H4）が必須です。理由を記入してください"
+          : "根拠の記入が必要です",
+      );
+      return;
+    }
+    if (step.id === "e1_q3" && !comparisonGrade) {
+      setError("実際に行った比較の方法（比較の段）を選んでください");
+      return;
+    }
+    if (step.kind === "treatment" && value === "modified" && !decidedTreatment.trim()) {
+      setError("決定処遇（事務局案）を記入してください");
       return;
     }
     if (step.kind === "delegation" && value === "has" && !delegations.some((d) => d.title.trim())) {
@@ -220,7 +329,9 @@ export default function MeasureEvaluationWizard({
           ? `委任 ${openDelegations.length} 件を整理（扱った ${
               Object.values(reviewed).filter((v) => v === "addressed").length
             } 件／次期へ ${Object.values(reviewed).filter((v) => v === "carried_over").length} 件）`
-          : (opt?.label ?? ""),
+          : step.kind === "treatment" && value === "modified"
+            ? `標準処遇と異なる処遇: ${decidedTreatment.trim()}`
+            : (opt?.label ?? ""),
       ...(note.trim() ? { note: note.trim() } : {}),
       ...(step.kind === "auto" && sys != null ? { system_value: sys, overridden: value !== sys } : {}),
     };
@@ -270,6 +381,38 @@ export default function MeasureEvaluationWizard({
           : [];
       const updates = Object.entries(reviewed).map(([id, to_status]) => ({ id, to_status }));
 
+      // 図E1の判定（q1〜q4b）と根拠・材料。report_no/route はサーバーが導く
+      const pick = (id: string) => answers.find((a) => a.step_id === id);
+      const judgmentPayload: StoredJudgment | null = jsf?.q1
+        ? {
+            ...(jsf as JudgmentAnswers),
+            rationale: {
+              ...(pick("e1_q2")?.note ? { q2: pick("e1_q2")!.note! } : {}),
+              ...(pick("e1_q3")?.note ? { q3: pick("e1_q3")!.note! } : {}),
+              ...(pick("e1_q4a")?.note ? { q4a: pick("e1_q4a")!.note! } : {}),
+              ...(pick("e1_q4b")?.note ? { q4b: pick("e1_q4b")!.note! } : {}),
+            },
+            evidence: {
+              q1: { system: categoryVerdict(8), overridden: pick("e1_q1")?.overridden === true },
+              ...(trend && pick("e1_q2") ? { trend } : {}),
+              ...(pick("e1_q4b")
+                ? { fiscal: { rate: fe.rate, mark: fe.mark, system: fiscalVerdict, overridden: pick("e1_q4b")?.overridden === true } }
+                : {}),
+            },
+          }
+        : null;
+      const fiscalPayload: StoredFiscalEffect | null = pick("e1_q4b")
+        ? {
+            pathways: actuals,
+            effect_total: effectTotal,
+            cost_total: totalCost > 0 ? totalCost : null,
+            rate: fe.rate,
+            mark: fe.mark,
+            note: fe.note || fe.formula,
+          }
+        : null;
+      const treatmentAns = pick("treatment");
+
       const res = await fetch(`/api/admin/projects/${projectId}/evaluations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -279,12 +422,19 @@ export default function MeasureEvaluationWizard({
           status: "draft",
           result: `【${measure.title}】` + summarizePath(flow, answers),
           findings: targets.findings ?? null,
+          success_factors: targets.success_factors ?? null,
           barrier_factors: targets.barrier_factors ?? null,
           improvement_actions: targets.improvement_actions ?? null,
           next_steps: targets.next_steps ?? null,
           measure_design_id: measure.id,
           delegations: delegationItems,
           delegation_updates: updates,
+          judgment: judgmentPayload,
+          comparison_grade: comparisonGrade || null,
+          fiscal_effect: fiscalPayload,
+          treatment_choice: treatmentAns?.value ?? null,
+          decided_treatment: treatmentAns?.value === "modified" ? decidedTreatment.trim() : null,
+          rationale: treatmentAns?.value === "modified" ? (treatmentAns.note ?? null) : null,
           flow_decision_path: {
             flow: flow.key,
             tier: flow.tier,
@@ -325,57 +475,97 @@ export default function MeasureEvaluationWizard({
     </div>
   );
 
-  /** 取組評価のロールアップ表（工程2・冒頭で共通利用） */
-  const rollupPanel = (
-    <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
-      <p className="text-slate-300 font-semibold mb-1">この施策の取組評価（図6）</p>
-      {workEvals.length === 0 ? (
-        <p className="text-slate-500">取組評価がまだありません（判断材料が不足します）。</p>
+  /** 判定の途中経過（記号列・報告書No.・標準処遇）— 工程の右肩に常時出す */
+  const judgmentStrip = answers.some((a) => a.step_id === "e1_q1") && (
+    <div className="rounded-lg border px-3 py-2 text-[11px] flex flex-wrap gap-x-4 gap-y-1" style={{ borderColor: "#6366f160", background: "#6366f10d" }}>
+      <span className="text-slate-400">記号列 <span className="font-mono text-slate-100 font-semibold">{pathSoFar}</span></span>
+      {judged ? (
+        <>
+          <span className="text-slate-400">報告書 <span className="text-slate-100 font-semibold">No.{judged.pattern.no} {judged.pattern.title}</span></span>
+          <span className="text-slate-400">ルート <span className="text-slate-100">{judged.pattern.route} {ROUTE_META[judged.pattern.route].name}</span></span>
+          <span className="text-slate-400">標準処遇 <span className="text-slate-100">{judged.pattern.standardTreatment}</span></span>
+        </>
       ) : (
-        workEvals.map((w, i) => (
-          <p key={i} className="text-slate-400">
-            <span className="font-mono text-slate-500">{w.work_code}</span>{" "}
-            {w.fiscal_year != null ? fiscalYearLabel(w.fiscal_year) : ""}{" "}
-            <span style={{ color: w.status === "approved" ? "#34d399" : "#94a3b8" }}>
-              [{w.status === "approved" ? "承認済み" : w.status === "in_review" ? "レビュー中" : "下書き"}]
-            </span>{" "}
-            <span className="text-slate-500">{(w.result ?? "").slice(0, 60)}</span>
-          </p>
-        ))
+        <span className="text-slate-500">（判定は工程4まで進むと定まります）</span>
       )}
     </div>
   );
 
-  // ─── 冒頭（材料の確認）───────────────────────────────
+  /** 初期アウトカムの年次履歴（共通ヘッダ④ ＝ 因果判断の唯一の根拠） */
+  const annualHistoryPanel = (
+    <div className="rounded-lg border px-3 py-2 text-[11px]" style={boxStyle}>
+      <p className="text-slate-300 font-semibold mb-1">初期アウトカムの年次履歴（取組評価・図6）— 因果判断の唯一の根拠</p>
+      {workEvals.length === 0 ? (
+        <p className="text-slate-500">取組評価がまだありません（判断材料が不足します。「起因しない」を選ぶ前に、年次評価が無いこと自体を根拠に書いてください）。</p>
+      ) : (
+        <table className="w-full">
+          <thead>
+            <tr className="text-slate-500">
+              <th className="text-left font-medium">年度</th>
+              <th className="text-left font-medium">取組</th>
+              <th className="text-left font-medium">初期アウトカム</th>
+              <th className="text-left font-medium">達否</th>
+              <th className="text-left font-medium">起因の型</th>
+              <th className="text-left font-medium">状態</th>
+            </tr>
+          </thead>
+          <tbody>
+            {workEvals.map((w, i) => (
+              <tr key={i} className="border-t" style={{ borderColor: "var(--border)" }}>
+                <td className="py-0.5 text-slate-400">{w.fiscal_year != null ? fiscalYearLabel(w.fiscal_year) : "—"}</td>
+                <td className="text-slate-300"><span className="font-mono text-slate-500">{w.work_code}</span> {w.work_title}</td>
+                <td className="text-slate-100">{w.initial_outcome ?? "—"}</td>
+                <td>{w.initial_achieved == null ? "—" : w.initial_achieved ? <span style={{ color: "#34d399" }}>達成</span> : <span style={{ color: "#f87171" }}>未達</span>}</td>
+                <td className="text-slate-300">{w.cause_type}</td>
+                <td style={{ color: w.status === "approved" ? "#34d399" : "#94a3b8" }}>
+                  {w.status === "approved" ? "承認済み" : w.status === "in_review" ? "レビュー中" : "下書き"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
+  // ─── 冒頭（材料の確認）──────────────────────────────────
   if (phase === "intro") {
-    const mid = measureIndicators.filter((i) => i.category_no === 8);
     return (
       <div className="rounded-2xl border p-6 space-y-4" style={cardStyle}>
         {header}
         <p className="text-[11px] text-slate-500">
-          一計画期間の評価です。中間アウトカム指標が確定したタイミングで行い、
-          取組評価から委任された課題を踏まえて、次期計画での処遇を決めます。
+          一計画期間の評価です。図E1の4つの問い（目標到達→接近→起因→再現可能性／財政効果率）で判定し、
+          報告書No.と標準処遇を機械的に定めたうえで、次期計画での処遇（事務局案）を決めます。
         </p>
+        {exemption && (
+          <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "#f59e0b60", background: "#f59e0b0d" }}>
+            <p className="font-semibold" style={{ color: "#fbbf24" }}>適用除外: {EXEMPTION_META[exemption.kind].name}</p>
+            <p className="text-slate-400 mt-0.5">{EXEMPTION_META[exemption.kind].detail}</p>
+            <p className="text-slate-500 mt-0.5">理由: {exemption.reason}{exemption.decided_on ? `（決裁 ${exemption.decided_on}）` : ""}</p>
+          </div>
+        )}
         <div>
           <p className="text-xs font-semibold text-slate-300 mb-1">中間アウトカム指標（No.8）</p>
-          <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
-            {mid.length === 0 ? (
+          <div className="rounded-lg border px-3 py-2 text-[11px]" style={boxStyle}>
+            {midIndicators.length === 0 ? (
               <p className="text-slate-500">
                 中間アウトカム指標がまだありません。施策構築（EBPM）で No.8 を設定すると、判定が自動提示されます。
               </p>
             ) : (
-              mid.map((i) => (
+              midIndicators.map((i, k) => (
                 <p key={i.id} className="text-slate-300">
+                  {k === 0 && <span className="text-indigo-400 mr-1" title="主たる中間アウトカム">◎</span>}
                   {i.label}: 実績{" "}
                   <span className="font-semibold text-slate-100">{resultDisplay(latestFor(i.id), i.unit)}</span>
-                  {" ／ 目標 "}
-                  {i.target_value ?? "—"}{i.unit ?? ""}
+                  {" ／ 目標 "}{i.target_value ?? "—"}{i.unit ? ` ${i.unit}` : ""}
+                  {" ／ ベースライン（自然体推計）"}{i.natural_baseline ?? "未入力"}
                 </p>
               ))
             )}
+            {trend && <p className="text-slate-500 mt-1">傾向: {trend.note}</p>}
           </div>
         </div>
-        {rollupPanel}
+        {annualHistoryPanel}
         <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: openDelegations.length ? "#f59e0b50" : "var(--border)", background: "var(--bg-primary)" }}>
           <p className="text-slate-300 font-semibold mb-1">
             取組評価から委任された課題（{openDelegations.length}件）
@@ -391,8 +581,9 @@ export default function MeasureEvaluationWizard({
           )}
         </div>
         <p className="text-[10px] text-slate-500">
-          比較先（ベンチマーク）{benchmarks.length}件
-          {benchmarks.length === 0 && " — 未登録のため、他団体比較の工程は飛ばされます"}
+          事業費累計 {totalCost > 0 ? `¥${totalCost.toLocaleString()}` : "未入力"} ／ 寄与経路 {setup.contribution_pathways.length}件
+          {setup.contribution_pathways.length === 0 && "（未定義のため財政効果率は算定不能＝④bは判定保留になります）"}
+          ／ 比較先 {benchmarks.length}件{benchmarks.length === 0 && "（他団体比較の工程は飛ばされます）"}
         </p>
         <div className="flex justify-end">
           <button
@@ -412,10 +603,11 @@ export default function MeasureEvaluationWizard({
   if (phase === "confirm") {
     const planLevel = answers.find((a) => a.step_id === "plan_level_issues");
     const items = planLevel?.value === "has" ? delegations.filter((d) => d.title.trim()) : [];
-    const direction = answers.find((a) => a.step_id === "policy_direction");
+    const treatmentAns = answers.find((a) => a.step_id === "treatment");
     return (
       <div className="rounded-2xl border p-6 space-y-4" style={cardStyle}>
         {header}
+        {judgmentStrip}
         <h4 className="text-xs font-semibold text-slate-300">回答の確認</h4>
         <div className="space-y-2">
           {answers.map((a, i) => (
@@ -432,13 +624,24 @@ export default function MeasureEvaluationWizard({
             </div>
           ))}
         </div>
-        {direction && (
+        <div className="rounded-lg border px-3 py-2 text-[11px]" style={boxStyle}>
+          <p className="text-slate-400">比較の段: <span className="text-slate-100">{comparisonGrade ? `${comparisonGrade} ${COMPARISON_GRADE_META[comparisonGrade].name}` : "—"}</span></p>
+          {answers.some((a) => a.step_id === "e1_q4b") && (
+            <p className="text-slate-400">財政効果率: <span className="text-slate-100">{fe.rate != null ? `${fe.rate}%（${fe.mark}）` : "算定不能（判定保留）"}</span> <span className="text-slate-500">{fe.formula}</span></p>
+          )}
+        </div>
+        {treatmentAns && (
           <div className="rounded-lg border px-3 py-2" style={{ borderColor: "#6366f160", background: "#6366f10d" }}>
             <p className="text-[11px] font-semibold" style={{ color: "#818cf8" }}>
-              次期計画での処遇: {direction.label}
+              次期計画での処遇（事務局案）: {treatmentAns.value === "standard" ? (judged?.pattern.standardTreatment ?? "標準処遇") : treatmentAns.value === "modified" ? decidedTreatment : "処遇を行わない（測定設計のみ）"}
             </p>
+            {treatmentAns.value === "modified" && (
+              <p className="text-[10px] mt-0.5" style={{ color: "#fbbf24" }}>
+                標準処遇と異なるため理由書（様式H4）が付きます。承認には理由の記入が必須です。
+              </p>
+            )}
             <p className="text-[10px] text-slate-500 mt-0.5">
-              この処遇は、改善メニューの「主要施策の再構築」の出発点になります（現行計画の施策データは書き換えません）。
+              この処遇は「次期計画への反映」（様式G1・G4）の出発点になります（現行計画の施策データは書き換えません）。
             </p>
           </div>
         )}
@@ -472,11 +675,12 @@ export default function MeasureEvaluationWizard({
   // ─── 設問 ───────────────────────────────────────────
   if (!step) return null;
   const sys = step.kind === "auto" ? systemVerdictFor(step) : null;
-  const costIndicators = measureIndicators.filter((i) => i.category_no === 3 || i.category_no === 15);
+  const requiresNoteNow = Boolean(choice) && noteRequired(step, choice);
 
   return (
     <div className="rounded-2xl border p-6 space-y-4" style={cardStyle}>
       {header}
+      {judgmentStrip}
       <div className="flex items-center gap-2 text-[10px] text-slate-500">
         <span>回答 {answers.length + 1} 問目</span>
         <span>／ {step.section}</span>
@@ -486,21 +690,20 @@ export default function MeasureEvaluationWizard({
         {step.help && <p className="text-[11px] text-slate-500 mt-1">{step.help}</p>}
       </div>
 
-      {/* 判定材料 */}
-      {step.kind === "auto" && (
-        <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
-          {measureIndicators.filter((i) => i.category_no === step.autoIndicator).length === 0 ? (
-            <p className="text-slate-500">対象の指標がありません。手動で選択します。</p>
+      {/* ① 判定材料: 中間アウトカムの実績 vs 目標 */}
+      {step.autoSource === "indicator" && (
+        <div className="rounded-lg border px-3 py-2 text-[11px]" style={boxStyle}>
+          {midIndicators.length === 0 ? (
+            <p className="text-slate-500">対象の指標がありません。手動で選択します（根拠の記入が必要です）。</p>
           ) : (
-            measureIndicators
-              .filter((i) => i.category_no === step.autoIndicator)
-              .map((i) => (
-                <p key={i.id} className="text-slate-300">
-                  {i.label}: 実績{" "}
-                  <span className="font-semibold text-slate-100">{resultDisplay(latestFor(i.id), i.unit)}</span>
-                  {" ／ 目標 "}{i.target_value ?? "—"}{i.unit ?? ""}
-                </p>
-              ))
+            midIndicators.map((i) => (
+              <p key={i.id} className="text-slate-300">
+                {i.label}: 実績{" "}
+                <span className="font-semibold text-slate-100">{resultDisplay(latestFor(i.id), i.unit)}</span>
+                {" ／ 目標 "}{i.target_value ?? "—"}{i.unit ? ` ${i.unit}` : ""}
+                {" ／ 基準値 "}{i.baseline_value ?? "—"}
+              </p>
+            ))
           )}
           {sys != null && (
             <p className="mt-1" style={{ color: "#22d3ee" }}>
@@ -509,26 +712,130 @@ export default function MeasureEvaluationWizard({
           )}
         </div>
       )}
-      {step.id === "caused_by_initial" && rollupPanel}
-      {step.id === "cost_appropriate" && (
-        <div className="rounded-lg border px-3 py-2 text-[11px] space-y-0.5" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
-          {costIndicators.map((i) => (
-            <p key={i.id} className="text-slate-300">
-              No.{i.category_no} {INDICATOR_BY_NO[i.category_no]?.name}: {resultDisplay(latestFor(i.id), i.unit)}
+
+      {/* ② 判定材料: 3か年傾向 */}
+      {step.autoSource === "trend" && (
+        <div className="rounded-lg border px-3 py-2 text-[11px]" style={boxStyle}>
+          {!trend || trend.used.length === 0 ? (
+            <p className="text-slate-500">主たる中間アウトカムの年度別実績がありません。傾向を判定できないため、担当者が根拠を書いて選びます（報告書に「単年判断」と注記されます）。</p>
+          ) : (
+            <>
+              <p className="text-slate-300">
+                {primaryMid?.label}（目標 {primaryMid?.target_value ?? "—"}{primaryMid?.unit ? ` ${primaryMid.unit}` : ""}）:
+                {" "}
+                {trend.used.map((p) => `${fiscalYearLabel(p.fiscal_year)} ${p.value}`).join(" → ")}
+              </p>
+              <p className="text-slate-500 mt-0.5">{trend.note}</p>
+            </>
+          )}
+          {trend?.verdict && (
+            <p className="mt-1" style={{ color: trend.confidence === "confirmed" ? "#22d3ee" : "#fbbf24" }}>
+              システム判定{trend.confidence === "provisional" ? "（暫定・2点）" : ""}: {step.options?.find((o) => o.value === trend.verdict)?.label}
             </p>
-          ))}
-          {costYears.map((c) => (
-            <p key={c.id} className="text-slate-500">
-              {fiscalYearLabel(c.fiscal_year)}: {c.total_amount != null ? `¥${c.total_amount.toLocaleString()}` : "未入力"}
-            </p>
-          ))}
-          {measure.execution_rate_note && (
-            <p className="text-slate-500">執行率の算定式: {measure.execution_rate_note}</p>
           )}
         </div>
       )}
+
+      {/* ③ 判定材料: 年次履歴 ＋ 比較の段 */}
+      {step.id === "e1_q3" && (
+        <>
+          {annualHistoryPanel}
+          <div className="rounded-lg border px-3 py-2 text-[11px] space-y-1" style={boxStyle}>
+            <p className="text-slate-300 font-semibold">実際に行った比較の方法（比較の段）</p>
+            <p className="text-slate-500">
+              実際に行っていない比較を書かない。初期値は実験設計{measure.experiment?.design ? `（${measure.experiment.design}）` : ""}から提示。
+              財政効果率の算定は C 以上が要件。
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {(Object.keys(COMPARISON_GRADE_META) as ComparisonGrade[]).map((g) => {
+                const active = comparisonGrade === g;
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setComparisonGrade(g)}
+                    title={COMPARISON_GRADE_META[g].detail}
+                    className="text-[11px] px-2.5 py-1 rounded-lg"
+                    style={{
+                      background: active ? TONE.neutral!.bg : "var(--bg-primary)",
+                      border: `1px solid ${active ? TONE.neutral!.color : "var(--border)"}`,
+                      color: active ? TONE.neutral!.color : "#94a3b8",
+                    }}
+                  >
+                    {g} {COMPARISON_GRADE_META[g].name}
+                  </button>
+                );
+              })}
+            </div>
+            {comparisonGrade && <p className="text-slate-500">{COMPARISON_GRADE_META[comparisonGrade].detail}</p>}
+          </div>
+        </>
+      )}
+
+      {/* ④b 判定材料: 寄与経路ごとの期末実績 → 財政効果率 */}
+      {step.autoSource === "fiscal_effect" && (
+        <div className="rounded-lg border px-3 py-2 text-[11px] space-y-2" style={boxStyle}>
+          <p className="text-slate-300 font-semibold">
+            事業費（計画期間累計・人件費按分込み）: <span className="text-slate-100">{totalCost > 0 ? `¥${totalCost.toLocaleString()}` : "未入力（施策データセットの年度別事業費）"}</span>
+          </p>
+          {setup.contribution_pathways.length === 0 ? (
+            <p className="text-slate-500">
+              寄与経路が未定義です（施策データセット「判定の前提」で定義します）。財政効果を推計できないため判定保留になります。
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {setup.contribution_pathways.map((pw) => {
+                const row = actuals.find((a) => a.pathway_key === pw.key);
+                const est = setup.fiscal_effect_estimates.find((e) => e.pathway_key === pw.key);
+                const setRow = (over: Partial<FiscalEffectPathwayAmount>) =>
+                  setActuals((prev) => prev.map((a) => (a.pathway_key === pw.key ? { ...a, ...over } : a)));
+                return (
+                  <div key={pw.key} className="rounded-md border px-2.5 py-1.5" style={{ borderColor: "var(--border)" }}>
+                    <p className="text-slate-300">{pw.label} <span className="text-slate-500">— {pw.formula}</span></p>
+                    <div className="flex flex-wrap gap-2 mt-1 items-end">
+                      <label className="text-[10px] text-slate-500">
+                        期末実績・累計（円）
+                        <input type="number" className={inputClass} style={{ ...inputStyle, width: 160 }}
+                          value={row?.cumulative ?? ""}
+                          onChange={(e) => setRow({ cumulative: e.target.value ? Number(e.target.value) : null })} />
+                      </label>
+                      <label className="text-[10px] text-slate-500">
+                        年額（円）
+                        <input type="number" className={inputClass} style={{ ...inputStyle, width: 140 }}
+                          value={row?.annual ?? ""}
+                          onChange={(e) => setRow({ annual: e.target.value ? Number(e.target.value) : null })} />
+                      </label>
+                      <label className="text-[10px] text-slate-500 flex-1 min-w-[200px]">
+                        算定の根拠（X＝実績−ベースライン・単価・対象者数）
+                        <input className={inputClass} style={inputStyle}
+                          value={row?.basis ?? ""}
+                          onChange={(e) => setRow({ basis: e.target.value || null })} />
+                      </label>
+                    </div>
+                    {est && (est.cumulative != null || est.annual != null) && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">計画時の事前推計: 累計 {est.cumulative != null ? `¥${est.cumulative.toLocaleString()}` : "—"} ／ 年額 {est.annual != null ? `¥${est.annual.toLocaleString()}` : "—"}</p>
+                    )}
+                  </div>
+                );
+              })}
+              <p className="text-slate-300">
+                財政効果（累計）: <span className="text-slate-100 font-semibold">{effectTotal != null ? `¥${effectTotal.toLocaleString()}` : "未入力"}</span>
+                {" ／ 財政効果率: "}
+                <span className="font-semibold" style={{ color: fe.mark === "J" ? "#34d399" : fe.mark === "K" ? "#fbbf24" : "#94a3b8" }}>
+                  {fe.rate != null ? `${fe.rate}%（${fe.mark}）` : "算定不能"}
+                </span>
+              </p>
+              <p className="text-slate-500">{fe.rate != null ? fe.formula : fe.note}</p>
+            </div>
+          )}
+          {sys != null && (
+            <p style={{ color: "#22d3ee" }}>システム判定: {step.options?.find((o) => o.value === sys)?.label}</p>
+          )}
+        </div>
+      )}
+
       {step.id === "benchmark" && (
-        <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "var(--border)", background: "var(--bg-primary)" }}>
+        <div className="rounded-lg border px-3 py-2 text-[11px]" style={boxStyle}>
           <table className="w-full">
             <thead>
               <tr className="text-slate-500">
@@ -555,6 +862,31 @@ export default function MeasureEvaluationWizard({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ⑦ 処遇: 判定から定まる標準処遇を示す */}
+      {step.kind === "treatment" && (
+        <div className="rounded-lg border px-3 py-2 text-[11px] space-y-1" style={boxStyle}>
+          {judged ? (
+            <>
+              <p className="text-slate-300">
+                報告書 <span className="text-slate-100 font-semibold">No.{judged.pattern.no} {judged.pattern.title}</span>
+                （{judged.path}）／ ルート {judged.pattern.route} {ROUTE_META[judged.pattern.route].name}（審議: {ROUTE_META[judged.pattern.route].review}）
+              </p>
+              <p className="text-slate-300">
+                標準処遇: <span className="text-slate-100 font-semibold">{judged.pattern.standardTreatment}</span>
+              </p>
+              <p className="text-slate-500">反映先: {judged.pattern.reflectTargets.join("・")} ／ 要点: {judged.pattern.keyPoint}</p>
+            </>
+          ) : (
+            <p style={{ color: "#fbbf24" }}>
+              判定保留（記号列 {pathSoFar}）。どのルートにも進まず処遇は行いません。測定課題Ⅳとして記録し、次期に判定可能となる測定設計を計画に書き込みます。
+            </p>
+          )}
+          {exemption && (
+            <p style={{ color: "#fbbf24" }}>適用除外（{EXEMPTION_META[exemption.kind].name}）: 廃止対象としません。</p>
+          )}
         </div>
       )}
 
@@ -601,17 +933,20 @@ export default function MeasureEvaluationWizard({
       )}
 
       {/* 選択肢 */}
-      {(step.kind === "choice" || step.kind === "auto" || step.kind === "delegation") && (
+      {(step.kind === "choice" || step.kind === "auto" || step.kind === "delegation" || step.kind === "treatment") && (
         <div className="space-y-1.5">
           {step.options?.map((o) => {
+            // 判定保留・適用除外のときは「標準処遇のとおり」を選べない（処遇を行わない）
+            const disabled = step.kind === "treatment" && o.value === "standard" && !judged;
             const active = choice === o.value;
             const tone = TONE[o.tone ?? "neutral"]!;
             return (
               <button
                 key={o.value}
                 type="button"
+                disabled={disabled}
                 onClick={() => setChoice(o.value)}
-                className="w-full text-left rounded-lg px-3 py-2.5 text-sm transition-colors"
+                className="w-full text-left rounded-lg px-3 py-2.5 text-sm transition-colors disabled:opacity-40"
                 style={{
                   background: active ? tone.bg : "var(--bg-primary)",
                   border: `1px solid ${active ? tone.color : "var(--border)"}`,
@@ -626,6 +961,17 @@ export default function MeasureEvaluationWizard({
             );
           })}
         </div>
+      )}
+
+      {/* 決定処遇（標準処遇と異なる場合） */}
+      {step.kind === "treatment" && choice === "modified" && (
+        <input
+          className={inputClass}
+          style={inputStyle}
+          placeholder="決定処遇（事務局案）— 例: 廃止ではなく対象を絞って継続"
+          value={decidedTreatment}
+          onChange={(e) => setDecidedTreatment(e.target.value)}
+        />
       )}
 
       {/* 次期計画へ引き継ぐ課題の記入 */}
@@ -681,15 +1027,18 @@ export default function MeasureEvaluationWizard({
       )}
 
       {/* 記述欄 */}
-      {(step.kind === "text" || (choice && needsNote(step, choice) && step.kind !== "delegation")) && (
+      {(step.kind === "text" || (requiresNoteNow && step.kind !== "delegation")) && (
         <textarea
           className={inputClass}
           style={inputStyle}
-          rows={3}
+          rows={step.kind === "treatment" ? 5 : 3}
           placeholder={step.notePrompt ?? "補足を記入してください"}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
+      )}
+      {requiresNoteNow && step.kind === "auto" && sys != null && sys !== choice && (
+        <p className="text-[10px]" style={{ color: "#fbbf24" }}>システム判定を上書きします。理由を記入してください。</p>
       )}
 
       {error && <p className="text-xs text-rose-400">{error}</p>}

@@ -194,9 +194,11 @@ export default function MeasureEvaluationClient({
         const open = openDelegationsFor(m.id);
         const carried = carriedOverFor(m.id);
         const bm = benchmarkCounts.find((b) => b.measure_design_id === m.id)?.n ?? 0;
+        // 旧フロー（fig7v2）の処遇。fig7e1 は decided_treatment（060）を持つ
         const latestDirection = evals
           .map((e) => e.flow_decision_path?.answers?.find((a) => a.step_id === "policy_direction"))
           .find(Boolean);
+        const latestJudged = evals.find((e) => e.judgment_path);
 
         return (
           <section
@@ -207,7 +209,23 @@ export default function MeasureEvaluationClient({
             <header className="px-4 py-2.5 border-b flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: "var(--border)" }}>
               <h3 className="text-sm font-semibold text-slate-200">{m.title}</h3>
               <div className="flex items-center gap-2">
-                {latestDirection && DIRECTION_LABEL[latestDirection.value] && (
+                {latestJudged && (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                    style={{
+                      background: latestJudged.report_no ? "#6366f118" : "#f59e0b18",
+                      color: latestJudged.report_no ? "#818cf8" : "#fbbf24",
+                      border: `1px solid ${latestJudged.report_no ? "#6366f140" : "#f59e0b40"}`,
+                    }}
+                    title={latestJudged.standard_treatment ?? ""}
+                  >
+                    {latestJudged.report_no
+                      ? `判定 ${latestJudged.judgment_path} → No.${latestJudged.report_no}・ルート${latestJudged.route}`
+                      : `判定保留（${latestJudged.judgment_path}）`}
+                    {latestJudged.decided_treatment && ` ／ 処遇: ${latestJudged.decided_treatment.slice(0, 24)}`}
+                  </span>
+                )}
+                {!latestJudged && latestDirection && DIRECTION_LABEL[latestDirection.value] && (
                   <span
                     className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
                     style={{
@@ -270,6 +288,16 @@ export default function MeasureEvaluationClient({
                       {meta.label}
                       {e.approved_snapshot_at && " ・凍結"}
                     </span>
+                    {e.judgment_path && (
+                      <span className="font-mono shrink-0" style={{ color: e.report_no ? "#818cf8" : "#fbbf24" }} title={e.standard_treatment ?? "判定保留"}>
+                        {e.judgment_path}{e.report_no ? ` No.${e.report_no}` : " 保留"}
+                      </span>
+                    )}
+                    {e.rationale_required && (
+                      <span className="shrink-0" style={{ color: e.rationale ? "#94a3b8" : "#f87171" }} title={e.rationale ?? "理由書（H4）が未記入のため承認できません"}>
+                        {e.rationale ? "理由書あり" : "理由書未記入"}
+                      </span>
+                    )}
                     <span className="text-slate-500 truncate flex-1" title={e.result ?? ""}>
                       {e.result ?? ""}
                     </span>

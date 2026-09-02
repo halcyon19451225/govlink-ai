@@ -22,6 +22,11 @@ import {
   type FundingKey,
 } from "./indicators";
 import type { ApproachCost, ApproachIndicators, ApproachItem, ExperimentPlan } from "./types";
+import type {
+  ContributionPathway,
+  FiscalEffectPathwayAmount,
+  JudgmentExemption,
+} from "@/lib/evaluation/judgment";
 
 // ─── 行の形 ───────────────────────────────────────────
 
@@ -82,6 +87,10 @@ export interface MeasureIndicatorRow {
   unit: string | null;
   baseline_value: number | null;
   baseline_date: string | null;
+  /** 自然体推計値（施策がなかった場合の推移）— 060。X＝実績−この値。目標値との差ではない */
+  natural_baseline: number | null;
+  /** 自然体推計の根拠（推計方法・出典） */
+  baseline_source: string | null;
   target_value: number | null;
   achievement_condition: "lte" | "lt" | "gte" | "gt" | "eq";
   data_source: string | null;
@@ -126,12 +135,36 @@ export interface MeasureCostItem {
   sort_order: number;
 }
 
+/** 施策本体に持つ「計画時の前提」（060）— 寄与経路・事前推計・適用除外・前提条件表（H2） */
+export interface MeasureJudgmentSetup {
+  contribution_pathways: ContributionPathway[];
+  fiscal_effect_estimates: FiscalEffectPathwayAmount[];
+  judgment_exemption: JudgmentExemption | null;
+  preconditions: MeasurePrecondition[];
+}
+
+/** 様式H2 前提条件表の1行（measure_designs.preconditions） */
+export interface MeasurePrecondition {
+  id: string;
+  /** 前提（崩れると施策全体が止まる急所） */
+  condition: string;
+  /** 確認方法（年次評価で機械的に確認できる事実） */
+  check_method: string;
+  /** 崩れた場合の対応（発動条件を含む） */
+  fallback: string;
+  /** 直近の年次確認の結果 */
+  status: "unchecked" | "holds" | "broken";
+  checked_fiscal_year: number | null;
+  note: string | null;
+}
+
 export interface MeasureDataset {
   works: MeasureWork[];
   activities: MeasureActivity[];
   indicators: MeasureIndicatorRow[];
   costYears: MeasureCostYear[];
   costItems: MeasureCostItem[];
+  setup: MeasureJudgmentSetup;
 }
 
 /** 取り下げていない取組 */
@@ -191,6 +224,8 @@ function indicatorDraft(
     unit: over.unit ?? null,
     baseline_value: over.baseline_value ?? null,
     baseline_date: over.baseline_date ?? null,
+    natural_baseline: over.natural_baseline ?? null,
+    baseline_source: over.baseline_source ?? null,
     target_value: over.target_value ?? null,
     achievement_condition: over.achievement_condition ?? "gte",
     data_source: over.data_source ?? cat.sourceHint,

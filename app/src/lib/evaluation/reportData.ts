@@ -16,7 +16,18 @@ import { buildIndicatorSnapshot, type IndicatorSnapshotItem } from "@/lib/evalua
 import { computeActivityRate } from "@/lib/evaluation/activityStats";
 import { fiscalYearLabel, FUNDING_SOURCES } from "@/lib/measure/indicators";
 import type { ReportKind } from "@/lib/evaluation/reportTemplate";
-import { ISSUE_CLASS_META, ROUTE_META, fiscalEffectRate } from "@/lib/evaluation/judgment";
+import {
+  COMPARISON_GRADE_META,
+  EXEMPTION_META,
+  ISSUE_CLASS_META,
+  ROUTE_META,
+  fiscalEffectRate,
+  partialPath,
+  type ContributionPathway,
+  type JudgmentExemption,
+  type StoredFiscalEffect,
+  type StoredJudgment,
+} from "@/lib/evaluation/judgment";
 import { causeTypeFromWorkFlow, judgeFromFlow } from "@/lib/evaluation/judgmentFromFlow";
 import type {
   ReportActivityRow,
@@ -32,6 +43,7 @@ import type {
   ReportTreatment,
   ReportWorkRollupRow,
 } from "@/lib/evaluation/reportRows";
+import { withUnit } from "@/lib/evaluation/reportRows";
 
 export type {
   ReportActivityRow,
@@ -142,12 +154,26 @@ export async function buildEvaluationReportData(
     execution_rate_note: string | null;
     project_title: string;
     municipality: string;
+    // 060: 図E1の判定・処遇（評価側）と、寄与経路・適用除外（施策側）
+    judgment: StoredJudgment | null;
+    judgment_path: string | null;
+    report_no: number | null;
+    decided_treatment: string | null;
+    rationale_required: boolean | null;
+    rationale: string | null;
+    comparison_grade: "A" | "B" | "C" | "D" | null;
+    fiscal_effect: StoredFiscalEffect | null;
+    contribution_pathways: ContributionPathway[] | null;
+    judgment_exemption: JudgmentExemption | null;
   }>(
     `SELECT pe.id, pe.evaluation_tier, pe.fiscal_year, pe.status, pe.result,
             pe.findings, pe.barrier_factors, pe.improvement_actions, pe.next_steps,
             pe.flow_decision_path, pe.indicator_snapshot,
             pe.approved_snapshot_at::text AS approved_snapshot_at,
             pe.measure_design_id, pe.measure_work_id,
+            pe.judgment, pe.judgment_path, pe.report_no, pe.decided_treatment,
+            pe.rationale_required, pe.rationale, pe.comparison_grade, pe.fiscal_effect,
+            md.contribution_pathways, md.judgment_exemption,
             md.title AS measure_title, md.execution_rate_note,
             w.code AS work_code, w.title AS work_title,
             p.title AS project_title, m.name AS municipality
@@ -297,8 +323,8 @@ export async function buildEvaluationReportData(
           return {
             indicator: b.indicator,
             comparator: b.comparator,
-            value: `${b.value}${b.unit ?? ""}`,
-            own: own?.result_value != null ? `${own.result_value}${b.unit ?? ""}` : "—",
+            value: withUnit(b.value, b.unit),
+            own: own?.result_value != null ? withUnit(own.result_value, b.unit) : "—",
             fiscal_year: b.fiscal_year != null ? fiscalYearLabel(b.fiscal_year) : "—",
             source: b.source_name,
           };
@@ -324,7 +350,8 @@ export async function buildEvaluationReportData(
   // ── 様式F7-0 ② 評価過程（図E1の判定）──────────────────────
   // 現行フローは図E1の4問と設問が一致しないため、写せるところまで写し、
   // 足りなければ「判定保留」とする（様式集の正規の状態。処遇は行わない）。
-  const { result: judgment, missing } = judgeFromFlow(flowKey, answers);
+  const { result: judgment, missing } = judgeFromFlow(flowKey, answers, ev.judgment);
+  const exemption = ev.judgment_exemption;
   const judgmentRow: ReportJudgment = judgment
     ? {
         path: judgment.path,
@@ -342,10 +369,13 @@ export async function buildEvaluationReportData(
         pending: false,
       }
     : {
-        path: "—",
+        // 保留でも「どこまで進んだか」は出す（例: A→E→?）
+        path: ev.judgment_path ?? partialPath(ev.judgment ?? null),
         report_no: null,
-        report_title: "判定保留",
-        state: "判定に必要なデータが揃っていない",
+        report_title: exemption ? `適用除外（${EXEMPTION_META[exemption.kind].name}）` : "判定保留",
+        state: exemption
+          ? `${EXEMPTION_META[exemption.kind].detail}${exemption.reason ? `／理由: ${exemption.reason}` : ""}`
+          : "判定に必要なデータが揃っていない",
         route: "—（どのルートにも進まない）",
         standard_treatment: "—（処遇を行わない）",
         issue_class: ISSUE_CLASS_META.IV.name,
@@ -362,21 +392,23 @@ export async function buildEvaluationReportData(
   const outcome: ReportOutcomeSummary | null = outcomeItem
     ? {
         indicator: outcomeItem.label,
-        baseline:
-          outcomeItem.baseline_value != null
-            ? `${outcomeItem.baseline_value}${outcomeItem.unit ?? ""}`
-            : "—",
-        target:
-          outcomeItem.target_value != null
-            ? `${outcomeItem.target_value}${outcomeItem.unit ?? ""}`
-            : "—",
+        baseline: withUnit(outcomeItem.baseline_value, outcomeItem.unit),
+        target: withUnit(outcomeItem.target_value, outcomeItem.unit),
         result:
           outcomeItem.result_value != null
-            ? `${outcomeItem.result_value}${outcomeItem.unit ?? ""}`
+            ? withUnit(outcomeItem.result_value, outcomeItem.unit)
             : (outcomeItem.result_text ?? "—"),
-        natural_baseline: "未入力",
-        x: "未入力（実績 − ベースライン。目標値との差ではない）",
-        comparison_grade: "未入力",
+        natural_baseline:
+          outcomeItem.natural_baseline != null
+            ? `${withUnit(outcomeItem.natural_baseline, outcomeItem.unit)}${outcomeItem.baseline_source ? `（${outcomeItem.baseline_source}）` : ""}`
+            : "未入力",
+        x:
+          outcomeItem.natural_baseline != null && outcomeItem.result_value != null
+            ? `${withUnit(Math.round((outcomeItem.result_value - outcomeItem.natural_baseline) * 1000) / 1000, outcomeItem.unit)}（実績 − ベースライン。目標値との差ではない）`
+            : "未算定（実績またはベースラインが未入力。目標値との差ではない）",
+        comparison_grade: ev.comparison_grade
+          ? `${ev.comparison_grade} ${COMPARISON_GRADE_META[ev.comparison_grade].name}`
+          : "未入力",
       }
     : null;
 
@@ -407,7 +439,7 @@ export async function buildEvaluationReportData(
             indicator: item?.label ?? "—",
             result:
               item?.result_value != null
-                ? `${item.result_value}${item.unit ?? ""}`
+                ? withUnit(item.result_value, item.unit)
                 : (item?.result_text ?? "—"),
             achieved: item?.achieved == null ? "—" : item.achieved ? "達成" : "未達",
             cause_type: causeTypeFromWorkFlow(r.flow_decision_path?.answers ?? []),
@@ -416,29 +448,55 @@ export async function buildEvaluationReportData(
       : [];
 
   // ── 様式F7-0 ⑥ 財政効果率 ───────────────────────────────
-  // 財政効果（貨幣換算の便益）は入力欄が未実装（migration 060 待ち）。
-  // 算定できない間は「保留」と明示する（推計不能→処遇せず測定課題Ⅳ）。
+  // 評価側に保存した期末実績（fiscal_effect・060）を写す。承認済みならそのまま凍結値。
+  // 無ければ事業費だけを示し「保留」と明示する（推計不能→処遇せず測定課題Ⅳ）。
   const totalCost = costRows.reduce((s, c) => s + (c.total_amount ?? 0), 0);
-  const fe = fiscalEffectRate({ fiscalEffect: null, totalCost: totalCost > 0 ? totalCost : null });
+  const storedFe = ev.fiscal_effect;
+  const fe = fiscalEffectRate({
+    fiscalEffect: storedFe?.effect_total ?? null,
+    totalCost: storedFe?.cost_total ?? (totalCost > 0 ? totalCost : null),
+  });
+  const pathwayDefs = Array.isArray(ev.contribution_pathways) ? ev.contribution_pathways : [];
+  const pathwayText =
+    storedFe && storedFe.pathways.length > 0
+      ? storedFe.pathways
+          .map((p) => {
+            const def = pathwayDefs.find((d) => d.key === p.pathway_key);
+            const amount = p.cumulative != null ? `累計 ¥${p.cumulative.toLocaleString()}` : "未入力";
+            const annual = p.annual != null ? `／年額 ¥${p.annual.toLocaleString()}` : "";
+            return `${p.label ?? def?.label ?? p.pathway_key}（${def?.formula ?? "推計式未記載"}）: ${amount}${annual}${p.basis ? `／根拠: ${p.basis}` : ""}`;
+          })
+          .join("\n")
+      : pathwayDefs.length > 0
+        ? pathwayDefs.map((d) => `${d.label}（${d.formula}）: 期末実績 未入力`).join("\n")
+        : "未定義（分野ごとに寄与経路と経路別推計式を施策データセットで定義する）";
   const fiscalEffect: ReportFiscalEffect = {
-    pathways: "未入力（分野ごとに定義した寄与経路と経路別推計式を記載する）",
-    effect: "未入力",
-    cost: totalCost > 0 ? `¥${totalCost.toLocaleString()}` : "—",
+    pathways: pathwayText,
+    effect: storedFe?.effect_total != null ? `¥${storedFe.effect_total.toLocaleString()}` : "未入力",
+    cost:
+      storedFe?.cost_total != null
+        ? `¥${storedFe.cost_total.toLocaleString()}`
+        : totalCost > 0
+          ? `¥${totalCost.toLocaleString()}`
+          : "—",
     rate: fe.rate != null ? `${fe.rate}%` : "算定不能",
-    mark: fe.mark ?? "保留（測定課題Ⅳとして記録し、処遇は行わない）",
+    mark: exemption
+      ? `適用除外（${EXEMPTION_META[exemption.kind].name}）`
+      : (fe.mark ?? "保留（測定課題Ⅳとして記録し、処遇は行わない）"),
     formula: fe.formula,
     note: fe.note,
   };
 
   // ── 様式F7-0 ⑦ 処遇 ─────────────────────────────────────
+  // 決定処遇は評価側の decided_treatment（060）。無ければ「未決定」。
+  // 標準処遇と異なれば理由書（H4）の要否と、その要旨を写す。
   const treatment: ReportTreatment = {
     route: judgmentRow.route,
     standard: judgmentRow.standard_treatment,
-    decided: ev.result ?? "—",
-    rationale:
-      judgment && ev.result && !judgment.pattern.standardTreatment.includes(ev.result)
-        ? "要（標準処遇と異なる決定。様式H4の理由書を添付する）"
-        : "—",
+    decided: ev.decided_treatment ?? (judgment ? "未決定（処遇決定会議・答申を経て確定）" : "—（処遇を行わない）"),
+    rationale: ev.rationale_required
+      ? `要（標準処遇と異なる決定。様式H4）${ev.rationale ? `: ${ev.rationale}` : " — 理由未記入"}`
+      : "—",
   };
 
   const subject =

@@ -29,6 +29,7 @@ import {
   type MeasureCostYear,
   type MeasureDataset,
   type MeasureIndicatorRow,
+  type MeasureJudgmentSetup,
   type MeasureWork,
 } from "@/lib/measure/dataset";
 import { fundingMismatchYears } from "@/lib/measure/indicators";
@@ -39,7 +40,7 @@ type Params = { params: { id: string; measureId: string } };
 // ─── 読み出し ──────────────────────────────────────────
 
 async function loadDataset(projectId: string, measureId: string): Promise<MeasureDataset> {
-  const [works, activities, indicators, checkpoints, costYears, costItems] = await Promise.all([
+  const [works, activities, indicators, checkpoints, costYears, costItems, setupRow] = await Promise.all([
     query<MeasureWork>(
       `SELECT id, measure_design_id, code, title, summary, target, method,
               owner_department, retired, retired_reason, sort_order
@@ -68,6 +69,7 @@ async function loadDataset(projectId: string, measureId: string): Promise<Measur
       `SELECT id, measure_design_id, measure_work_id, category_no, label, definition, unit,
               baseline_value::float AS baseline_value,
               to_char(baseline_date, 'YYYY-MM-DD') AS baseline_date,
+              natural_baseline::float AS natural_baseline, baseline_source,
               target_value::float AS target_value,
               achievement_condition, data_source, frequency, base_day,
               kpi_id, requirement, auto_filled, sort_order
@@ -101,6 +103,12 @@ async function loadDataset(projectId: string, measureId: string): Promise<Measur
         ORDER BY sort_order, item`,
       [measureId],
     ),
+    // 計画時の前提（060）: 寄与経路・事前推計・適用除外・前提条件表
+    queryOne<MeasureJudgmentSetup>(
+      `SELECT contribution_pathways, fiscal_effect_estimates, judgment_exemption, preconditions
+         FROM measure_designs WHERE id = $1`,
+      [measureId],
+    ),
   ]);
 
   const byIndicator = new Map<string, MeasureCheckpoint[]>();
@@ -116,6 +124,12 @@ async function loadDataset(projectId: string, measureId: string): Promise<Measur
     indicators: indicators.map((i) => ({ ...i, checkpoints: byIndicator.get(i.id) ?? [] })),
     costYears,
     costItems,
+    setup: {
+      contribution_pathways: Array.isArray(setupRow?.contribution_pathways) ? setupRow!.contribution_pathways : [],
+      fiscal_effect_estimates: Array.isArray(setupRow?.fiscal_effect_estimates) ? setupRow!.fiscal_effect_estimates : [],
+      judgment_exemption: setupRow?.judgment_exemption ?? null,
+      preconditions: Array.isArray(setupRow?.preconditions) ? setupRow!.preconditions : [],
+    },
   };
 }
 
@@ -370,6 +384,8 @@ const indicatorSchema = z.object({
   unit: z.string().max(50).nullish(),
   baseline_value: z.number().nullish(),
   baseline_date: z.string().nullish(),
+  natural_baseline: z.number().nullish(),
+  baseline_source: z.string().max(1000).nullish(),
   target_value: z.number().nullish(),
   achievement_condition: z.enum(["lte", "lt", "gte", "gt", "eq"]).optional(),
   data_source: z.string().max(500).nullish(),
@@ -397,12 +413,63 @@ const costItemSchema = z.object({
   sort_order: z.number().int().optional(),
 });
 
+// 計画時の前提（060）。評価が書く値（判定・処遇・比較の段の実績・財政効果の実績）は
+// ここには無い — それらは program_evaluations 側に持つ（施策構築のデータを評価が書き換えない）
+const setupSchema = z.object({
+  contribution_pathways: z
+    .array(
+      z.object({
+        key: z.string().min(1).max(40),
+        label: z.string().min(1).max(100),
+        formula: z.string().max(300),
+        note: z.string().max(300).nullish(),
+      }),
+    )
+    .max(12)
+    .optional(),
+  fiscal_effect_estimates: z
+    .array(
+      z.object({
+        pathway_key: z.string().min(1).max(40),
+        label: z.string().max(100).nullish(),
+        annual: z.number().nullish(),
+        cumulative: z.number().nullish(),
+        basis: z.string().max(500).nullish(),
+      }),
+    )
+    .max(12)
+    .optional(),
+  judgment_exemption: z
+    .object({
+      kind: z.enum(["statutory", "safety_net", "small_n"]),
+      reason: z.string().min(1).max(500),
+      decided_on: z.string().nullish(),
+    })
+    .nullable()
+    .optional(),
+  preconditions: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(40),
+        condition: z.string().min(1).max(300),
+        check_method: z.string().max(300),
+        fallback: z.string().max(500),
+        status: z.enum(["unchecked", "holds", "broken"]).optional(),
+        checked_fiscal_year: z.number().int().nullish(),
+        note: z.string().max(500).nullish(),
+      }),
+    )
+    .max(8)
+    .optional(),
+});
+
 const patchSchema = z.object({
   works: z.array(workSchema).max(30).optional(),
   activities: z.array(activitySchema).max(200).optional(),
   indicators: z.array(indicatorSchema).max(200).optional(),
   cost_years: z.array(costYearSchema).max(30).optional(),
   cost_items: z.array(costItemSchema).max(40).optional(),
+  setup: setupSchema.optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -538,6 +605,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           i.baseline_value ?? null, i.baseline_date ?? null, i.target_value ?? null,
           i.achievement_condition ?? "gte", i.data_source ?? null, i.frequency ?? "annual",
           i.base_day ?? null, i.kpi_id ?? null, i.requirement ?? "optional", i.sort_order ?? n,
+          i.natural_baseline ?? null, i.baseline_source ?? null,
         ];
         let id = i.id ?? null;
         if (id) {
@@ -547,6 +615,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
                     baseline_value=$7, baseline_date=$8, target_value=$9,
                     achievement_condition=$10, data_source=$11, frequency=$12, base_day=$13,
                     kpi_id=$14, requirement=$15, sort_order=$16,
+                    natural_baseline=$17, baseline_source=$18,
                     auto_filled=false, updated_at=now()
               WHERE id=$1`,
             [id, ...args],
@@ -556,8 +625,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
             `INSERT INTO measure_indicators
                (project_id, measure_design_id, measure_work_id, category_no, label, definition, unit,
                 baseline_value, baseline_date, target_value, achievement_condition, data_source,
-                frequency, base_day, kpi_id, requirement, sort_order, auto_filled)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,false)
+                frequency, base_day, kpi_id, requirement, sort_order, natural_baseline, baseline_source,
+                auto_filled)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,false)
              RETURNING id`,
             [params.id, params.measureId, ...args],
           );
@@ -601,6 +671,39 @@ export async function PATCH(req: NextRequest, { params }: Params) {
                          updated_at = now()`,
           [params.measureId, y.fiscal_year, y.total_amount ?? null,
            JSON.stringify(y.funding ?? {}), y.note ?? null],
+        );
+      }
+    }
+
+    if (d.setup) {
+      const st = d.setup;
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      const add = (col: string, v: unknown) => {
+        vals.push(v);
+        sets.push(`${col} = $${vals.length}::jsonb`);
+      };
+      if (st.contribution_pathways) add("contribution_pathways", JSON.stringify(st.contribution_pathways));
+      if (st.fiscal_effect_estimates) add("fiscal_effect_estimates", JSON.stringify(st.fiscal_effect_estimates));
+      if (st.judgment_exemption !== undefined) add("judgment_exemption", st.judgment_exemption ? JSON.stringify(st.judgment_exemption) : null);
+      if (st.preconditions) {
+        add(
+          "preconditions",
+          JSON.stringify(
+            st.preconditions.map((pc) => ({
+              ...pc,
+              status: pc.status ?? "unchecked",
+              checked_fiscal_year: pc.checked_fiscal_year ?? null,
+              note: pc.note ?? null,
+            })),
+          ),
+        );
+      }
+      if (sets.length > 0) {
+        vals.push(params.measureId);
+        await client.query(
+          `UPDATE measure_designs SET ${sets.join(", ")}, updated_at = now() WHERE id = $${vals.length}`,
+          vals,
         );
       }
     }

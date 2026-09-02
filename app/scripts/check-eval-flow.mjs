@@ -260,7 +260,8 @@ check("主要施策評価は取組が紐づかない中間アウトカム評価�
 
 const meWizard = read(join(APP_ROOT, "src", "components", "program-eval", "MeasureEvaluationWizard.tsx"));
 check("主要施策評価ウィザードがある", meWizard.length > 0);
-check("取組評価のロールアップを出す", /この施策の取組評価/.test(meWizard));
+check("初期アウトカムの年次履歴（取組評価）を材料に出す", /初期アウトカムの年次履歴/.test(meWizard));
+check("ウィザードは fig7e1（図E1）を使う。fig7v2 は読み取り専用", /const flow = FIG7E1/.test(meWizard) && !/const flow = FIG7V2/.test(meWizard));
 check("次期への引き継ぎは to_next_plan で送る", /level: "to_next_plan" as const/.test(meWizard));
 
 check("サイドバーCに主要施策評価（計画期間）がある",
@@ -290,11 +291,11 @@ const manMeasure = read(join(manDir, "measure-evaluation.md"));
 check("取組評価のヘルプにフロー全体図がある",
   /## ③ フロー全体図（図6）/.test(manWork) && /class="mflow"/.test(manWork));
 check("主要施策評価のヘルプにフロー全体図がある",
-  /## ③ フロー全体図（図7）/.test(manMeasure) && /class="mflow"/.test(manMeasure));
+  /## ③ フロー全体図（図E1 ＝ fig7e1）/.test(manMeasure) && /class="mflow"/.test(manMeasure));
 check("フロー図に評価の目的が載っている",
   /class="mgoal"/.test(manWork) && /class="mgoal"/.test(manMeasure));
 check("図7のヘルプは現行計画を書き換えないと明記する",
-  /施策構築の内容）は評価では書き換えません/.test(manMeasure));
+  /現行計画の施策データは評価では書き換えません/.test(manMeasure));
 check("図の体裁は manual-body の CSS で持つ",
   /\.manual-body \.mflow/.test(read(join(APP_ROOT, "src", "app", "globals.css"))));
 check("画面ヘッダに別立てのフロー図リンクを置かない",

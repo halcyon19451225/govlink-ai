@@ -39,6 +39,22 @@ export function judgmentAnswersFromFlow(
     return { answers: a, missing: missingOf(a) };
   }
 
+  // 図E1をそのまま実装したフロー（fig7e1・CA2-3改）: 工程IDが問いに1対1で対応する
+  if (flowKey === "fig7e1") {
+    const q1 = pick("e1_q1");
+    if (q1 !== "met" && q1 !== "not_met") return { answers: null, missing: ["①成果は目標値に達したか"] };
+    const a: JudgmentAnswers = { q1: q1 === "met" ? "met" : "not_met" };
+    const q2 = pick("e1_q2");
+    if (q2 === "approaching" || q2 === "not_approaching") a.q2 = q2;
+    const q3 = pick("e1_q3");
+    if (q3 === "attributable" || q3 === "not_attributable") a.q3 = q3;
+    const q4a = pick("e1_q4a");
+    if (q4a === "reproducible" || q4a === "unknown" || q4a === "not_reproducible") a.q4a = q4a;
+    const q4b = pick("e1_q4b");
+    if (q4b === "efficient" || q4b === "inefficient") a.q4b = q4b; // pending は未回答扱い＝判定保留
+    return { answers: a, missing: missingOf(a) };
+  }
+
   // 既存フローからの写し取り（分かるところまで）
   const isMeasure = flowKey === "fig7" || flowKey === "fig7v2";
   // 取組評価の「成果」は初期アウトカム（No.7）。アウトプット（target_met）ではない。

@@ -15,7 +15,7 @@
 //
 // UI はこの定義を読んで描画するだけなので、フローの改訂はこのファイルで完結する。
 
-export type FlowKey = "fig6" | "fig7" | "fig6v2" | "fig7v2";
+export type FlowKey = "fig6" | "fig7" | "fig6v2" | "fig7v2" | "fig7e1";
 
 /** どのカラムへ書き出すか。保存時に評価レコードの各列へ振り分ける */
 export type FlowTarget =
@@ -49,8 +49,9 @@ export interface FlowStep {
    * text       … 記述のみ
    * delegation … 上位（または次期計画）へ委任する課題の記入（evaluation_delegations へ）
    * delegation_review … 委任されてきた課題の消化（扱った／次期へ引き継ぐ を1件ずつ記録）
+   * treatment  … 処遇（図E1・fig7e1）。標準処遇を初期値として示し、異なる決定には理由（H4）を必須にする
    */
-  kind: "choice" | "auto" | "text" | "delegation" | "delegation_review";
+  kind: "choice" | "auto" | "text" | "delegation" | "delegation_review" | "treatment";
   options?: FlowOption[];
   next?: string | null; // null = 終了
   notePrompt?: string;
@@ -69,9 +70,11 @@ export interface FlowStep {
    * auto ステップの判定材料（figv2系）:
    *   activity_rate … No.5 実施率（タスク完了実績の自動集計）
    *   indicator     … autoIndicator のカテゴリの最新実績 vs 目標値
+   *   trend         … autoIndicator のカテゴリの実績履歴の3か年傾向（図E1 ②）
+   *   fiscal_effect … 財政効果率（財政効果÷事業費）の100%閾値（図E1 ④b）
    * 未指定の auto は従来どおり選択KPIの到達度から判定する
    */
-  autoSource?: "activity_rate" | "indicator";
+  autoSource?: "activity_rate" | "indicator" | "trend" | "fiscal_effect";
   autoIndicator?: number;
 }
 
@@ -615,11 +618,161 @@ export const FIG7V2: EvaluationFlow = {
   },
 };
 
+// ─── 図7e1: 主要施策評価（図E1をそのまま実装・CA2-3改）──────────
+// 様式集（claude/coe-eval-report-forms.md §1）の4つの問いを工程1〜4に置き、
+// fig7v2 の工程のうち図E1に無いもの（委任の消化・他団体比較・処遇・引き継ぎ）を後段に続ける。
+// 記号A〜K・報告書No.・ルート・標準処遇は lib/evaluation/judgment.ts が回答から機械的に導く。
+// fig7v2 はウィザードから外し、保存済み評価の読み取り専用として残す（2026-09-02 決定）。
+export const FIG7E1: EvaluationFlow = {
+  key: "fig7e1",
+  label: "主要施策評価 — 計画期間",
+  subtitle: "図E1の4つの問いで判定し、報告書No.と標準処遇を機械的に定めたうえで、次期計画での処遇を決める",
+  tier: "outcome_intermediate",
+  cycleNote: "中間アウトカム指標（No.8）の評価時点に従う",
+  start: "e1_q1",
+  steps: {
+    e1_q1: {
+      id: "e1_q1",
+      section: "1. 目標到達",
+      question: "成果（中間アウトカム）は目標値に達しましたか？",
+      help: "中間アウトカム指標（No.8）の期末実績と目標値からシステムが判定します（判定記号 A／B）。",
+      kind: "auto",
+      autoSource: "indicator",
+      autoIndicator: 8,
+      options: [
+        { value: "met", label: "達した（A）", tone: "good", next: "e1_q3" },
+        { value: "not_met", label: "達していない（B）", tone: "bad", next: "e1_q2" },
+      ],
+    },
+    e1_q2: {
+      id: "e1_q2",
+      section: "2. 接近",
+      question: "未達ですが、目標値に近づいていますか？",
+      help: "3か年の傾向で判定します（単年のブレに引きずられない）。実績が3点に満たないときは暫定判定になり、担当者の確認と根拠の記入が要ります（判定記号 C／I）。",
+      kind: "auto",
+      autoSource: "trend",
+      autoIndicator: 8,
+      options: [
+        { value: "approaching", label: "近づいている（C）", tone: "warn", next: "e1_q3" },
+        { value: "not_approaching", label: "近づいていない（I）→ 報告書No.1", tone: "bad", next: "delegated_issues", requiresNote: true },
+      ],
+      notePrompt: "傾向の読み方の根拠（実績が少ない場合は、単年判断であることとその理由）",
+      noteTarget: "findings",
+    },
+    e1_q3: {
+      id: "e1_q3",
+      section: "3. 起因",
+      question: "成果の変化は、初期アウトカム（施策の働き）に起因しますか？",
+      help: "初期アウトカムの年次履歴（各年度の取組評価）が因果判断の唯一の根拠です（共通ヘッダ④）。実際に行った比較の方法（比較の段A〜D）も併せて記録します（判定記号 D／E）。",
+      kind: "choice",
+      options: [
+        { value: "attributable", label: "起因する（E）", tone: "good", next: "e1_q4b", requiresNote: true },
+        { value: "not_attributable", label: "起因しない（D）", tone: "warn", next: "e1_q4a", requiresNote: true },
+      ],
+      notePrompt: "そう判断した根拠（年次履歴のどこを見たか・用いた比較の方法）",
+      noteTarget: "findings",
+    },
+    e1_q4a: {
+      id: "e1_q4a",
+      section: "4a. 別要因の再現可能性",
+      question: "成果の変化をもたらした別の要因を特定でき、人為的に再現可能ですか？",
+      help: "再現可能（G）なら「成功要因転用」の報告書（No.3／7）へ。不明（F）・再現不能（H）なら外部要因依存／寄与不明（No.2／6）へ。",
+      kind: "choice",
+      options: [
+        { value: "reproducible", label: "特定でき、再現可能（G）", tone: "good", requiresNote: true },
+        { value: "not_reproducible", label: "特定できたが、再現不能（H）", tone: "warn", requiresNote: true },
+        { value: "unknown", label: "要因は不明（F）", tone: "neutral", requiresNote: true },
+      ],
+      notePrompt: "特定した要因と、再現可能と判断する根拠（メカニズム: 投入→取組→取組結果→成果の鎖と機能した条件）",
+      noteTarget: "success_factors",
+      next: "delegated_issues",
+    },
+    e1_q4b: {
+      id: "e1_q4b",
+      section: "4b. 財政効果率",
+      question: "投入した人員と予算は適切でしたか（財政効果率100%以上か）？",
+      help: "財政効果率＝財政効果（計画期間累計）÷事業費（同期間累計・人件費按分込み）。寄与経路ごとの期末実績を入れると自動で算定します。推計不能なら判定保留（処遇せず測定課題Ⅳとして記録）です（判定記号 J／K）。",
+      kind: "auto",
+      autoSource: "fiscal_effect",
+      options: [
+        { value: "efficient", label: "100%以上（J）", tone: "good" },
+        { value: "inefficient", label: "100%未満（K）", tone: "warn" },
+        { value: "pending", label: "推計不能（判定保留）", tone: "neutral", requiresNote: true },
+      ],
+      notePrompt: "推計できない理由と、次期に判定可能とする測定設計",
+      noteTarget: "barrier_factors",
+      next: "delegated_issues",
+    },
+    delegated_issues: {
+      id: "delegated_issues",
+      section: "5. 委任された課題",
+      question: "取組評価から委任された課題を、この評価でどう扱いますか？",
+      help: "課題ごとに「この評価で扱った」か「次期計画へ引き継ぐ」かを記録します。委任が無ければこの工程は飛ばされます。",
+      kind: "delegation_review",
+      next: "benchmark",
+    },
+    benchmark: {
+      id: "benchmark",
+      section: "6. 他団体との比較",
+      question: "他団体との比較では、この施策の水準はどうでしたか？",
+      help: "登録された比較先（全国平均・県平均・人口同規模平均など）との比較表を材料にします。比較先が未登録なら、この工程は飛ばされます。",
+      kind: "choice",
+      requiresBenchmark: true,
+      options: [
+        { value: "better", label: "同規模比で良好", tone: "good" },
+        { value: "similar", label: "同等", tone: "neutral" },
+        { value: "worse", label: "同規模比で低い", tone: "warn", requiresNote: true },
+      ],
+      notePrompt: "差の要因として考えられることを書いてください",
+      noteTarget: "findings",
+      next: "treatment",
+    },
+    treatment: {
+      id: "treatment",
+      section: "7. 次期計画での処遇",
+      question: "報告書No.から定まる標準処遇を、この施策の処遇（事務局案）としますか？",
+      help: "「この施策をどうするか」は裁量ではなく判定から機械的に導きます。裁量は「標準処遇に従わない理由を書く」ところにだけあります（comply or explain・様式H4）。判定保留なら処遇は行いません。",
+      kind: "treatment",
+      options: [
+        { value: "standard", label: "標準処遇のとおりとする", tone: "good" },
+        { value: "modified", label: "標準処遇と異なる処遇とする（理由書H4が必須）", tone: "warn", requiresNote: true },
+        { value: "none", label: "判定保留・適用除外のため処遇を行わない（測定設計のみ）", tone: "neutral" },
+      ],
+      notePrompt: "理由（①数字上はこう見えるが〜という事実・事情がある ②現場・関係機関も〜という意見 ③制度・上位計画との整合 → よって〔決定処遇〕とする）",
+      next: "plan_level_issues",
+    },
+    plan_level_issues: {
+      id: "plan_level_issues",
+      section: "8. 次期計画への引き継ぎ",
+      question: "主要施策の改善だけでは解消できない課題（計画全体のロジックモデルの見直しが要るもの）はありますか？",
+      help: "図7フローの結論その2。ここで記入した課題は、次期計画策定時のニーズ評価・セオリー評価へ引き継がれます。",
+      kind: "delegation",
+      options: [
+        { value: "none", label: "ない（施策レベルで対応できる）", tone: "good" },
+        { value: "has", label: "ある（課題を記入して引き継ぐ）", tone: "warn" },
+      ],
+      next: "handover",
+    },
+    handover: {
+      id: "handover",
+      section: "8. 次期計画への引き継ぎ",
+      question: "次期計画へ引き継ぐ事項を記入してください。",
+      help: "評価報告書にまとめ、次期計画策定の入力にします。",
+      kind: "text",
+      notePrompt: "例: 通いの場は箇所数では足りており、次期は参加の質（継続率）を中間アウトカムに置く",
+      noteRequired: true,
+      noteTarget: "next_steps",
+      next: null,
+    },
+  },
+};
+
 export const FLOWS: Record<FlowKey, EvaluationFlow> = {
   fig6: FIG6,
   fig7: FIG7,
   fig6v2: FIG6V2,
   fig7v2: FIG7V2,
+  fig7e1: FIG7E1,
 };
 
 /**
@@ -674,6 +827,7 @@ export function getFlow(key: string | null | undefined): EvaluationFlow | null {
   if (key === "fig7") return FIG7;
   if (key === "fig6v2") return FIG6V2;
   if (key === "fig7v2") return FIG7V2;
+  if (key === "fig7e1") return FIG7E1;
   return null;
 }
 

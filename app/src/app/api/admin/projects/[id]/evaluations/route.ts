@@ -10,6 +10,7 @@ import { ARTIFACT_TYPES } from "@/lib/modules/artifact-types";
 import { requireModulePermission } from "@/lib/permissions";
 import { aggregateRate, buildKpiSnapshot } from "@/lib/evaluation/snapshot";
 import { buildIndicatorSnapshot } from "@/lib/evaluation/indicatorSnapshot";
+import { deriveJudgmentColumns, judgmentBodySchema, treatmentBodySchema } from "@/lib/evaluation/judgmentStore";
 
 type Params = { params: { id: string } };
 
@@ -95,6 +96,9 @@ const bodySchema = z.object({
   checkpoint_id: z.string().uuid().optional().nullable(),
   // efficiency tier の場合のみ参照（cost_efficiency_records へ連動）
   efficiency_detail: efficiencyDetailSchema.optional().nullable(),
+  // 図E1の判定と処遇（fig7e1・060）。report_no/route/標準処遇はサーバーで導く
+  ...judgmentBodySchema.shape,
+  ...treatmentBodySchema.shape,
 });
 
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -111,6 +115,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
             pe.measure_design_id, md.title AS measure_title,
             pe.measure_work_id, mw.code AS measure_work_code, mw.title AS measure_work_title,
             pe.indicator_snapshot, pe.approved_snapshot_at::text,
+            pe.judgment, pe.judgment_path, pe.report_no, pe.route, pe.standard_treatment,
+            pe.decided_treatment, pe.rationale_required, pe.rationale, pe.comparison_grade,
+            pe.fiscal_effect,
             CASE WHEN lm.id IS NULL THEN NULL ELSE
               json_build_object(
               'id', lm.id,
@@ -208,6 +215,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       ).items
     : [];
 
+  // ── 図E1の判定・処遇（060）— 画面の値を信用せず、回答から機械的に導く ──
+  const jd = deriveJudgmentColumns(d);
+  if ("error" in jd) {
+    return NextResponse.json({ data: null, error: jd.error }, { status: 400 });
+  }
+
   const row = await queryOne<{ id: string }>(
     `INSERT INTO program_evaluations
        (project_id, evaluation_tier, fiscal_year, status, result,
@@ -215,10 +228,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         improvement_actions, next_steps, flow_decision_path, kpi_ids, logic_model_id,
         measure_design_id,
         checkpoint_id, kpi_snapshot, computed_achievement_rate,
-        measure_work_id, indicator_snapshot)
+        measure_work_id, indicator_snapshot,
+        judgment, judgment_path, report_no, route, standard_treatment,
+        decided_treatment, rationale_required, rationale, comparison_grade, fiscal_effect)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
              COALESCE($13::uuid[], '{}'::uuid[]), $14, $15, $16, $17::jsonb, $18,
-             $19, $20::jsonb)
+             $19, $20::jsonb,
+             $21::jsonb, $22, $23, $24, $25, $26, $27, $28, $29, $30::jsonb)
      RETURNING id`,
     [
       params.id,
@@ -241,6 +257,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       computedRate,
       d.measure_work_id ?? null,
       JSON.stringify(indicatorSnapshot),
+      jd.judgment ? JSON.stringify(jd.judgment) : null,
+      jd.judgment_path,
+      jd.report_no,
+      jd.route,
+      jd.standard_treatment,
+      jd.decided_treatment,
+      jd.rationale_required,
+      jd.rationale,
+      jd.comparison_grade,
+      jd.fiscal_effect ? JSON.stringify(jd.fiscal_effect) : null,
     ],
   );
 

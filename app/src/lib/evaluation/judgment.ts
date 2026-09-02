@@ -472,3 +472,242 @@ export const INQUIRY_ITEMS: Record<ReflectRoute, string[]> = {
   C: ["ア 案の妥当性", "オ 段階設計・撤退基準の可否"],
   D: ["ア 案の妥当性", "カ 費用計画の可否"],
 };
+
+// ═══════════════════════════════════════════════════════════════
+// 図E1フロー（fig7e1・CA2-3改）が使う純粋関数 — migration 060 と対
+// ═══════════════════════════════════════════════════════════════
+
+// ─── 記号列の途中経過（判定保留のときも「どこまで進んだか」を出す）───
+
+/** 回答から、確定した記号までを並べる。足りない問いは "?" で示す（例: "A→E→?"） */
+export function partialPath(a: Partial<JudgmentAnswers> | null | undefined): string {
+  if (!a?.q1) return "?";
+  const marks: string[] = [];
+  if (a.q1 === "not_met") {
+    marks.push("B");
+    if (!a.q2) return [...marks, "?"].join("→");
+    if (a.q2 === "not_approaching") return [...marks, "I"].join("→");
+    marks.push("C");
+  } else {
+    marks.push("A");
+  }
+  if (!a.q3) return [...marks, "?"].join("→");
+  if (a.q3 === "not_attributable") {
+    marks.push("D");
+    if (!a.q4a) return [...marks, "?"].join("→");
+    marks.push(a.q4a === "reproducible" ? "G" : a.q4a === "unknown" ? "F" : "H");
+    return marks.join("→");
+  }
+  marks.push("E");
+  if (!a.q4b) return [...marks, "?"].join("→");
+  marks.push(a.q4b === "efficient" ? "J" : "K");
+  return marks.join("→");
+}
+
+// ─── ② 目標値に近づいているか（3か年の傾向）────────────────────
+
+export interface TrendPoint {
+  fiscal_year: number;
+  value: number;
+}
+
+export interface TrendJudgment {
+  /** システム判定。材料不足なら null（担当者が根拠を書いて選ぶ） */
+  verdict: Q2 | null;
+  /** 判定に使った点数 */
+  points: number;
+  /** 3点以上=confirmed ／ 2点=provisional（担当者確認必須）／ 1点以下=none */
+  confidence: "confirmed" | "provisional" | "none";
+  /** 直近3点の年あたり変化（最小二乗の傾き）。目標方向を正に正規化 */
+  slope: number | null;
+  /** 画面・報告書に出す説明 */
+  note: string;
+  used: TrendPoint[];
+}
+
+/**
+ * 中間アウトカムの実績履歴から「近づいているか」を判定する。
+ * 様式集: 「3か年の傾向で判定。単年のブレに引きずられない」。
+ *   3点以上 … 直近3点の傾きが目標方向なら approaching（確定）
+ *   2点     … 差分の向きで暫定判定（担当者確認必須。報告書に「暫定（2点）」と注記）
+ *   1点以下 … システム判定なし（担当者が根拠を書いて選ぶ。報告書に「単年判断」と注記）
+ * 判定保留にはしない（2026-09-02 決定: 計画初期に全件保留にならないように）。
+ */
+export function trendJudgment(
+  history: TrendPoint[],
+  condition: "lte" | "lt" | "gte" | "gt" | "eq",
+  target: number | null,
+  baseline: number | null,
+): TrendJudgment {
+  const byYear = new Map<number, number>();
+  for (const p of history) {
+    if (p.value == null || !Number.isFinite(p.value)) continue;
+    byYear.set(p.fiscal_year, p.value); // 同一年度は後勝ち（履歴は時系列順に渡す）
+  }
+  const pts = Array.from(byYear.entries())
+    .map(([fiscal_year, value]) => ({ fiscal_year, value }))
+    .sort((x, y) => x.fiscal_year - y.fiscal_year);
+  const used = pts.slice(-3);
+
+  // 目標の向き: lte/lt は「下がるほど良い」。eq は目標との差の縮小で見る
+  const dir = condition === "lte" || condition === "lt" ? -1 : 1;
+  const distance = (v: number) => (target == null ? null : Math.abs(target - v));
+
+  if (used.length <= 1) {
+    return {
+      verdict: null,
+      points: used.length,
+      confidence: "none",
+      slope: null,
+      note:
+        used.length === 0
+          ? "実績がありません。傾向を判定できないため、担当者が根拠を書いて選びます"
+          : "実績が1点しかありません（単年判断）。傾向を判定できないため、担当者が根拠を書いて選びます",
+      used,
+    };
+  }
+
+  let slope: number;
+  if (used.length === 2) {
+    slope = (used[1]!.value - used[0]!.value) / Math.max(1, used[1]!.fiscal_year - used[0]!.fiscal_year);
+  } else {
+    // 最小二乗の傾き（年度を x）
+    const n = used.length;
+    const mx = used.reduce((s, p) => s + p.fiscal_year, 0) / n;
+    const my = used.reduce((s, p) => s + p.value, 0) / n;
+    const sxx = used.reduce((s, p) => s + (p.fiscal_year - mx) ** 2, 0);
+    const sxy = used.reduce((s, p) => s + (p.fiscal_year - mx) * (p.value - my), 0);
+    slope = sxx === 0 ? 0 : sxy / sxx;
+  }
+
+  let approaching: boolean;
+  if (condition === "eq" && target != null) {
+    const d0 = distance(used[0]!.value)!;
+    const d1 = distance(used[used.length - 1]!.value)!;
+    approaching = d1 < d0;
+  } else {
+    approaching = slope * dir > 0;
+  }
+  // 基準値（前期末）から動いていないのに傾きだけ正、は起きにくいが、基準値より悪化していれば「近づいていない」
+  if (baseline != null && used.length >= 2) {
+    const last = used[used.length - 1]!.value;
+    if ((last - baseline) * dir < 0 && approaching && used.length === 2) approaching = false;
+  }
+
+  const confidence = used.length >= 3 ? "confirmed" : "provisional";
+  const yrs = used.map((p) => p.fiscal_year).join("・");
+  return {
+    verdict: approaching ? "approaching" : "not_approaching",
+    points: used.length,
+    confidence,
+    slope: Math.round(slope * 1000) / 1000,
+    note:
+      confidence === "confirmed"
+        ? `直近3か年（${yrs}）の傾き ${slope >= 0 ? "+" : ""}${Math.round(slope * 100) / 100}/年 → ${
+            approaching ? "目標値に近づいている" : "近づいていない"
+          }`
+        : `実績2点（${yrs}）の暫定判定（3か年の傾向には足りません。担当者の確認が必要）`,
+    used,
+  };
+}
+
+// ─── 寄与経路・財政効果（設計時の定義と期末の実績）─────────────
+
+/** 寄与経路の定義（measure_designs.contribution_pathways） */
+export interface ContributionPathway {
+  key: string;
+  label: string;
+  /** 経路別推計式（例: 発生率の抑制幅 × 対象者数 × 単価） */
+  formula: string;
+  note?: string | null;
+}
+
+/** 事前推計（measure_designs.fiscal_effect_estimates）・期末実績（program_evaluations.fiscal_effect.pathways）共通 */
+export interface FiscalEffectPathwayAmount {
+  pathway_key: string;
+  label?: string | null;
+  /** 年額（円） */
+  annual: number | null;
+  /** 計画期間累計（円）。財政効果率はこちらを使う */
+  cumulative: number | null;
+  /** 推計の根拠（X の値・単価・対象者数など） */
+  basis?: string | null;
+}
+
+/** 分野を問わない既定の寄与経路（分野ごとに書き換える前提のひな形） */
+export const DEFAULT_PATHWAYS: readonly ContributionPathway[] = [
+  { key: "incidence", label: "発生率の抑制", formula: "発生率の抑制幅X × 対象者数 × 1人あたり費用", note: "例: 要介護認定率・疾病発生率・再犯率" },
+  { key: "utilization", label: "利用率の適正化", formula: "利用率の変化幅X × 対象者数 × 1件あたり単価", note: "例: 受給率・受診率" },
+  { key: "unit_cost", label: "1件あたり費用の効率化", formula: "1件あたり費用の変化幅X × 件数", note: "例: 給付単価・処理単価" },
+];
+
+/** 経路別の額を累計（円）にまとめる。1件も無ければ null（＝推計不能） */
+export function sumFiscalEffect(rows: FiscalEffectPathwayAmount[] | null | undefined): number | null {
+  if (!rows || rows.length === 0) return null;
+  const vals = rows.map((r) => r.cumulative).filter((v): v is number => v != null && Number.isFinite(v));
+  if (vals.length === 0) return null;
+  return vals.reduce((s, v) => s + v, 0);
+}
+
+/** 評価側に保存する財政効果の実績（program_evaluations.fiscal_effect） */
+export interface StoredFiscalEffect {
+  pathways: FiscalEffectPathwayAmount[];
+  effect_total: number | null;
+  cost_total: number | null;
+  rate: number | null;
+  mark: "J" | "K" | null;
+  note: string;
+}
+
+// ─── 適用除外 ────────────────────────────────────────────────
+
+export type ExemptionKind = "statutory" | "safety_net" | "small_n";
+
+export const EXEMPTION_META: Record<ExemptionKind, { name: string; detail: string }> = {
+  statutory: { name: "法定必須事業", detail: "法令で実施が義務づけられている。廃止対象としない（適用除外リスト）" },
+  safety_net: { name: "セーフティネット機能", detail: "最後の受け皿となる機能を持つ。廃止対象としない（適用除外リスト）" },
+  small_n: { name: "スモールN（分母下限未満）", detail: "個別支援型で分母が下限未満。単一事例デザイン・GAS・事例集積（比較の段D）で評価する" },
+};
+
+export interface JudgmentExemption {
+  kind: ExemptionKind;
+  reason: string;
+  decided_on?: string | null;
+}
+
+// ─── 評価側に保存する判定（program_evaluations.judgment）────────
+
+export interface StoredJudgment extends JudgmentAnswers {
+  /** 各問いの根拠（担当者の記述） */
+  rationale?: Partial<Record<"q1" | "q2" | "q3" | "q4a" | "q4b", string>>;
+  /** システム判定の材料（後から検証できるように写す） */
+  evidence?: {
+    q1?: { system: Q1 | null; overridden: boolean };
+    trend?: Omit<TrendJudgment, "used"> & { used: TrendPoint[] };
+    fiscal?: { rate: number | null; mark: "J" | "K" | null; system: Q4b | null; overridden: boolean };
+  };
+}
+
+/**
+ * 保存前の正規化: 分岐上あり得ない回答（met なのに q2 がある等）を落とす。
+ * 画面が何を送ってきても、DB に入る判定は図E1の分岐と矛盾しない。
+ */
+export function normalizeJudgment(j: StoredJudgment): StoredJudgment {
+  const out: StoredJudgment = { q1: j.q1 };
+  if (j.q1 === "not_met" && j.q2) out.q2 = j.q2;
+  const reachQ3 = j.q1 === "met" || out.q2 === "approaching";
+  if (reachQ3 && j.q3) out.q3 = j.q3;
+  if (out.q3 === "not_attributable" && j.q4a) out.q4a = j.q4a;
+  if (out.q3 === "attributable" && j.q4b) out.q4b = j.q4b;
+  if (j.rationale) out.rationale = j.rationale;
+  if (j.evidence) out.evidence = j.evidence;
+  return out;
+}
+
+/** 標準処遇と決定処遇が「異なる」か（様式G1-7 の○判定）。空の決定処遇は標準どおりとみなす */
+export function treatmentDiffers(standard: string | null | undefined, decided: string | null | undefined): boolean {
+  const d = (decided ?? "").trim();
+  if (!d) return false;
+  const s = (standard ?? "").trim();
+  return d !== s;
+}

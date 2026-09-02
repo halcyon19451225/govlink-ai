@@ -20,6 +20,9 @@ export interface IndicatorSnapshotItem {
   label: string;
   unit: string | null;
   baseline_value: number | null;
+  /** 自然体推計値（060）。X＝実績−この値。凍結時に写す */
+  natural_baseline?: number | null;
+  baseline_source?: string | null;
   target_value: number | null;
   achievement_condition: string;
   /** 対象年度の最新実績（無ければ年度不問の最新） */
@@ -43,6 +46,8 @@ interface IndicatorRow {
   label: string;
   unit: string | null;
   baseline_value: number | null;
+  natural_baseline: number | null;
+  baseline_source: string | null;
   target_value: number | null;
   achievement_condition: string;
 }
@@ -87,6 +92,7 @@ export async function buildIndicatorSnapshot(
     measureWorkId
       ? `SELECT id, category_no, measure_work_id, label, unit,
                 baseline_value::float AS baseline_value,
+                natural_baseline::float AS natural_baseline, baseline_source,
                 target_value::float AS target_value, achievement_condition
            FROM measure_indicators
           WHERE project_id = $1 AND measure_design_id = $2
@@ -95,6 +101,7 @@ export async function buildIndicatorSnapshot(
           ORDER BY category_no`
       : `SELECT id, category_no, measure_work_id, label, unit,
                 baseline_value::float AS baseline_value,
+                natural_baseline::float AS natural_baseline, baseline_source,
                 target_value::float AS target_value, achievement_condition
            FROM measure_indicators
           WHERE project_id = $1 AND measure_design_id = $2
@@ -142,6 +149,8 @@ export async function buildIndicatorSnapshot(
       label: ind.label,
       unit: ind.unit,
       baseline_value: ind.baseline_value,
+      natural_baseline: ind.natural_baseline,
+      baseline_source: ind.baseline_source,
       target_value: ind.target_value,
       achievement_condition: ind.achievement_condition,
       result_value: effectiveValue,

@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import { buildDueList, type DueSourceIndicator } from "@/lib/evaluation/duecheck";
+import { causeTypeFromWorkFlow } from "@/lib/evaluation/judgmentFromFlow";
+import type { IndicatorSnapshotItem } from "@/lib/evaluation/indicatorSnapshot";
 import MeasureEvaluationClient from "./MeasureEvaluationClient";
 
 export interface MeasureRow {
@@ -32,9 +34,21 @@ export interface MeasureEvalRow {
   approved_snapshot_at: string | null;
   flow_decision_path: { flow?: string; answers?: { step_id: string; value: string; label: string }[] } | null;
   created_at: string;
+  /** 図E1の判定（060）。report_no が null なら判定保留 */
+  judgment_path: string | null;
+  report_no: number | null;
+  route: string | null;
+  standard_treatment: string | null;
+  decided_treatment: string | null;
+  rationale_required: boolean;
+  rationale: string | null;
 }
 
-/** 取組評価のロールアップ（図7v2 工程2の材料） */
+/**
+ * 取組評価のロールアップ（図7e1 工程3「起因」の材料 ＝ 共通ヘッダ④ 初期アウトカムの年次履歴）。
+ * 因果判断（実行起因／論理起因の切り分け）の唯一の根拠なので、年度ごとの初期アウトカム（No.7）の
+ * 実績・達否と、図6の回答から切り分けた起因の型を添える。
+ */
 export interface WorkEvalSummary {
   measure_design_id: string;
   measure_work_id: string;
@@ -43,6 +57,11 @@ export interface WorkEvalSummary {
   fiscal_year: number | null;
   status: string;
   result: string | null;
+  /** No.7 初期アウトカムの実績（凍結値があればそれ） */
+  initial_outcome: string | null;
+  initial_achieved: boolean | null;
+  /** 実行（未実施／量が出ない…）／論理／測定／外部要因 — causeTypeFromWorkFlow */
+  cause_type: string;
 }
 
 export interface DelegationRow {
@@ -84,7 +103,9 @@ export default async function MeasureEvaluationPage({ params }: { params: { id: 
     query<MeasureEvalRow>(
       `SELECT id, measure_design_id, fiscal_year, status, result,
               approved_snapshot_at::text AS approved_snapshot_at,
-              flow_decision_path, created_at::text AS created_at
+              flow_decision_path, created_at::text AS created_at,
+              judgment_path, report_no, route, standard_treatment, decided_treatment,
+              rationale_required, rationale
          FROM program_evaluations
         WHERE project_id = $1
           AND measure_work_id IS NULL
@@ -93,16 +114,44 @@ export default async function MeasureEvaluationPage({ params }: { params: { id: 
         ORDER BY created_at DESC`,
       [params.id],
     ).catch(() => [] as MeasureEvalRow[]),
-    query<WorkEvalSummary>(
+    query<{
+      measure_design_id: string; measure_work_id: string; work_code: string; work_title: string;
+      fiscal_year: number | null; status: string; result: string | null;
+      indicator_snapshot: IndicatorSnapshotItem[] | null;
+      flow_decision_path: { answers?: { step_id: string; value?: string | null }[] } | null;
+    }>(
       `SELECT pe.measure_design_id, pe.measure_work_id,
               w.code AS work_code, w.title AS work_title,
-              pe.fiscal_year, pe.status, pe.result
+              pe.fiscal_year, pe.status, pe.result,
+              pe.indicator_snapshot, pe.flow_decision_path
          FROM program_evaluations pe
          JOIN measure_works w ON w.id = pe.measure_work_id
         WHERE pe.project_id = $1 AND pe.measure_work_id IS NOT NULL
         ORDER BY w.sort_order, pe.fiscal_year`,
       [params.id],
-    ).catch(() => [] as WorkEvalSummary[]),
+    )
+      .then((rows) =>
+        rows.map((r): WorkEvalSummary => {
+          const snap = Array.isArray(r.indicator_snapshot) ? r.indicator_snapshot : [];
+          const item = snap.find((i) => i.category_no === 7);
+          return {
+            measure_design_id: r.measure_design_id,
+            measure_work_id: r.measure_work_id,
+            work_code: r.work_code,
+            work_title: r.work_title,
+            fiscal_year: r.fiscal_year,
+            status: r.status,
+            result: r.result,
+            initial_outcome:
+              item?.result_value != null
+                ? `${item.result_value}${item.unit ? ` ${item.unit}` : ""}`
+                : (item?.result_text ?? null),
+            initial_achieved: item?.achieved ?? null,
+            cause_type: causeTypeFromWorkFlow(r.flow_decision_path?.answers ?? []),
+          };
+        }),
+      )
+      .catch(() => [] as WorkEvalSummary[]),
     query<DelegationRow>(
       `SELECT d.id, d.measure_design_id, d.measure_work_id,
               w.code AS work_code, d.level, d.title, d.detail, d.root_cause, d.status

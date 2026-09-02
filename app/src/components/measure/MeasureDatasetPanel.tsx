@@ -34,8 +34,15 @@ import {
   type MeasureCostItem,
   type MeasureCostYear,
   type MeasureIndicatorRow,
+  type MeasureJudgmentSetup,
   type MeasureWork,
 } from "@/lib/measure/dataset";
+import {
+  DEFAULT_PATHWAYS,
+  EXEMPTION_META,
+  sumFiscalEffect,
+  type ExemptionKind,
+} from "@/lib/evaluation/judgment";
 import {
   RESULT_SOURCE_LABEL,
   latestResult,
@@ -56,6 +63,7 @@ interface Dataset {
   indicators: MeasureIndicatorRow[];
   costYears: MeasureCostYear[];
   costItems: MeasureCostItem[];
+  setup: MeasureJudgmentSetup;
   gaps: Gaps;
   ready: boolean;
 }
@@ -239,6 +247,8 @@ export default function MeasureDatasetPanel({
         definition: i.definition,
         unit: i.unit,
         baseline_value: i.baseline_value,
+        natural_baseline: i.natural_baseline,
+        baseline_source: i.baseline_source,
         target_value: i.target_value,
         achievement_condition: i.achievement_condition,
         data_source: i.data_source,
@@ -269,6 +279,8 @@ export default function MeasureDatasetPanel({
       unit: null,
       baseline_value: null,
       baseline_date: null,
+      natural_baseline: null,
+      baseline_source: null,
       target_value: null,
       achievement_condition: "gte",
       data_source: cat.sourceHint,
@@ -292,6 +304,8 @@ export default function MeasureDatasetPanel({
         definition: i.definition,
         unit: i.unit,
         baseline_value: i.baseline_value,
+        natural_baseline: i.natural_baseline,
+        baseline_source: i.baseline_source,
         target_value: i.target_value,
         achievement_condition: i.achievement_condition,
         data_source: i.data_source,
@@ -849,6 +863,16 @@ export default function MeasureDatasetPanel({
         </div>
       </section>
 
+      {/* ── 判定の前提（図E1・060）: 寄与経路・財政効果の事前推計・適用除外 ───── */}
+      <JudgmentSetupSection
+        setup={ds.setup}
+        canEdit={canEdit}
+        onSave={(setup) => {
+          setDs({ ...ds, setup });
+          void save({ setup });
+        }}
+      />
+
       {/* ── 実績の記入・履歴（058） ───────────────── */}
       {resultFor && (
         <ResultModal
@@ -988,6 +1012,29 @@ function IndicatorTable({
                 {open && (
                   <tr style={{ background: "var(--bg-primary)" }}>
                     <td colSpan={8} className="px-3 py-2">
+                      {(r.category_no === 7 || r.category_no === 8) && (
+                        <div className="mb-2 pb-2 border-b" style={{ borderColor: "var(--border)" }}>
+                          <p className="text-[10px] text-slate-500 mb-1">
+                            ベースライン（自然体推計）— 施策がなかった場合の推移（趨勢延長）。
+                            効果幅 X ＝ 期末実績 − この値（目標値との差ではない）。財政効果率の算定は比較の段C以上が要件
+                          </p>
+                          <div className="flex flex-wrap gap-2 items-end">
+                            <Field label="自然体推計値">
+                              <input type="number" className={inputCls} style={{ ...inputSty, width: 120 }}
+                                value={r.natural_baseline ?? ""} disabled={!canEdit}
+                                onChange={(e) => onChange(r.id, { natural_baseline: e.target.value ? Number(e.target.value) : null })}
+                                onBlur={onSave} />
+                            </Field>
+                            <Field label="推計の根拠（方法・出典）">
+                              <input className={inputCls} style={{ ...inputSty, width: 360 }}
+                                value={r.baseline_source ?? ""} disabled={!canEdit}
+                                placeholder="例: 過去5年の趨勢を直線延長（見える化システム）"
+                                onChange={(e) => onChange(r.id, { baseline_source: e.target.value || null })}
+                                onBlur={onSave} />
+                            </Field>
+                          </div>
+                        </div>
+                      )}
                       <p className="text-[10px] text-slate-500 mb-1">
                         評価時点 — 計画開始からの相対年次と絶対日付のどちらでも指定できます。
                         年次評価を行わない計画は「計画期間ごと」だけで足ります
@@ -1279,5 +1326,153 @@ function ResultModal({
         )}
       </div>
     </div>
+  );
+}
+
+
+/**
+ * 判定の前提（図E1・migration 060）— 計画時に施策側へ置く値。
+ *   寄与経路: どの変数を通じて財政効果が生じるか（分野ごとに定義。経路別推計式を明記）
+ *   事前推計: 経路別の財政効果（年額・期間累計）。期末の実績は評価側（主要施策評価）で別に入れる
+ *   適用除外: 法定必須・セーフティネット（廃止対象としない）／スモールN（比較の段Dの方法で評価）
+ * 評価が書く値（判定・処遇・比較の段の実績・財政効果の実績）はここに無い。
+ */
+function JudgmentSetupSection({
+  setup,
+  canEdit,
+  onSave,
+}: {
+  setup: MeasureJudgmentSetup;
+  canEdit: boolean;
+  onSave: (setup: MeasureJudgmentSetup) => void;
+}) {
+  const [draft, setDraft] = useState<MeasureJudgmentSetup>(setup);
+  useEffect(() => setDraft(setup), [setup]);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(setup);
+  const total = sumFiscalEffect(draft.fiscal_effect_estimates);
+  const patch = (over: Partial<MeasureJudgmentSetup>) => setDraft({ ...draft, ...over });
+
+  return (
+    <section className="rounded-xl border" style={card}>
+      <header className="px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderColor: "var(--border)" }}>
+        <h4 className="text-xs font-semibold text-slate-200">判定の前提（図E1）— 寄与経路・財政効果の事前推計・適用除外</h4>
+        {canEdit && dirty && (
+          <button onClick={() => onSave(draft)} className="ml-auto text-[11px] px-2.5 py-1 rounded-md font-semibold" style={{ background: "#6366f1", color: "#fff" }}>
+            保存
+          </button>
+        )}
+      </header>
+      <div className="p-4 space-y-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-[11px] text-slate-300 font-semibold">寄与経路（どの変数を通じて財政効果が生じるか）</p>
+            {canEdit && draft.contribution_pathways.length === 0 && (
+              <button
+                onClick={() => patch({ contribution_pathways: DEFAULT_PATHWAYS.map((p) => ({ ...p })) })}
+                className="text-[10px] text-indigo-400"
+              >
+                ひな形（発生率・利用率・単価）を入れる
+              </button>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => patch({ contribution_pathways: [...draft.contribution_pathways, { key: `p${Date.now().toString(36)}`, label: "", formula: "", note: null }] })}
+                className="text-[10px] text-indigo-400"
+              >
+                ＋ 経路を追加
+              </button>
+            )}
+          </div>
+          {draft.contribution_pathways.length === 0 ? (
+            <p className="text-[11px] text-slate-500">未定義。分野に合わせて経路と推計式を定義すると、期末の財政効果率（④b）が算定できます。</p>
+          ) : (
+            <div className="space-y-1.5">
+              {draft.contribution_pathways.map((pw, i) => {
+                const est = draft.fiscal_effect_estimates.find((e) => e.pathway_key === pw.key);
+                const setEst = (over: Partial<NonNullable<typeof est>>) => {
+                  const rows = draft.fiscal_effect_estimates.filter((e) => e.pathway_key !== pw.key);
+                  patch({ fiscal_effect_estimates: [...rows, { pathway_key: pw.key, label: pw.label, annual: est?.annual ?? null, cumulative: est?.cumulative ?? null, basis: est?.basis ?? null, ...over }] });
+                };
+                return (
+                  <div key={pw.key} className="rounded-md border px-3 py-2 grid gap-1.5" style={{ borderColor: "var(--border)", gridTemplateColumns: "1fr 1fr" }}>
+                    <Field label="経路の名称">
+                      <input className={inputCls} style={inputSty} value={pw.label} disabled={!canEdit}
+                        onChange={(e) => patch({ contribution_pathways: draft.contribution_pathways.map((x, k) => k === i ? { ...x, label: e.target.value } : x) })} />
+                    </Field>
+                    <Field label="経路別推計式">
+                      <input className={inputCls} style={inputSty} value={pw.formula} disabled={!canEdit}
+                        placeholder="例: 発生率の抑制幅X × 対象者数 × 1人あたり費用"
+                        onChange={(e) => patch({ contribution_pathways: draft.contribution_pathways.map((x, k) => k === i ? { ...x, formula: e.target.value } : x) })} />
+                    </Field>
+                    <Field label="事前推計 年額（円）">
+                      <input type="number" className={inputCls} style={inputSty} value={est?.annual ?? ""} disabled={!canEdit}
+                        onChange={(e) => setEst({ annual: e.target.value ? Number(e.target.value) : null })} />
+                    </Field>
+                    <Field label="事前推計 計画期間累計（円）">
+                      <input type="number" className={inputCls} style={inputSty} value={est?.cumulative ?? ""} disabled={!canEdit}
+                        onChange={(e) => setEst({ cumulative: e.target.value ? Number(e.target.value) : null })} />
+                    </Field>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <Field label="推計の根拠（X・単価・対象者数など。計画期間内発現分の保守的推計）">
+                        <input className={inputCls} style={inputSty} value={est?.basis ?? ""} disabled={!canEdit}
+                          onChange={(e) => setEst({ basis: e.target.value || null })} />
+                      </Field>
+                    </div>
+                    {canEdit && (
+                      <button
+                        onClick={() => patch({
+                          contribution_pathways: draft.contribution_pathways.filter((_, k) => k !== i),
+                          fiscal_effect_estimates: draft.fiscal_effect_estimates.filter((e) => e.pathway_key !== pw.key),
+                        })}
+                        className="text-[10px] text-slate-500 text-left"
+                      >
+                        この経路を削除
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              <p className="text-[11px] text-slate-400">
+                事前推計の累計: <span className="text-slate-200 font-semibold">{total != null ? `¥${total.toLocaleString()}` : "未入力"}</span>
+                <span className="text-slate-500">（期末の実績は主要施策評価の工程4bで経路ごとに入れます）</span>
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <p className="text-[11px] text-slate-300 font-semibold mb-1">適用除外（評価前に決裁で固定）</p>
+          <div className="flex flex-wrap gap-2 items-end">
+            <Field label="区分">
+              <select className={inputCls} style={{ ...inputSty, width: 220 }} value={draft.judgment_exemption?.kind ?? ""} disabled={!canEdit}
+                onChange={(e) => {
+                  const kind = e.target.value as ExemptionKind | "";
+                  patch({ judgment_exemption: kind ? { kind, reason: draft.judgment_exemption?.reason ?? "", decided_on: draft.judgment_exemption?.decided_on ?? null } : null });
+                }}>
+                <option value="">除外しない（通常の判定）</option>
+                {(Object.keys(EXEMPTION_META) as ExemptionKind[]).map((k) => (
+                  <option key={k} value={k}>{EXEMPTION_META[k].name}</option>
+                ))}
+              </select>
+            </Field>
+            {draft.judgment_exemption && (
+              <>
+                <Field label="理由">
+                  <input className={inputCls} style={{ ...inputSty, width: 320 }} value={draft.judgment_exemption.reason} disabled={!canEdit}
+                    onChange={(e) => patch({ judgment_exemption: { ...draft.judgment_exemption!, reason: e.target.value } })} />
+                </Field>
+                <Field label="決裁日">
+                  <input type="date" className={inputCls} style={{ ...inputSty, width: 140 }} value={draft.judgment_exemption.decided_on ?? ""} disabled={!canEdit}
+                    onChange={(e) => patch({ judgment_exemption: { ...draft.judgment_exemption!, decided_on: e.target.value || null } })} />
+                </Field>
+              </>
+            )}
+          </div>
+          {draft.judgment_exemption && (
+            <p className="text-[10px] text-slate-500 mt-1">{EXEMPTION_META[draft.judgment_exemption.kind].detail}</p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }

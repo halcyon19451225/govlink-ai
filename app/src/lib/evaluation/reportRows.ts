@@ -125,18 +125,29 @@ export interface ReportJudgment {
   pending: boolean;
 }
 
+/**
+ * 値と単位を読める形にする。短い単位（円・%・回・人・件…）は直結し、
+ * 説明的な単位（「実施=1・未実施=0」など）は括弧で添える。
+ */
+export function withUnit(value: number | string | null | undefined, unit: string | null | undefined): string {
+  if (value == null || value === "") return "—";
+  const v = typeof value === "number" ? value.toLocaleString() : String(value);
+  const u = (unit ?? "").trim();
+  if (!u) return v;
+  return u.length <= 4 ? `${v}${u}` : `${v}（${u}）`;
+}
+
 /** 指標行の表示用（報告書・画面で共用） */
 export function indicatorRowText(i: IndicatorSnapshotItem): string[] {
-  const unit = i.unit ?? "";
   const cond =
     i.achievement_condition === "lte" ? "以下" : i.achievement_condition === "eq" ? "同じ" : "以上";
   return [
     `No.${i.category_no}`,
     `${INDICATOR_BY_NO[i.category_no]?.name ?? ""}\n${i.label}`,
-    i.baseline_value != null ? `${i.baseline_value}${unit}` : "—",
-    i.target_value != null ? `${i.target_value}${unit}（${cond}）` : "—",
+    withUnit(i.baseline_value, i.unit),
+    i.target_value != null ? `${withUnit(i.target_value, i.unit)}（${cond}）` : "—",
     i.result_value != null
-      ? `${i.result_value}${unit}`
+      ? withUnit(i.result_value, i.unit)
       : i.result_text
         ? i.result_text
         : "—",
