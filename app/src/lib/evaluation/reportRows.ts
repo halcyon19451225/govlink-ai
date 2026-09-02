@@ -59,6 +59,72 @@ export interface ReportActivityRow {
   completed: string;
 }
 
+/** 様式F7-0 ③ 成果の要約（ベースライン・X・比較の段は 060 以降の入力を待つ） */
+export interface ReportOutcomeSummary {
+  indicator: string;
+  baseline: string;
+  target: string;
+  result: string;
+  /** ベースライン＝施策がなかった場合の自然体推計 */
+  natural_baseline: string;
+  /** X ＝ 実績 − ベースライン（目標との差ではない） */
+  x: string;
+  /** 比較の段 A〜D */
+  comparison_grade: string;
+}
+
+/** 様式F7-0 ④ 初期アウトカムの年次履歴（因果判断の唯一の根拠） */
+export interface ReportAnnualHistoryRow {
+  fiscal_year: string;
+  work: string;
+  indicator: string;
+  result: string;
+  achieved: string;
+  /** その年次評価で記録された「実行／論理」の切り分け */
+  cause_type: string;
+}
+
+/** 様式F7-0 ⑥ 財政効果率 */
+export interface ReportFiscalEffect {
+  /** 寄与経路（分野ごとに定義） */
+  pathways: string;
+  /** 財政効果（計画期間累計） */
+  effect: string;
+  /** 事業費C（同期間累計・人件費按分込み） */
+  cost: string;
+  /** 財政効果率 */
+  rate: string;
+  /** 判定（J・K・保留・適用除外） */
+  mark: string;
+  formula: string;
+  note: string;
+}
+
+/** 様式F7-0 ⑦ 処遇 */
+export interface ReportTreatment {
+  route: string;
+  standard: string;
+  decided: string;
+  /** 標準処遇と異なる場合の理由書（様式H4）の有無 */
+  rationale: string;
+}
+
+/** 報告書の判定（様式F7-0 ②）。保留のときは pattern が null */
+export interface ReportJudgment {
+  /** 記号列（例: A→E→K）。保留なら分かるところまで */
+  path: string;
+  report_no: number | null;
+  report_title: string;
+  state: string;
+  route: string;
+  standard_treatment: string;
+  issue_class: string;
+  approach: string;
+  /** 判定に足りていない問い（保留の理由） */
+  missing: string[];
+  pending: boolean;
+}
+
 /** 指標行の表示用（報告書・画面で共用） */
 export function indicatorRowText(i: IndicatorSnapshotItem): string[] {
   const unit = i.unit ?? "";

@@ -16,23 +16,35 @@ import { buildIndicatorSnapshot, type IndicatorSnapshotItem } from "@/lib/evalua
 import { computeActivityRate } from "@/lib/evaluation/activityStats";
 import { fiscalYearLabel, FUNDING_SOURCES } from "@/lib/measure/indicators";
 import type { ReportKind } from "@/lib/evaluation/reportTemplate";
+import { ISSUE_CLASS_META, ROUTE_META, fiscalEffectRate } from "@/lib/evaluation/judgment";
+import { causeTypeFromWorkFlow, judgeFromFlow } from "@/lib/evaluation/judgmentFromFlow";
 import type {
   ReportActivityRow,
+  ReportAnnualHistoryRow,
   ReportBenchmarkRow,
   ReportCostRow,
   ReportDelegationRow,
+  ReportFiscalEffect,
+  ReportJudgment,
   ReportKeyValue,
+  ReportOutcomeSummary,
   ReportPathRow,
+  ReportTreatment,
   ReportWorkRollupRow,
 } from "@/lib/evaluation/reportRows";
 
 export type {
   ReportActivityRow,
+  ReportAnnualHistoryRow,
   ReportBenchmarkRow,
   ReportCostRow,
   ReportDelegationRow,
+  ReportFiscalEffect,
+  ReportJudgment,
   ReportKeyValue,
+  ReportOutcomeSummary,
   ReportPathRow,
+  ReportTreatment,
   ReportWorkRollupRow,
 } from "@/lib/evaluation/reportRows";
 
@@ -62,6 +74,16 @@ export interface EvaluationReportData {
   costs: ReportCostRow[];
   benchmarks: ReportBenchmarkRow[];
   activities: ReportActivityRow[];
+  /** 様式F7-0 ② 評価過程 */
+  judgment: ReportJudgment;
+  /** 様式F7-0 ③ 成果の要約 */
+  outcome: ReportOutcomeSummary | null;
+  /** 様式F7-0 ④ 初期アウトカムの年次履歴 */
+  annualHistory: ReportAnnualHistoryRow[];
+  /** 様式F7-0 ⑥ 財政効果率 */
+  fiscalEffect: ReportFiscalEffect;
+  /** 様式F7-0 ⑦ 処遇 */
+  treatment: ReportTreatment;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -299,6 +321,126 @@ export async function buildEvaluationReportData(
   const flowKey = ev.flow_decision_path?.flow;
   const flow = getFlow(flowKey);
 
+  // ── 様式F7-0 ② 評価過程（図E1の判定）──────────────────────
+  // 現行フローは図E1の4問と設問が一致しないため、写せるところまで写し、
+  // 足りなければ「判定保留」とする（様式集の正規の状態。処遇は行わない）。
+  const { result: judgment, missing } = judgeFromFlow(flowKey, answers);
+  const judgmentRow: ReportJudgment = judgment
+    ? {
+        path: judgment.path,
+        report_no: judgment.pattern.no,
+        report_title: judgment.pattern.title,
+        state: judgment.pattern.state,
+        route: `${judgment.pattern.route} ${ROUTE_META[judgment.pattern.route].name}（審議: ${ROUTE_META[judgment.pattern.route].review}）`,
+        standard_treatment: judgment.pattern.standardTreatment,
+        issue_class:
+          judgment.pattern.issueClass === "none"
+            ? "（軽微）"
+            : ISSUE_CLASS_META[judgment.pattern.issueClass].name,
+        approach: judgment.pattern.approach,
+        missing: [],
+        pending: false,
+      }
+    : {
+        path: "—",
+        report_no: null,
+        report_title: "判定保留",
+        state: "判定に必要なデータが揃っていない",
+        route: "—（どのルートにも進まない）",
+        standard_treatment: "—（処遇を行わない）",
+        issue_class: ISSUE_CLASS_META.IV.name,
+        approach: "測定設計の立て直し（対照群設計・KPIツリー・比較の段の引き上げ）",
+        missing: missing.length > 0 ? missing : ["①成果は目標値に達したか"],
+        pending: true,
+      };
+
+  // ── 様式F7-0 ③ 成果 ─────────────────────────────────────
+  // ベースライン（自然体推計）・X・比較の段は入力欄が未実装（migration 060 待ち）。
+  // 埋められない欄は「未入力」と刷る。空白のまま提出させないため省略しない。
+  const outcomeNo = kind === "measure" ? 8 : 7;
+  const outcomeItem = indicators.find((i) => i.category_no === outcomeNo);
+  const outcome: ReportOutcomeSummary | null = outcomeItem
+    ? {
+        indicator: outcomeItem.label,
+        baseline:
+          outcomeItem.baseline_value != null
+            ? `${outcomeItem.baseline_value}${outcomeItem.unit ?? ""}`
+            : "—",
+        target:
+          outcomeItem.target_value != null
+            ? `${outcomeItem.target_value}${outcomeItem.unit ?? ""}`
+            : "—",
+        result:
+          outcomeItem.result_value != null
+            ? `${outcomeItem.result_value}${outcomeItem.unit ?? ""}`
+            : (outcomeItem.result_text ?? "—"),
+        natural_baseline: "未入力",
+        x: "未入力（実績 − ベースライン。目標値との差ではない）",
+        comparison_grade: "未入力",
+      }
+    : null;
+
+  // ── 様式F7-0 ④ 初期アウトカムの年次履歴 ─────────────────
+  const annualHistory: ReportAnnualHistoryRow[] =
+    kind === "measure" && ev.measure_design_id
+      ? (
+          await query<{
+            code: string;
+            title: string;
+            fiscal_year: number | null;
+            indicator_snapshot: IndicatorSnapshotItem[] | null;
+            flow_decision_path: { answers?: FlowAnswer[] } | null;
+          }>(
+            `SELECT w.code, w.title, pe.fiscal_year, pe.indicator_snapshot, pe.flow_decision_path
+               FROM program_evaluations pe
+               JOIN measure_works w ON w.id = pe.measure_work_id
+              WHERE pe.project_id = $1 AND w.measure_design_id = $2
+              ORDER BY pe.fiscal_year, w.sort_order`,
+            [projectId, ev.measure_design_id],
+          ).catch(() => [])
+        ).map((r) => {
+          const snap = Array.isArray(r.indicator_snapshot) ? r.indicator_snapshot : [];
+          const item = snap.find((i) => i.category_no === 7);
+          return {
+            fiscal_year: r.fiscal_year != null ? fiscalYearLabel(r.fiscal_year) : "—",
+            work: `${r.code} ${r.title}`,
+            indicator: item?.label ?? "—",
+            result:
+              item?.result_value != null
+                ? `${item.result_value}${item.unit ?? ""}`
+                : (item?.result_text ?? "—"),
+            achieved: item?.achieved == null ? "—" : item.achieved ? "達成" : "未達",
+            cause_type: causeTypeFromWorkFlow(r.flow_decision_path?.answers ?? []),
+          };
+        })
+      : [];
+
+  // ── 様式F7-0 ⑥ 財政効果率 ───────────────────────────────
+  // 財政効果（貨幣換算の便益）は入力欄が未実装（migration 060 待ち）。
+  // 算定できない間は「保留」と明示する（推計不能→処遇せず測定課題Ⅳ）。
+  const totalCost = costRows.reduce((s, c) => s + (c.total_amount ?? 0), 0);
+  const fe = fiscalEffectRate({ fiscalEffect: null, totalCost: totalCost > 0 ? totalCost : null });
+  const fiscalEffect: ReportFiscalEffect = {
+    pathways: "未入力（分野ごとに定義した寄与経路と経路別推計式を記載する）",
+    effect: "未入力",
+    cost: totalCost > 0 ? `¥${totalCost.toLocaleString()}` : "—",
+    rate: fe.rate != null ? `${fe.rate}%` : "算定不能",
+    mark: fe.mark ?? "保留（測定課題Ⅳとして記録し、処遇は行わない）",
+    formula: fe.formula,
+    note: fe.note,
+  };
+
+  // ── 様式F7-0 ⑦ 処遇 ─────────────────────────────────────
+  const treatment: ReportTreatment = {
+    route: judgmentRow.route,
+    standard: judgmentRow.standard_treatment,
+    decided: ev.result ?? "—",
+    rationale:
+      judgment && ev.result && !judgment.pattern.standardTreatment.includes(ev.result)
+        ? "要（標準処遇と異なる決定。様式H4の理由書を添付する）"
+        : "—",
+  };
+
   const subject =
     kind === "work"
       ? `${ev.work_code ?? ""} ${ev.work_title ?? ""}`.trim()
@@ -359,5 +501,10 @@ export async function buildEvaluationReportData(
     costs,
     benchmarks,
     activities,
+    judgment: judgmentRow,
+    outcome,
+    annualHistory,
+    fiscalEffect,
+    treatment,
   };
 }

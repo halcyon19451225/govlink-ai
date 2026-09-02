@@ -47,6 +47,14 @@ check("reportTemplate.ts がある", tpl.length > 0);
 check("様式は差し替え前提だと明記している", /様式は差し替え前提/.test(tpl));
 check("様式にDB接続やSQLを持ち込んでいない", !/from "@\/lib\/db"/.test(tpl) && !/SELECT /.test(tpl));
 check("様式のバージョンを持つ（報告書に刷る）", /REPORT_FORM_VERSION/.test(tpl));
+check("正本（様式集）の所在を明記している", /coe-eval-report-forms\.md/.test(tpl));
+
+// ── 1b. 判定の体系（図E1・様式No.1〜9）──────────
+const judg = read(join(LIB, "judgment.ts"));
+check("judgment.ts がある", judg.length > 0);
+check("判定は純粋関数（DBもUIも持たない）", !/from "@\/lib\/db"/.test(judg) && !/server-only/.test(judg));
+check("判定保留を扱う（回答不足なら null）", /判定保留/.test(judg) && /return null/.test(judg));
+check("財政効果率はベースライン差である旨を明記", /目標値との差ではない/.test(judg));
 
 // ── 2. 材料（記録を写す・再判定しない）───────────
 check("reportData.ts がある", data.length > 0);
@@ -56,6 +64,11 @@ check("判定をやり直さない（achievement の再計算を持ち込まな�
   !/calcAchievement/.test(data) && !/isAchieved/.test(data));
 check("判定経路は保存された flow_decision_path を写す", /flow_decision_path/.test(data));
 check("システム判定の上書きを報告書に残す", /システム判定「/.test(data));
+check("様式F7-0 の②〜⑦を材料として組む",
+  /judgment: judgmentRow/.test(data) && /annualHistory/.test(data) &&
+  /fiscalEffect/.test(data) && /treatment/.test(data));
+check("判定できないときは保留にする（処遇を行わない）", /pending: true/.test(data));
+check("年次履歴に実行／論理の切り分けを載せる", /causeTypeFromWorkFlow/.test(data));
 
 // ── 3. 描画（表は実データ・暫定の明示）───────────
 check("reportDocx.ts がある", docx.length > 0);
@@ -111,19 +124,52 @@ try {
   check("すべての節に趣旨（記入要領）がある",
     w.sections.every((x) => x.note) && s.sections.every((x) => x.note));
 
+  // 様式F7-0 共通ヘッダ ①〜⑦（主要施策評価）
+  const HEADER = ["①", "②", "③", "④", "⑤", "⑥", "⑦"];
+  check("主要施策評価報告書に様式F7-0の共通ヘッダ①〜⑦が揃っている",
+    HEADER.every((h) => s.sections.some((x) => x.mark === h)));
+  check("共通ヘッダの記入要領（HEADER_FIELDS）を持つ",
+    Array.isArray(m.HEADER_FIELDS) && m.HEADER_FIELDS.length === 7 &&
+    m.HEADER_FIELDS.every((f) => f.mark && f.name && f.howto));
+  // 報告書A〜E欄
+  const ABCDE = ["A", "B", "C", "D", "E"];
+  check("主要施策評価報告書に報告書A〜E欄が揃っている",
+    ABCDE.every((k) => s.sections.some((x) => x.mark === k)));
+  check("報告書No.1〜9の記入要領（B・C・D・E欄）が揃っている",
+    [1,2,3,4,5,6,7,8,9].every((n) => {
+      const g = m.REPORT_NO_GUIDE[n];
+      return g && g.issueForm && Array.isArray(g.steps) && g.steps.length >= 3 && g.reflect && g.caution;
+    }));
+  check("A欄（判定の意味）は判定から機械生成する",
+    typeof m.patternMeaningText === "function" &&
+    /報告書No\.9/.test(m.patternMeaningText(9)) && /標準処遇/.test(m.patternMeaningText(9)));
+  check("判定保留のとき処遇を行わない旨の定型文がある",
+    /処遇/.test(m.JUDGMENT_PENDING_TEXT) && /判定保留/.test(m.JUDGMENT_PENDING_TEXT));
+
   // アカウンタビリティ上、落としてはいけない節
   const wKinds = w.sections.flatMap((x) => x.blocks.map((b) => b.kind));
   check("取組評価報告書に指標実績・判定経路・委任がある",
     wKinds.includes("indicator_table") && wKinds.includes("path_table") && wKinds.includes("delegation_table"));
+  check("取組評価報告書に実施記録（実行起因の切り分けの材料）がある",
+    wKinds.includes("activity_table"));
   const sKinds = s.sections.flatMap((x) => x.blocks.map((b) => b.kind));
   check("主要施策評価報告書に指標実績・判定経路・取組集約・委任がある",
     sKinds.includes("indicator_table") && sKinds.includes("path_table") &&
     sKinds.includes("work_rollup_table") && sKinds.includes("delegation_table"));
+  check("主要施策評価報告書に評価過程・成果・年次履歴・財政効果率・処遇がある",
+    ["judgment", "outcome_summary", "annual_history", "fiscal_effect", "treatment"]
+      .every((k) => sKinds.includes(k)));
   check("主要施策評価報告書に処遇の節がある",
     s.sections.some((x) => x.heading.includes("処遇")));
+  check("年次履歴は空でも省略しない（因果判断の唯一の根拠）",
+    s.sections.every((x) => x.blocks.every((b) =>
+      b.kind !== "annual_history" || b.omitWhenEmpty !== true)));
   check("指標実績・判定経路は空でも省略しない（空欄で出す）",
     w.sections.every((x) => x.blocks.every((b) =>
       !["indicator_table", "path_table"].includes(b.kind) || b.omitWhenEmpty !== true)));
+  check("記述欄は様式側で本文の出どころを指定する",
+    [...w.sections, ...s.sections].every((x) => x.blocks.every((b) =>
+      b.kind !== "text" || (Array.isArray(b.fields) && b.fields.length > 0))));
   check("formOf が種別で様式を引ける",
     m.formOf("work").kind === "work" && m.formOf("measure").kind === "measure");
 } finally {
@@ -167,6 +213,26 @@ try {
     delegations: [{ origin: "取組 W-1", title: "所掌の空白", detail: "", root_cause: "", status: "未対応（上位評価へ委任中）" }],
     workRollup: [], costs: [{ fiscal_year: "令和8年度", total: "¥350,000", funding: "一般財源 ¥350,000", note: "" }],
     benchmarks: [], activities: [{ title: "仕様書の改訂", planned: "1件", completed: "0件" }],
+    judgment: {
+      path: "A→E→K", report_no: 8, report_title: "目標達成・効率化報告書（圧縮・統廃合）",
+      state: "達成・寄与あり。財政効果率100%未満", route: "D 構造（費用再設計）（審議: 費用計画の承認）",
+      standard_treatment: "達成水準は維持目標へ切り替え、費用を圧縮して他施策へ再配分",
+      issue_class: "Ⅲ 効率", approach: "ポートフォリオ4象限 → ECRS", missing: [], pending: false,
+    },
+    outcome: {
+      indicator: "要支援認定率", baseline: "5.1%", target: "4.8%", result: "4.7%",
+      natural_baseline: "未入力", x: "未入力", comparison_grade: "未入力",
+    },
+    annualHistory: [{
+      fiscal_year: "令和8年度", work: "W-1 取組", indicator: "参加継続率",
+      result: "62%", achieved: "未達", cause_type: "実行（量が出ない）",
+    }],
+    fiscalEffect: {
+      pathways: "未入力", effect: "未入力", cost: "¥350,000", rate: "算定不能",
+      mark: "保留（測定課題Ⅳとして記録し、処遇は行わない）",
+      formula: "財政効果 ÷ 事業費 × 100", note: "財政効果が未入力のため算定できません",
+    },
+    treatment: { route: "D 構造", standard: "圧縮し再配分", decided: "継続する", rationale: "要" },
   };
   const isZip = (b) => b.length > 5000 && b[0] === 0x50 && b[1] === 0x4b;
   const wDoc = await mod.buildEvaluationReportDocx({ ...base, kind: "work", frozen: true });
@@ -181,9 +247,24 @@ try {
   const empty = await mod.buildEvaluationReportDocx({
     ...base, kind: "work", frozen: false,
     indicators: [], path: [], delegations: [], costs: [], activities: [],
+    outcome: null, annualHistory: [],
     narrative: { findings: "", barrier_factors: "", improvement_actions: "", next_steps: "", result: "" },
   });
   check("材料が空でも報告書が組める", isZip(empty));
+
+  // 判定保留（図E1の4問が揃っていない）でも報告書が出せること。
+  // 「判定できないので出せません」では、アカウンタビリティ上いちばん困る。
+  const pending = await mod.buildEvaluationReportDocx({
+    ...base, kind: "measure", frozen: false,
+    judgment: {
+      path: "—", report_no: null, report_title: "判定保留",
+      state: "判定に必要なデータが揃っていない", route: "—（どのルートにも進まない）",
+      standard_treatment: "—（処遇を行わない）", issue_class: "Ⅳ 測定",
+      approach: "測定設計の立て直し",
+      missing: ["②目標値に近づいているか（3か年の傾向）"], pending: true,
+    },
+  });
+  check("判定保留でも報告書が組める", isZip(pending));
 } finally {
   rmSync(work2, { recursive: true, force: true });
   rmSync(bundleOut, { force: true });
