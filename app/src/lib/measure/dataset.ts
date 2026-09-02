@@ -143,7 +143,10 @@ export interface MeasureJudgmentSetup {
   preconditions: MeasurePrecondition[];
 }
 
-/** 様式H2 前提条件表の1行（measure_designs.preconditions） */
+/**
+ * 様式H2 前提条件表の1行（measure_designs.preconditions）— 定義だけ。
+ * 年次の確認結果は評価側（program_evaluations.precondition_checks・062）に持つ。
+ */
 export interface MeasurePrecondition {
   id: string;
   /** 前提（崩れると施策全体が止まる急所） */
@@ -152,10 +155,6 @@ export interface MeasurePrecondition {
   check_method: string;
   /** 崩れた場合の対応（発動条件を含む） */
   fallback: string;
-  /** 直近の年次確認の結果 */
-  status: "unchecked" | "holds" | "broken";
-  checked_fiscal_year: number | null;
-  note: string | null;
 }
 
 export interface MeasureDataset {

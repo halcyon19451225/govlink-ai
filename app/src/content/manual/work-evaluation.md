@@ -5,8 +5,8 @@ menu_path: /projects/[id]/work-evaluation
 tables: [program_evaluations, measure_works, measure_indicators, measure_indicator_results, measure_activity_tasks, schedule_tasks, evaluation_delegations, project_pdca_checkpoints]
 apis: [/api/admin/projects/[id]/evaluations, /api/admin/projects/[id]/measure-design/[measureId]/dataset/results, /api/admin/projects/[id]/measure-design/[measureId]/dataset/activity-rate]
 ai_tasks: []
-checks: [check:evalflow, check:evalresults]
-migrations: [057, 058]
+checks: [check:evalflow, check:evalresults, check:evaljudgment]
+migrations: [057, 058, 060, 062]
 upstream: [measure-design, schedule, report-requests]
 downstream: [program-evaluation, improvement-actions, plan-document]
 updated: 2026-09-02
@@ -94,6 +94,10 @@ flowchart LR
 
 1. **実績の確認** — 当該年度の指標実績が未入力ならその場で記入できます。
    No.5（アクティビティ）は**タスク完了実績からの自動集計**で、手入力は不要です。
+1.5. **前提条件の確認（様式H2）** — 施策に前提条件表（施策構築のデータセット「前提条件表」）が
+   あるときだけ出ます。前提ごとに「成立／崩れている」を確認方法に沿って記録します（不成立は
+   確認した事実が必須）。**承認時に、崩れた前提ごとに改善アクション（出所: 前提条件の不成立）が
+   自動起票**され、期末を待たず「崩れた場合の対応」を起動します。前提が無い施策では飛ばされます。
 2. **設問** — 体制（No.4）→ 実施状況（No.5・自動提示）→ 到達と質（No.10・11）→
    取組結果（No.6・自動提示）→ 初期アウトカム（No.7・自動提示）→ 取組への帰属
    （No.13・実験設計。比較データ未取得なら**暫定P判定**を選べます）→ 年次コスト
@@ -112,3 +116,5 @@ flowchart LR
   展開計算で数えています。
 - **委任した課題はどこへ行くか** — 主要施策毎評価の冒頭に一覧で出て、
   そこで「扱った／次期計画へ引き継ぐ」が記録されます。
+- **前提条件の確認が出てこない** — その施策に前提条件表（H2）が未設定です。新設・移植・
+  実行起因で再設計した施策には、施策構築のデータセットで 3〜5 項目を設定してください。

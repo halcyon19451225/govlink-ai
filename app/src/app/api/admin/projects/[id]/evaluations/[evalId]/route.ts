@@ -252,6 +252,53 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         }
       }
 
+      // ③ 前提条件（様式H2・062）が崩れていれば改善アクションを自動起票し、
+      //    期末を待たずに「崩れた場合の対応」を起動する。同一評価からの二重起票は防ぐ
+      if (firstApproval.measure_design_id) {
+        const pcRow = await queryOne<{
+          precondition_checks: { id: string; condition: string; state: string; note: string | null }[] | null;
+          preconditions: { id: string; condition: string; check_method: string; fallback: string }[] | null;
+          work_code: string | null;
+          owner_department: string | null;
+        }>(
+          `SELECT pe.precondition_checks, md.preconditions, w.code AS work_code, w.owner_department
+             FROM program_evaluations pe
+             JOIN measure_designs md ON md.id = pe.measure_design_id
+             LEFT JOIN measure_works w ON w.id = pe.measure_work_id
+            WHERE pe.id = $1`,
+          [params.evalId],
+        );
+        const checks = Array.isArray(pcRow?.precondition_checks) ? pcRow!.precondition_checks : [];
+        const defs = Array.isArray(pcRow?.preconditions) ? pcRow!.preconditions : [];
+        for (const c of checks.filter((x) => x.state === "broken")) {
+          const def = defs.find((x) => x.id === c.id);
+          await query(
+            `INSERT INTO improvement_actions
+               (project_id, source, program_evaluation_id, title, detail, owner_department, fiscal_year,
+                status, reflect_measure_design_id)
+             SELECT $1, 'precondition', $2, $3, $4, $5, $6, 'proposed', $7
+              WHERE NOT EXISTS (
+                SELECT 1 FROM improvement_actions
+                 WHERE program_evaluation_id = $2 AND source = 'precondition' AND title = $3)`,
+            [
+              params.id,
+              params.evalId,
+              `前提条件の不成立: ${c.condition}`.slice(0, 200),
+              [
+                pcRow?.work_code ? `取組 ${pcRow.work_code} の年次評価（前提確認）で不成立と確認。` : "年次評価（前提確認）で不成立と確認。",
+                c.note ? `確認した事実: ${c.note}` : null,
+                def?.fallback ? `崩れた場合の対応（前提条件表）: ${def.fallback}` : null,
+                "期末を待たず、進捗管理ルール（実施主体の交換・工程の繰下げ・取組の差替検討）を起動する。",
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              pcRow?.owner_department ?? null,
+              firstApproval.fiscal_year,
+              firstApproval.measure_design_id,
+            ],
+          );
+        }
+      }
       // ② 評価系PDCAチェックポイントの自動完了（設計 §2-5 — PDCA全体図は存置し、
       //    評価の承認がチェックポイントの完了操作を兼ねる。手動完了も従来どおり可能）
       if (firstApproval.fiscal_year != null) {

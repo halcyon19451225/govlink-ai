@@ -281,6 +281,30 @@ try {
   const tabs = read(join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "plan-reflection", "ReflectionTabs.tsx"));
   check("G4 の入力欄は内側コンポーネントではなく関数（フォーカス喪失の回避）", /const field = \(label: string/.test(tabs) && !/<Field /.test(tabs));
 
+  // ── 8. 様式H2 前提条件表（migration 062）────────────
+  const mig62 = read(join(ROOT, "infra", "migrations", "062_precondition_checks.sql"));
+  check("migration 062 がある", mig62.length > 0 && !/^\s*(BEGIN|COMMIT)\s*;/m.test(mig62));
+  check("年次の前提確認は評価側（program_evaluations.precondition_checks）", /ADD COLUMN IF NOT EXISTS precondition_checks/.test(mig62));
+  check("改善アクションの出所に precondition を追加（上位集合）", /'precondition'/.test(mig62) && /'handover'/.test(mig62) && /'improvement_dialogue'/.test(mig62));
+  check("060 の preconditions は定義だけ（status を施策側に持たない）", !/checked_fiscal_year/.test(mig));
+  const workWizard = read(join(APP_ROOT, "src", "components", "program-eval", "WorkEvaluationWizard.tsx"));
+  check("取組評価ウィザードに前提確認フェーズがある", /phase === "preconditions"/.test(workWizard));
+  check("前提が無ければ前提確認を飛ばす", /preconditions\.length > 0\) \{\s*setPhase\("preconditions"\)/.test(workWizard));
+  check("不成立には確認した事実が必須", /不成立の前提には、確認した事実を記入してください/.test(workWizard));
+  check("保存本文に precondition_checks を載せる", /precondition_checks: preconditions\.map/.test(workWizard));
+  check("POST が precondition_checks を受けて保存する", /precondition_checks:/.test(post) && /JSON\.stringify\(d\.precondition_checks \?\? \[\]\)/.test(post));
+  check("初回承認で不成立の前提ごとに改善アクションを自動起票（source=precondition・二重防止）",
+    /'precondition'/.test(patch) && /WHERE NOT EXISTS \(\s*SELECT 1 FROM improvement_actions\s*WHERE program_evaluation_id = \$2 AND source = 'precondition'/.test(patch));
+  check("承認の副作用は初回だけ（firstApproval の中）", patch.indexOf("'precondition'") > patch.indexOf("if (firstApproval) {"));
+  const panel = read(join(APP_ROOT, "src", "components", "measure", "MeasureDatasetPanel.tsx"));
+  check("施策データセットに前提条件表（H2）の区画がある", /PreconditionSection/.test(panel) && /前提条件表（様式H2）/.test(panel));
+  check("前提の上限は8（3〜5項目に限定）", /rows\.length < 8/.test(panel) && /\.max\(8\)/.test(dsRoute));
+  check("前提の状態は評価側から合成（施策側を書き換えない）", /loadPreconditionStatus/.test(dsRoute) && /precondition_checks AS checks/.test(dsRoute));
+  check("2回以上不成立で取組差替の検討を促す", /2回以上不成立/.test(panel));
+  check("H2 docx API がある（施策1件・履歴つき）", /export async function POST/.test(read(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "plan-reflection", "h2", "[measureId]", "route.ts"))));
+  const impTypes = read(join(APP_ROOT, "src", "lib", "improvement", "types.ts"));
+  check("改善アクションの出所ラベルに precondition がある", /precondition: \{ label: "前提条件の不成立"/.test(impTypes));
+
   const baseReport = {
     evaluation_id: "e1", measure_id: "m1", measure_title: "施策A", owner_department: "福祉課", status: "approved", frozen: true,
     fiscal_year: 2028, evaluated_at: "2029-05-01", evaluated_by: "担当", path: "A→E→K", report_no: 8, report_title: "目標達成・効率化報告書（圧縮・統廃合）",

@@ -133,11 +133,48 @@ async function loadDataset(projectId: string, measureId: string): Promise<Measur
   };
 }
 
+/**
+ * 前提条件（H2）の年次確認の最新状態 — 評価側（program_evaluations.precondition_checks・062）から引く。
+ * 施策側の preconditions は定義だけを持ち、状態はここで合成する（施策構築のデータを評価が書き換えない）。
+ */
+async function loadPreconditionStatus(projectId: string, measureId: string) {
+  const rows = await query<{
+    fiscal_year: number | null;
+    status: string;
+    work_code: string | null;
+    checks: { id: string; state: string; note: string | null }[] | null;
+  }>(
+    `SELECT pe.fiscal_year, pe.status, w.code AS work_code, pe.precondition_checks AS checks
+       FROM program_evaluations pe
+       LEFT JOIN measure_works w ON w.id = pe.measure_work_id
+      WHERE pe.project_id = $1 AND pe.measure_design_id = $2
+        AND pe.measure_work_id IS NOT NULL
+        AND jsonb_array_length(COALESCE(pe.precondition_checks, '[]'::jsonb)) > 0
+      ORDER BY pe.fiscal_year DESC NULLS LAST,
+               CASE pe.status WHEN 'approved' THEN 0 WHEN 'in_review' THEN 1 ELSE 2 END,
+               pe.created_at DESC`,
+    [projectId, measureId],
+  ).catch(() => []);
+  const latest: Record<string, { status: string; fiscal_year: number | null; note: string | null; work_code: string | null; approved: boolean }> = {};
+  const history: Record<string, { fiscal_year: number | null; status: string; note: string | null; work_code: string | null }[]> = {};
+  for (const r of rows) {
+    for (const c of r.checks ?? []) {
+      if (c.state === "unchecked") continue;
+      (history[c.id] ??= []).push({ fiscal_year: r.fiscal_year, status: c.state, note: c.note, work_code: r.work_code });
+      if (!latest[c.id]) latest[c.id] = { status: c.state, fiscal_year: r.fiscal_year, note: c.note, work_code: r.work_code, approved: r.status === "approved" };
+    }
+  }
+  return { latest, history };
+}
+
 async function respond(projectId: string, measureId: string, title: string) {
-  const dataset = await loadDataset(projectId, measureId);
+  const [dataset, preconditionStatus] = await Promise.all([
+    loadDataset(projectId, measureId),
+    loadPreconditionStatus(projectId, measureId),
+  ]);
   const gaps = datasetGaps(dataset, title, fundingMismatchYears);
   return NextResponse.json({
-    data: { ...dataset, gaps, ready: datasetReady(gaps) },
+    data: { ...dataset, preconditionStatus, gaps, ready: datasetReady(gaps) },
     error: null,
   });
 }
@@ -447,6 +484,7 @@ const setupSchema = z.object({
     })
     .nullable()
     .optional(),
+  // 様式H2: 「崩れると施策全体が止まる急所」に限定し 3〜5 項目（上限8）
   preconditions: z
     .array(
       z.object({
@@ -454,9 +492,6 @@ const setupSchema = z.object({
         condition: z.string().min(1).max(300),
         check_method: z.string().max(300),
         fallback: z.string().max(500),
-        status: z.enum(["unchecked", "holds", "broken"]).optional(),
-        checked_fiscal_year: z.number().int().nullish(),
-        note: z.string().max(500).nullish(),
       }),
     )
     .max(8)
@@ -686,19 +721,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (st.contribution_pathways) add("contribution_pathways", JSON.stringify(st.contribution_pathways));
       if (st.fiscal_effect_estimates) add("fiscal_effect_estimates", JSON.stringify(st.fiscal_effect_estimates));
       if (st.judgment_exemption !== undefined) add("judgment_exemption", st.judgment_exemption ? JSON.stringify(st.judgment_exemption) : null);
-      if (st.preconditions) {
-        add(
-          "preconditions",
-          JSON.stringify(
-            st.preconditions.map((pc) => ({
-              ...pc,
-              status: pc.status ?? "unchecked",
-              checked_fiscal_year: pc.checked_fiscal_year ?? null,
-              note: pc.note ?? null,
-            })),
-          ),
-        );
-      }
+      if (st.preconditions) add("preconditions", JSON.stringify(st.preconditions));
       if (sets.length > 0) {
         vals.push(params.measureId);
         await client.query(

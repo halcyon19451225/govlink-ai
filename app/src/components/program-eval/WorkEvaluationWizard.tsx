@@ -28,7 +28,7 @@ import {
 import { isAchieved } from "@/lib/stats/achievement";
 import { INDICATOR_BY_NO, fiscalYearLabel } from "@/lib/measure/indicators";
 import { latestResult, resultDisplay, type IndicatorResultRow } from "@/lib/measure/results";
-import type { MeasureIndicatorRow, MeasureCostYear } from "@/lib/measure/dataset";
+import type { MeasureIndicatorRow, MeasureCostYear, MeasurePrecondition } from "@/lib/measure/dataset";
 
 export interface WizardWork {
   id: string;
@@ -97,7 +97,11 @@ export default function WorkEvaluationWizard({
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // フローの進行
-  const [phase, setPhase] = useState<"results" | "steps" | "confirm">("results");
+  // 前提確認（様式H2）は実績の確認のあと、設問の前に挟む。前提が無い施策では飛ばす
+  const [phase, setPhase] = useState<"results" | "preconditions" | "steps" | "confirm">("results");
+  const [preconditions, setPreconditions] = useState<MeasurePrecondition[]>([]);
+  /** 前提ごとの年次確認（id → 成立／不成立 と根拠） */
+  const [preChecks, setPreChecks] = useState<Record<string, { status: "holds" | "broken"; note: string }>>({});
   const [stepId, setStepId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<FlowAnswer[]>([]);
   const [choice, setChoice] = useState("");
@@ -118,7 +122,7 @@ export default function WorkEvaluationWizard({
         fetch(`${base}/activity-rate?workId=${work.id}&fiscalYear=${fiscalYear}`, { cache: "no-store" }),
       ]);
       const ds = (await dsRes.json()) as {
-        data: { indicators: MeasureIndicatorRow[]; costYears: MeasureCostYear[] } | null;
+        data: { indicators: MeasureIndicatorRow[]; costYears: MeasureCostYear[]; setup?: { preconditions?: MeasurePrecondition[] } } | null;
         error: string | null;
       };
       if (!ds.data) {
@@ -127,6 +131,7 @@ export default function WorkEvaluationWizard({
       }
       setIndicators(ds.data.indicators);
       setCostYears(ds.data.costYears);
+      setPreconditions(ds.data.setup?.preconditions ?? []);
       const rj = (await resRes.json()) as { data: IndicatorResultRow[] | null };
       if (rj.data) setResults(rj.data);
       const aj = (await rateRes.json()) as { data: ActivityRate | null };
@@ -218,6 +223,11 @@ export default function WorkEvaluationWizard({
   const step: FlowStep | null = stepId ? (flow.steps[stepId] ?? null) : null;
 
   const startSteps = () => {
+    // 前提条件表（H2）があれば、設問の前に年次の前提確認を挟む
+    if (phase === "results" && preconditions.length > 0) {
+      setPhase("preconditions");
+      return;
+    }
     setPhase("steps");
     setAnswers([]);
     setChoice("");
@@ -274,7 +284,7 @@ export default function WorkEvaluationWizard({
 
   const goBack = () => {
     if (answers.length === 0) {
-      setPhase("results");
+      setPhase(preconditions.length > 0 ? "preconditions" : "results");
       setStepId(null);
       return;
     }
@@ -317,6 +327,13 @@ export default function WorkEvaluationWizard({
           measure_design_id: measure.id,
           measure_work_id: work.id,
           delegations: delegationItems,
+          // 様式H2 年次の前提確認（062）。前提の定義は施策側のまま、結果だけを評価側に持つ
+          precondition_checks: preconditions.map((pc) => ({
+            id: pc.id,
+            condition: pc.condition,
+            state: preChecks[pc.id]?.status ?? "unchecked",
+            note: preChecks[pc.id]?.note?.trim() || null,
+          })),
           flow_decision_path: {
             flow: flow.key,
             tier: flow.tier,
@@ -526,6 +543,93 @@ export default function WorkEvaluationWizard({
     );
   }
 
+  // ─── フェーズ1.5: 前提確認（様式H2 — 期末を待たずに軌道修正する仕掛け）──────
+  if (phase === "preconditions") {
+    const undecided = preconditions.filter((pc) => !preChecks[pc.id]);
+    const brokenWithoutNote = preconditions.filter((pc) => preChecks[pc.id]?.status === "broken" && !preChecks[pc.id]?.note?.trim());
+    return (
+      <div className="rounded-2xl border p-6 space-y-4" style={cardStyle}>
+        {header}
+        <div>
+          <h4 className="text-xs font-semibold text-slate-300">前提条件の確認（様式H2）</h4>
+          <p className="text-[11px] text-slate-500 mt-1">
+            この施策が機能する前提（崩れると施策全体が止まる急所）が、{fiscalYearLabel(fiscalYear)}に成立していたかを、
+            確認方法に沿って機械的に確認します。崩れていれば、承認時に改善アクションが自動起票され、
+            期末を待たずに「崩れた場合の対応」を起動します。
+          </p>
+        </div>
+        <div className="space-y-2">
+          {preconditions.map((pc, i) => {
+            const cur = preChecks[pc.id];
+            return (
+              <div key={pc.id} className="rounded-lg border p-3 space-y-1.5" style={{ borderColor: cur?.status === "broken" ? "#ef444460" : "var(--border)" }}>
+                <p className="text-xs font-semibold text-slate-100">前提 {i + 1}: {pc.condition}</p>
+                <p className="text-[11px] text-slate-500">確認方法: {pc.check_method || "—"}</p>
+                <p className="text-[11px] text-slate-500">崩れた場合の対応: {pc.fallback || "—"}</p>
+                <div className="flex gap-1.5">
+                  {(
+                    [
+                      { v: "holds", label: "成立している", tone: "good" },
+                      { v: "broken", label: "崩れている（不成立）", tone: "bad" },
+                    ] as const
+                  ).map((o) => {
+                    const active = cur?.status === o.v;
+                    const tone = TONE[o.tone]!;
+                    return (
+                      <button
+                        key={o.v}
+                        type="button"
+                        onClick={() => setPreChecks((prev) => ({ ...prev, [pc.id]: { status: o.v, note: prev[pc.id]?.note ?? "" } }))}
+                        className="text-[11px] px-2.5 py-1 rounded-lg"
+                        style={{
+                          background: active ? tone.bg : "var(--bg-primary)",
+                          border: `1px solid ${active ? tone.color : "var(--border)"}`,
+                          color: active ? tone.color : "#94a3b8",
+                        }}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {cur && (
+                  <input
+                    className={inputClass}
+                    style={inputStyle}
+                    placeholder={cur.status === "broken" ? "確認した事実（必須。例: 委託契約が未締結・回収率 30%）" : "確認した事実（任意。例: 契約締結済み 4/1）"}
+                    value={cur.note}
+                    onChange={(e) => setPreChecks((prev) => ({ ...prev, [pc.id]: { status: cur.status, note: e.target.value } }))}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {error && <p className="text-xs text-rose-400">{error}</p>}
+        <div className="flex justify-between">
+          <button type="button" onClick={() => setPhase("results")} className="text-xs text-slate-400">← 戻る</button>
+          <button
+            type="button"
+            onClick={() => {
+              if (undecided.length > 0) { setError("すべての前提について成立／不成立を選んでください"); return; }
+              if (brokenWithoutNote.length > 0) { setError("不成立の前提には、確認した事実を記入してください"); return; }
+              setError(null);
+              setPhase("steps");
+              setAnswers([]);
+              setChoice("");
+              setNote("");
+              setStepId(nextAvailableStep(flow, null, presentCats));
+            }}
+            className="text-sm font-semibold px-4 py-2 rounded-lg"
+            style={{ background: "#6366f1", color: "#fff" }}
+          >
+            設問に進む →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ─── フェーズ3: 確認・保存 ─────────────────────────────────
   if (phase === "confirm") {
     const delegationAnswer = answers.find((a) => a.step_id === "delegation");
@@ -551,6 +655,19 @@ export default function WorkEvaluationWizard({
             </div>
           ))}
         </div>
+        {preconditions.length > 0 && (
+          <div className="rounded-lg border px-3 py-2" style={{ borderColor: preconditions.some((pc) => preChecks[pc.id]?.status === "broken") ? "#ef444460" : "var(--border)" }}>
+            <p className="text-[11px] font-semibold text-slate-300">前提条件の確認（H2）</p>
+            {preconditions.map((pc) => (
+              <p key={pc.id} className="text-[11px] mt-0.5" style={{ color: preChecks[pc.id]?.status === "broken" ? "#f87171" : "#cbd5e1" }}>
+                {preChecks[pc.id]?.status === "broken" ? "✗ 不成立" : "○ 成立"}: {pc.condition}{preChecks[pc.id]?.note ? `（${preChecks[pc.id]!.note}）` : ""}
+              </p>
+            ))}
+            {preconditions.some((pc) => preChecks[pc.id]?.status === "broken") && (
+              <p className="text-[10px] text-slate-500 mt-1">承認時に「崩れた場合の対応」が改善アクションとして自動起票されます。</p>
+            )}
+          </div>
+        )}
         {items.length > 0 && (
           <div className="rounded-lg border px-3 py-2" style={{ borderColor: "#f59e0b60", background: "#f59e0b0d" }}>
             <p className="text-[11px] font-semibold" style={{ color: "#fbbf24" }}>

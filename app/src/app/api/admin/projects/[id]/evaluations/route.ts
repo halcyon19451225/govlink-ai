@@ -99,6 +99,20 @@ const bodySchema = z.object({
   // 図E1の判定と処遇（fig7e1・060）。report_no/route/標準処遇はサーバーで導く
   ...judgmentBodySchema.shape,
   ...treatmentBodySchema.shape,
+  // 様式H2 年次の前提確認（062）。前提の定義は施策側、結果は評価側
+  precondition_checks: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(40),
+        condition: z.string().max(300),
+        // 評価の status と語彙を混ぜないよう state と呼ぶ（check:vocab の取り違え防止）
+        state: z.enum(["holds", "broken", "unchecked"]),
+        note: z.string().max(1000).nullable().optional(),
+      }),
+    )
+    .max(8)
+    .optional()
+    .nullable(),
 });
 
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -230,11 +244,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         checkpoint_id, kpi_snapshot, computed_achievement_rate,
         measure_work_id, indicator_snapshot,
         judgment, judgment_path, report_no, route, standard_treatment,
-        decided_treatment, rationale_required, rationale, comparison_grade, fiscal_effect)
+        decided_treatment, rationale_required, rationale, comparison_grade, fiscal_effect,
+        precondition_checks)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
              COALESCE($13::uuid[], '{}'::uuid[]), $14, $15, $16, $17::jsonb, $18,
              $19, $20::jsonb,
-             $21::jsonb, $22, $23, $24, $25, $26, $27, $28, $29, $30::jsonb)
+             $21::jsonb, $22, $23, $24, $25, $26, $27, $28, $29, $30::jsonb,
+             $31::jsonb)
      RETURNING id`,
     [
       params.id,
@@ -267,6 +283,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       jd.rationale,
       jd.comparison_grade,
       jd.fiscal_effect ? JSON.stringify(jd.fiscal_effect) : null,
+      JSON.stringify(d.precondition_checks ?? []),
     ],
   );
 

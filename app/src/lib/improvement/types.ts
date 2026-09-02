@@ -8,8 +8,11 @@ export type ImprovementSource =
   | "program_evaluation"
   | "self_evaluation"
   | "ai_suggestion"
+  | "improvement_dialogue"
   | "checkpoint"
-  | "manual";
+  | "manual"
+  | "handover"
+  | "precondition"; // 前提条件（H2）の不成立から自動起票（062）
 
 export type ImprovementStatus =
   | "proposed"
@@ -22,8 +25,11 @@ export const SOURCE_META: Record<ImprovementSource, { label: string; color: stri
   program_evaluation: { label: "プログラム評価", color: "#818cf8" },
   self_evaluation: { label: "自己評価", color: "#2dd4bf" },
   ai_suggestion: { label: "AI提案", color: "#a78bfa" },
+  improvement_dialogue: { label: "改善対話", color: "#a78bfa" },
   checkpoint: { label: "チェックポイント", color: "#60a5fa" },
   manual: { label: "直接起票", color: "#94a3b8" },
+  handover: { label: "前期引き継ぎ", color: "#fbbf24" },
+  precondition: { label: "前提条件の不成立", color: "#f87171" },
 };
 
 export const STATUS_META: Record<

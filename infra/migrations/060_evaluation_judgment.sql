@@ -37,8 +37,9 @@ COMMENT ON COLUMN measure_indicators.baseline_source IS
 -- judgment_exemption … { kind: 'statutory'|'safety_net'|'small_n', reason, decided_on }
 --   適用除外リスト（法定必須事業・セーフティネット機能・分母下限未満のスモールN）。
 --   除外は廃止対象にしない、または比較の段Dの方法（単一事例・GAS）で評価する
--- preconditions … [{ id, condition, check_method, fallback, status, checked_fiscal_year, note }]
---   様式H2 前提条件表（崩れると施策全体が止まる急所 3〜5項目）。年次評価で status を更新
+-- preconditions … [{ id, condition, check_method, fallback }]
+--   様式H2 前提条件表（崩れると施策全体が止まる急所 3〜5項目）。年次の確認結果は
+--   評価側（program_evaluations.precondition_checks — 062）に持ち、ここは書き換えない
 
 ALTER TABLE measure_designs
   ADD COLUMN IF NOT EXISTS contribution_pathways   JSONB NOT NULL DEFAULT '[]'::jsonb;
@@ -56,7 +57,7 @@ COMMENT ON COLUMN measure_designs.fiscal_effect_estimates IS
 COMMENT ON COLUMN measure_designs.judgment_exemption IS
   '適用除外 {kind: statutory|safety_net|small_n, reason, decided_on}。評価前に決裁で固定する';
 COMMENT ON COLUMN measure_designs.preconditions IS
-  '様式H2 前提条件表 [{id,condition,check_method,fallback,status,checked_fiscal_year,note}]';
+  '様式H2 前提条件表 [{id,condition,check_method,fallback}]。年次確認の結果は program_evaluations.precondition_checks';
 
 -- ─── 3. 評価: 図E1の判定と処遇（共通ヘッダ②③⑥⑦の転記元）────────────
 -- judgment … { q1, q2, q3, q4a, q4b, rationale: {q2,q3,q4a}, evidence: { trend: {...}, fiscal: {...} } }

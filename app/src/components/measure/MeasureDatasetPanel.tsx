@@ -35,6 +35,7 @@ import {
   type MeasureCostYear,
   type MeasureIndicatorRow,
   type MeasureJudgmentSetup,
+  type MeasurePrecondition,
   type MeasureWork,
 } from "@/lib/measure/dataset";
 import {
@@ -64,6 +65,11 @@ interface Dataset {
   costYears: MeasureCostYear[];
   costItems: MeasureCostItem[];
   setup: MeasureJudgmentSetup;
+  /** 前提条件（H2）の年次確認の最新状態（評価側から合成） */
+  preconditionStatus?: {
+    latest: Record<string, { status: string; fiscal_year: number | null; note: string | null; work_code: string | null; approved: boolean }>;
+    history: Record<string, { fiscal_year: number | null; status: string; note: string | null; work_code: string | null }[]>;
+  };
   gaps: Gaps;
   ready: boolean;
 }
@@ -873,6 +879,20 @@ export default function MeasureDatasetPanel({
         }}
       />
 
+      {/* ── 前提条件表（様式H2・060/062）: 期末を待たずに軌道修正する仕掛け ───── */}
+      <PreconditionSection
+        setup={ds.setup}
+        status={ds.preconditionStatus}
+        canEdit={canEdit}
+        projectId={projectId}
+        measureId={measureId}
+        onSave={(preconditions) => {
+          const setup = { ...ds.setup, preconditions };
+          setDs({ ...ds, setup });
+          void save({ setup: { preconditions } });
+        }}
+      />
+
       {/* ── 実績の記入・履歴（058） ───────────────── */}
       {resultFor && (
         <ResultModal
@@ -1472,6 +1492,127 @@ function JudgmentSetupSection({
             <p className="text-[10px] text-slate-500 mt-1">{EXEMPTION_META[draft.judgment_exemption.kind].detail}</p>
           )}
         </div>
+      </div>
+    </section>
+  );
+}
+
+
+/**
+ * 様式H2 前提条件表 — 新設・移植・実行起因で再設計する施策に添付する。
+ * 「崩れると施策全体が止まる急所」に限定して 3〜5 項目（網羅しない＝年次確認の負担最小化）。
+ * 定義は施策側（ここ）。年次の確認は取組評価（図6）のウィザードで行い、結果は評価側に残る。
+ * 不成立なら承認時に改善アクションが自動起票され、期末を待たず「崩れた場合の対応」を起動する。
+ */
+function PreconditionSection({
+  setup,
+  status,
+  canEdit,
+  projectId,
+  measureId,
+  onSave,
+}: {
+  setup: MeasureJudgmentSetup;
+  status: Dataset["preconditionStatus"];
+  canEdit: boolean;
+  projectId: string;
+  measureId: string;
+  onSave: (rows: MeasurePrecondition[]) => void;
+}) {
+  const [rows, setRows] = useState<MeasurePrecondition[]>(setup.preconditions);
+  const [docBusy, setDocBusy] = useState(false);
+  useEffect(() => setRows(setup.preconditions), [setup.preconditions]);
+  const dirty = JSON.stringify(rows) !== JSON.stringify(setup.preconditions);
+  const patch = (i: number, over: Partial<MeasurePrecondition>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...over } : r)));
+
+  const download = async () => {
+    if (docBusy) return;
+    setDocBusy(true);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/plan-reflection/h2/${measureId}`, { method: "POST" });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = m?.[1] ? decodeURIComponent(m[1]) : "様式H2_前提条件表.docx";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border" style={card}>
+      <header className="px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderColor: "var(--border)" }}>
+        <h4 className="text-xs font-semibold text-slate-200">前提条件表（様式H2）— 崩れると施策全体が止まる急所 3〜5項目</h4>
+        {canEdit && rows.length < 8 && (
+          <button
+            onClick={() => setRows([...rows, { id: `pc${Date.now().toString(36)}`, condition: "", check_method: "", fallback: "" }])}
+            className="text-[11px] text-indigo-400"
+          >
+            ＋ 前提を追加
+          </button>
+        )}
+        <div className="ml-auto flex gap-2">
+          {rows.length > 0 && (
+            <button onClick={() => void download()} disabled={docBusy} className="text-[11px] px-2.5 py-1 rounded-md disabled:opacity-50" style={{ background: "var(--bg-input)", color: "#94a3b8", border: "1px solid var(--border)" }}>
+              {docBusy ? "作成中…" : "📄 H2をWordで出力"}
+            </button>
+          )}
+          {canEdit && dirty && (
+            <button onClick={() => onSave(rows.filter((r) => r.condition.trim()))} className="text-[11px] px-2.5 py-1 rounded-md font-semibold" style={{ background: "#6366f1", color: "#fff" }}>
+              保存
+            </button>
+          )}
+        </div>
+      </header>
+      <div className="p-4 space-y-2">
+        <p className="text-[10px] text-slate-500">
+          例: 実施主体（委託先・共同開催先）の確保／前工程の成果物が期首までに完成／調査の分母確保。
+          確認方法は契約締結状況・納品確認・回収状況など年次評価で機械的に確認できる事実。
+          崩れた場合の対応は「2年連続不成立で取組差替の検討へ」のような発動条件を含めて書く。
+        </p>
+        {rows.length === 0 ? (
+          <p className="text-[11px] text-slate-500">前提条件は未設定です（新設・移植・実行起因で再設計する施策には添付が必要です）。</p>
+        ) : (
+          rows.map((r, i) => {
+            const st = status?.latest[r.id];
+            const hist = status?.history[r.id] ?? [];
+            return (
+              <div key={r.id} className="rounded-md border px-3 py-2 grid gap-1.5" style={{ borderColor: st?.status === "broken" ? "#ef444460" : "var(--border)", gridTemplateColumns: "1fr 1fr 1fr" }}>
+                <div style={{ gridColumn: "1 / -1" }} className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-500">前提 {i + 1}</span>
+                  {st ? (
+                    <span className="text-[10px] font-semibold" style={{ color: st.status === "broken" ? "#f87171" : "#34d399" }}>
+                      {st.status === "broken" ? "✗ 不成立" : "○ 成立"}（{st.fiscal_year != null ? fiscalYearLabel(st.fiscal_year) : "年度不明"}{st.work_code ? `・${st.work_code}` : ""}{st.approved ? "" : "・未承認"}）{st.note ? ` ${st.note}` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500">年次確認なし（取組評価のウィザードで確認）</span>
+                  )}
+                  {hist.length > 1 && (
+                    <span className="text-[10px] text-slate-500">履歴: {hist.map((h) => `${h.fiscal_year ?? "?"} ${h.status === "broken" ? "✗" : "○"}`).join(" / ")}</span>
+                  )}
+                  {hist.filter((h) => h.status === "broken").length >= 2 && (
+                    <span className="text-[10px]" style={{ color: "#f87171" }}>2回以上不成立 — 取組差替の検討へ</span>
+                  )}
+                  {canEdit && <button onClick={() => setRows(rows.filter((_, k) => k !== i))} className="ml-auto text-[10px] text-slate-500">削除</button>}
+                </div>
+                <Field label="前提（施策が機能する条件）">
+                  <input className={inputCls} style={inputSty} value={r.condition} disabled={!canEdit} onChange={(e) => patch(i, { condition: e.target.value })} />
+                </Field>
+                <Field label="確認方法（年次・機械的に確認できる事実）">
+                  <input className={inputCls} style={inputSty} value={r.check_method} disabled={!canEdit} onChange={(e) => patch(i, { check_method: e.target.value })} />
+                </Field>
+                <Field label="崩れた場合の対応（発動条件を含む）">
+                  <input className={inputCls} style={inputSty} value={r.fallback} disabled={!canEdit} onChange={(e) => patch(i, { fallback: e.target.value })} />
+                </Field>
+              </div>
+            );
+          })
+        )}
       </div>
     </section>
   );
