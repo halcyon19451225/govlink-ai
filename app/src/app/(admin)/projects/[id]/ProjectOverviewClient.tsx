@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import KnowledgePanel from "@/components/KnowledgePanel";
 import { normalizeIndicatorType, OUTCOME_TIER_META } from "@/lib/outcome/tiers";
-import { LOGIC_COLUMNS, elementTexts } from "@/lib/logicmodel/elements";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -48,25 +47,19 @@ interface Kpi {
   contributes_to_kpi_id: string | null;
 }
 
-interface LogicModel {
-  id: string;
-  // 要素列は JSONB。normalizeElements / elementTexts を通して読む
-  inputs: unknown;
-  activities: unknown;
-  outputs: unknown;
-  initial_outcomes: unknown;
-  intermediate_outcomes: unknown;
-  long_outcomes: unknown;
-  name: string | null;
-  status: string;
-  generated_at: string | null;
+// 計画書の調製の状態サマリー（plan_documents — 049）。2026-09 メニュー整理で
+// 旧ロジックモデル6列表に代えて、計画概要から計画書の調製へ入る動線にした。
+interface PlanDocSummary {
+  variant: "full" | "simple" | "digest";
+  status: "draft" | "finalized";
+  updated_at: string | null;
 }
 
 interface Props {
   project: Project;
   initialGoals: Goal[];
   initialKpis: Kpi[];
-  logicModel: LogicModel | null;
+  planDocs: PlanDocSummary[];
 }
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
@@ -84,10 +77,12 @@ const STATUS_STYLE: Record<Project["status"], React.CSSProperties> = {
   archived: { background: "#f59e0b20", color: "#fbbf24", border: "1px solid #f59e0b40" },
 };
 
-// 列の定義は src/lib/logicmodel/elements.ts の LOGIC_COLUMNS が正本。
-// 以前はここに独自の一覧があり、長期アウトカムの列が欠けていたうえ
-// ラベルが他画面（「短期アウトカム」）と食い違っていた。
-const LOGIC_COLS = LOGIC_COLUMNS;
+// 計画書の調製の3体裁（PL2）。ラベルは plan-document 画面と揃える
+const PLAN_DOC_VARIANTS = [
+  { key: "full",   label: "本編" },
+  { key: "simple", label: "簡易版" },
+  { key: "digest", label: "概要版" },
+] as const;
 
 // ─── 達成水準 ─────────────────────────────────────────────────────────────────
 
@@ -208,7 +203,7 @@ export default function ProjectOverviewClient({
   project,
   initialGoals,
   initialKpis,
-  logicModel,
+  planDocs,
 }: Props) {
   const router = useRouter();
 
@@ -501,69 +496,64 @@ export default function ProjectOverviewClient({
     setKpiEditMap({});
   };
 
-  // ─── ロジックモデルセクション（共通） ────────────────────────────────────────
-  const LogicSection = () => (
-    <section>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "var(--text-secondary)" }}>
-          ロジックモデル
-        </h3>
-        <Link href={`/projects/${project.id}/logic-model`}
-          className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
-          編集する →
-        </Link>
-      </div>
-      {logicModel ? (
-        <div className="rounded-2xl border p-5 overflow-x-auto"
-          style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
-          <div className="flex gap-4 min-w-max">
-            {LOGIC_COLS.map((col) => {
-              // 要素オブジェクト・文字列配列のどちらでも表示できるようにする
-              const items: string[] = elementTexts(
-                (logicModel as unknown as Record<string, unknown>)[col.key],
-                col.key,
-              );
-              return (
-                <div key={col.key} className="flex-1 min-w-[130px]">
-                  <p className="text-xs font-semibold mb-2 pb-1 border-b"
-                    style={{ color: col.color, borderColor: col.color + "40" }}>
-                    {col.label}
-                  </p>
-                  {items.length === 0 ? (
-                    <p className="text-xs text-slate-600">—</p>
-                  ) : (
-                    <ul className="space-y-1">
-                      {items.map((item, i) => (
-                        <li key={i} className="text-xs px-2 py-1 rounded"
-                          style={{ background: col.color + "15", color: "var(--text-primary)" }}>
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {logicModel.generated_at && (
-            <p className="text-xs text-slate-600 mt-3">
-              最終更新: {new Date(logicModel.generated_at).toLocaleDateString("ja-JP")}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed p-8 text-center"
-          style={{ borderColor: "var(--border)" }}>
-          <p className="text-sm text-slate-500 mb-3">ロジックモデルはまだ作成されていません</p>
+  // ─── 計画書の調製セクション（共通） ──────────────────────────────────────────
+  // 2026-09 メニュー整理: 旧ロジックモデル6列表（表示専用）を撤去し、サイドバーから外した
+  // 「計画書の調製」への動線をここに統合した。ロジックモデル編集画面への可視動線は
+  // 本セクション右上のリンクとして残す（施策構築→取り込みの入口を失わないため）。
+  const PlanDocsSection = () => {
+    const byVariant = new Map(planDocs.map((d) => [d.variant, d]));
+    const latest = planDocs.reduce<string | null>((acc, d) => {
+      if (!d.updated_at) return acc;
+      return !acc || d.updated_at > acc ? d.updated_at : acc;
+    }, null);
+    return (
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wider"
+            style={{ color: "var(--text-secondary)" }}>
+            計画書の調製
+          </h3>
           <Link href={`/projects/${project.id}/logic-model`}
-            className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">
-            ロジックモデルを作成する →
+            className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
+            ロジックモデルを編集 →
           </Link>
         </div>
-      )}
-    </section>
-  );
+        <Link href={`/projects/${project.id}/plan-document`}
+          className="block rounded-2xl border p-5 transition-colors hover:border-indigo-400"
+          style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                📄 計画書・評価報告書・説明資料をここから調製します →
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                実データから章立てを起こし、編集・確定して出力します（計画書=docx3体裁 / 評価報告書=docx＋印刷 / 説明資料=pptx）
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {PLAN_DOC_VARIANTS.map((v) => {
+                const doc = byVariant.get(v.key);
+                const state = !doc ? "未作成" : doc.status === "finalized" ? "確定" : "下書き";
+                const color = !doc ? "#64748b" : doc.status === "finalized" ? "#10b981" : "#f59e0b";
+                return (
+                  <span key={v.key}
+                    className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    style={{ background: color + "18", color, border: `1px solid ${color}40` }}>
+                    {v.label}: {state}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+          {latest && (
+            <p className="text-xs text-slate-600 mt-3">
+              最終更新: {new Date(latest).toLocaleDateString("ja-JP")}
+            </p>
+          )}
+        </Link>
+      </section>
+    );
+  };
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 通常表示モード
@@ -774,7 +764,7 @@ export default function ProjectOverviewClient({
         </div>
 
         {/* ロジックモデル */}
-        <LogicSection />
+        <PlanDocsSection />
 
         <KnowledgePanel projectId={project.id} open={knowledgeOpen} onClose={() => setKnowledgeOpen(false)} />
       </div>
@@ -1250,7 +1240,7 @@ export default function ProjectOverviewClient({
       </div>
 
       {/* ロジックモデル（編集モードでも表示） */}
-      <LogicSection />
+      <PlanDocsSection />
 
       <KnowledgePanel projectId={project.id} open={knowledgeOpen} onClose={() => setKnowledgeOpen(false)} />
     </div>

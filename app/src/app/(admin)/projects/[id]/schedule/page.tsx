@@ -3,11 +3,17 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 import ScheduleClient, { PhaseRow, TaskRow } from "./ScheduleClient";
+import ScheduleTabs from "./ScheduleTabs";
+import PdcaDashboardClient from "../pdca/PdcaDashboardClient";
+import type { PdcaCheckpoint } from "../pdca/page";
 
 interface ProjectRow {
   id: string;
   title: string;
   description: string;
+  plan_start_date: string | null;
+  plan_end_date: string | null;
+  status: string;
 }
 
 interface KpiRow {
@@ -27,14 +33,20 @@ export interface PdcaCheckpointRow {
 
 export default async function SchedulePage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams?: { tab?: string };
 }) {
   const session = await getServerSession(authOptions);
   if (!session) notFound();
 
   const projects = await query<ProjectRow>(
-    "SELECT id, title, description FROM projects WHERE id = $1",
+    `SELECT id, title, description,
+            to_char(plan_start_date, 'YYYY-MM-DD') AS plan_start_date,
+            to_char(plan_end_date,   'YYYY-MM-DD') AS plan_end_date,
+            status
+     FROM projects WHERE id = $1`,
     [params.id],
   );
   const project = projects[0];
@@ -103,6 +115,18 @@ export default async function SchedulePage({
     ),
   ]);
 
+  // PDCAサイクル全体図タブ用の全カラム（旧 /pdca ページと同じクエリ — 2026-09 メニュー整理で統合）
+  const fullCheckpoints = await query<PdcaCheckpoint>(
+    `SELECT id, name, cycle_type, phase, description, evaluation_tiers, modules_involved,
+            qc_step, instructions,
+            to_char(scheduled_date, 'YYYY-MM-DD') AS scheduled_date,
+            to_char(scheduled_date_end, 'YYYY-MM-DD') AS scheduled_date_end,
+            status, sort_order
+     FROM project_pdca_checkpoints WHERE project_id = $1
+     ORDER BY sort_order, scheduled_date`,
+    [params.id],
+  ).catch(() => [] as PdcaCheckpoint[]);
+
   const improvementTaskIds = improvementLinks.map((r) => r.reflect_schedule_task_id);
   const ckpt = checkpointStats[0] ?? { total: 0, completed: 0 };
 
@@ -113,6 +137,17 @@ export default async function SchedulePage({
         <h2 className="text-2xl font-bold text-slate-100">スケジュール管理</h2>
       </div>
 
+      <ScheduleTabs
+        initialTab={searchParams?.tab}
+        pdca={
+          <PdcaDashboardClient
+            project={project}
+            checkpoints={fullCheckpoints}
+            projectId={project.id}
+          />
+        }
+        schedule={
+          <>
       {pdcaCheckpoints.length > 0 && (
         <div className="mb-6 rounded-xl border p-4" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
           <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
@@ -163,6 +198,9 @@ export default async function SchedulePage({
         measures={measures}
         improvementTaskIds={improvementTaskIds}
         checkpointStats={ckpt}
+      />
+          </>
+        }
       />
     </div>
   );

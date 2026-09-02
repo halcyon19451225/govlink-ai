@@ -16,8 +16,10 @@ const NAV_ITEMS = [
       { id: "overview",        label: "計画概要",          icon: "📋", path: "" },
       { id: "datasets",        label: "データセット管理",    icon: "🗄️", path: "datasets" },
       { id: "gap-analysis",    label: "ギャップ分析",        icon: "📊", path: "gap-analysis" },
-      { id: "asis-analysis",   label: "現状整理(As-Is)",     icon: "🧭", path: "asis-analysis" },
-      { id: "issue-hypothesis",label: "課題仮説設定",        icon: "💡", path: "issue-hypothesis" },
+      // 現状整理(As-Is)・課題仮説設定はメニューから外した（2026-09）。
+      //   ギャップ分析の一覧に KPI ごとの「📝 現状整理」「💡 課題仮説」ボタン（状態バッジ付き）が
+      //   あり、そこからのみ入る動線に限定した。ページ・API・テーブルはそのまま
+      //   （handover-intake などからの既存リンクも生きている）。
       { id: "measure-design",  label: "施策構築(EBPM)",      icon: "🔬", path: "measure-design" },
       // ロジックモデル・エビデンス管理はメニューから外した（2026-09）。
       //   ロジックモデル … 「計画概要」の目標（長期アウトカム）をタップすると、
@@ -26,9 +28,11 @@ const NAV_ITEMS = [
       //     リネージ・テンプレートが依存しているためそのまま残している（URL直打ちで到達可能）。
       //   エビデンス管理 … エビデンスは施策データセット（measure_designs.evidence_items）側に
       //     移ったため、独立メニューとしての役割が無くなった。ルートとテーブルは残す。
+      // PDCAサイクル全体図はメニューから外し、「スケジュール設定」内のタブに統合した（2026-09）。
+      //   /pdca と /pdca/[checkpointId]（チェックポイント完了操作）のルートはそのまま残す。
+      // 計画書の調製もメニューから外し、「計画概要」下部のセクションからの動線に統合した（2026-09）。
+      //   /plan-document のルート・タブ（計画書/評価報告書/説明資料）はそのまま残す。
       { id: "schedule",        label: "スケジュール設定",    icon: "📅", path: "schedule" },
-      { id: "pdca",            label: "PDCAサイクル全体図",  icon: "🔄", path: "pdca" },
-      { id: "plan-document",   label: "計画書の調製",        icon: "📄", path: "plan-document" },
     ],
   },
   {
@@ -106,7 +110,16 @@ export default function ProjectSidebar({ projectId }: Props) {
   const basePrefix = `/projects/${projectId}`;
   const afterBase = pathname.replace(basePrefix, "").replace(/^\//, "");
   // pdca/[checkpointId] なども pdca としてアクティブにする
-  const activeSegment = afterBase.split("/")[0] || "overview";
+  const rawSegment = afterBase.split("/")[0] || "overview";
+  // メニューから外した画面は、入り口となるメニューをアクティブ表示する（2026-09 メニュー整理）
+  const SEGMENT_ALIAS: Record<string, string> = {
+    "pdca": "schedule",             // PDCA全体図・チェックポイント作業 → スケジュール設定
+    "plan-document": "overview",    // 計画書の調製 → 計画概要
+    "asis-analysis": "gap-analysis",   // 現状整理(As-Is) → ギャップ分析
+    "issue-hypothesis": "gap-analysis",// 課題仮説設定 → ギャップ分析
+    "logic-model": "overview",      // ロジックモデル編集 → 計画概要
+  };
+  const activeSegment = SEGMENT_ALIAS[rawSegment] ?? rawSegment;
 
   const toggleSection = (section: string) => {
     setClosedSections((prev) => {

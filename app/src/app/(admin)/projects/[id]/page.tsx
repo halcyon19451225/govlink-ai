@@ -42,18 +42,12 @@ interface KpiRow {
   contributes_to_kpi_id: string | null;
 }
 
-interface LogicModelRow {
-  id: string;
-  // 要素列は JSONB（文字列配列と要素オブジェクトが混在しうる）
-  inputs: unknown;
-  activities: unknown;
-  outputs: unknown;
-  initial_outcomes: unknown;
-  intermediate_outcomes: unknown;
-  long_outcomes: unknown;
-  name: string | null;
-  status: string;
-  generated_at: string | null;
+// 計画書の調製の状態サマリー（plan_documents — 049）。
+// 2026-09 メニュー整理: 計画概要の旧ロジックモデル表に代えて計画書の調製への動線を出す
+interface PlanDocRow {
+  variant: "full" | "simple" | "digest";
+  status: "draft" | "finalized";
+  updated_at: string | null;
 }
 
 export default async function AdminProjectDetailPage({
@@ -79,7 +73,7 @@ export default async function AdminProjectDetailPage({
   const project = rows[0];
   if (!project) notFound();
 
-  const [goals, kpis, logicModelRows] = await Promise.all([
+  const [goals, kpis, planDocs] = await Promise.all([
     query<GoalRow>(
       `SELECT id, goal_number, title, description, sort_order
        FROM project_goals WHERE project_id = $1 ORDER BY sort_order, goal_number`,
@@ -95,19 +89,12 @@ export default async function AdminProjectDetailPage({
        FROM kpis WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
-    query<LogicModelRow>(
-      `SELECT id, inputs, activities, outputs,
-              initial_outcomes, intermediate_outcomes, long_outcomes,
-              name, status, generated_at::text
-       FROM logic_models WHERE project_id = $1
-       -- 現行版は is_current で決める（034）。
-       -- 以前は generated_at 順で、他画面の version 順と別の行を見ていた。
-       ORDER BY is_current DESC, version DESC, created_at DESC LIMIT 1`,
+    query<PlanDocRow>(
+      `SELECT variant, status, updated_at::text AS updated_at
+       FROM plan_documents WHERE project_id = $1`,
       [params.id],
-    ),
+    ).catch(() => [] as PlanDocRow[]), // 049 未適用環境でも計画概要は落とさない
   ]);
-
-  const logicModel = logicModelRows[0] ?? null;
 
   return (
     <>
@@ -117,7 +104,7 @@ export default async function AdminProjectDetailPage({
         project={project}
         initialGoals={goals}
         initialKpis={kpis}
-        logicModel={logicModel}
+        planDocs={planDocs}
       />
     </>
   );
