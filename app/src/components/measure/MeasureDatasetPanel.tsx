@@ -36,6 +36,12 @@ import {
   type MeasureIndicatorRow,
   type MeasureWork,
 } from "@/lib/measure/dataset";
+import {
+  RESULT_SOURCE_LABEL,
+  latestResult,
+  resultDisplay,
+  type IndicatorResultRow,
+} from "@/lib/measure/results";
 
 interface Gaps {
   indicators: { work_id: string | null; work_label: string; missing: { no: number; name: string; reason: string }[] }[];
@@ -96,6 +102,19 @@ export default function MeasureDatasetPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 実績（058）。履歴で持ち、表には最新値を出す
+  const [results, setResults] = useState<IndicatorResultRow[]>([]);
+  const [resultFor, setResultFor] = useState<MeasureIndicatorRow | null>(null);
+
+  const loadResults = useCallback(async () => {
+    try {
+      const res = await fetch(`${base}/results`, { cache: "no-store" });
+      const json = (await res.json()) as { data: IndicatorResultRow[] | null };
+      if (json.data) setResults(json.data);
+    } catch {
+      /* 実績が読めなくてもデータセット自体は出す */
+    }
+  }, [base]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,12 +123,13 @@ export default function MeasureDatasetPanel({
       const json = (await res.json()) as { data: Dataset | null; error: string | null };
       if (json.data) setDs(json.data);
       else setError(json.error ?? "読み込みに失敗しました");
+      void loadResults();
     } catch {
       setError("通信エラーが発生しました");
     } finally {
       setLoading(false);
     }
-  }, [base]);
+  }, [base, loadResults]);
 
   useEffect(() => {
     void load();
@@ -195,6 +215,13 @@ export default function MeasureDatasetPanel({
   const alive = ds.works.filter((w) => !w.retired);
   const workIndicators = (wid: string) => ds.indicators.filter((i) => i.measure_work_id === wid);
   const measureIndicators = ds.indicators.filter((i) => !i.measure_work_id);
+
+  const resultsByIndicator = new Map<string, IndicatorResultRow[]>();
+  for (const r of results) {
+    const list = resultsByIndicator.get(r.measure_indicator_id);
+    if (list) list.push(r);
+    else resultsByIndicator.set(r.measure_indicator_id, [r]);
+  }
 
   // 指標1件の書き換え（他はそのまま送り返す）
   const patchIndicator = (id: string, over: Partial<MeasureIndicatorRow>) => {
@@ -617,6 +644,8 @@ export default function MeasureDatasetPanel({
                   canEdit={canEdit}
                   onChange={patchIndicator}
                   onSave={() => void saveIndicators()}
+                  resultsByIndicator={resultsByIndicator}
+                  onOpenResults={(row) => setResultFor(row)}
                 />
                 {canEdit && (
                   <div className="flex flex-wrap gap-1 mt-1.5">
@@ -661,6 +690,8 @@ export default function MeasureDatasetPanel({
             canEdit={canEdit}
             onChange={patchIndicator}
             onSave={() => void saveIndicators()}
+            resultsByIndicator={resultsByIndicator}
+            onOpenResults={(row) => setResultFor(row)}
           />
           {canEdit && (
             <div className="flex flex-wrap gap-1 mt-1.5">
@@ -817,6 +848,18 @@ export default function MeasureDatasetPanel({
           </div>
         </div>
       </section>
+
+      {/* ── 実績の記入・履歴（058） ───────────────── */}
+      {resultFor && (
+        <ResultModal
+          indicator={resultFor}
+          rows={resultsByIndicator.get(resultFor.id) ?? []}
+          canEdit={canEdit}
+          base={base}
+          onClose={() => setResultFor(null)}
+          onChanged={() => void loadResults()}
+        />
+      )}
     </div>
   );
 }
@@ -827,11 +870,15 @@ function IndicatorTable({
   canEdit,
   onChange,
   onSave,
+  resultsByIndicator,
+  onOpenResults,
 }: {
   rows: MeasureIndicatorRow[];
   canEdit: boolean;
   onChange: (id: string, over: Partial<MeasureIndicatorRow>) => void;
   onSave: () => void;
+  resultsByIndicator: Map<string, IndicatorResultRow[]>;
+  onOpenResults: (row: MeasureIndicatorRow) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   if (rows.length === 0) {
@@ -847,6 +894,7 @@ function IndicatorTable({
             <th className="text-left px-2 py-1 font-medium w-20">単位</th>
             <th className="text-right px-2 py-1 font-medium w-24">基準値</th>
             <th className="text-right px-2 py-1 font-medium w-24">目標値</th>
+            <th className="text-right px-2 py-1 font-medium w-24">実績</th>
             <th className="text-left px-2 py-1 font-medium w-28">測定頻度</th>
             <th className="text-left px-2 py-1 font-medium w-20">評価時点</th>
           </tr>
@@ -898,6 +946,27 @@ function IndicatorTable({
                       <option value="eq">同じ</option>
                     </select>
                   </td>
+                  <td className="px-2 py-1.5 text-right">
+                    {(() => {
+                      const hist = resultsByIndicator.get(r.id) ?? [];
+                      const latest = latestResult(hist);
+                      return (
+                        <button
+                          onClick={() => onOpenResults(r)}
+                          className="text-[11px] w-full text-right"
+                          title="実績の記入・履歴を開く"
+                        >
+                          <span className={latest ? "text-slate-200 font-semibold" : "text-slate-500"}>
+                            {resultDisplay(latest, r.unit)}
+                          </span>
+                          {latest?.auto_computed && <Chip kind="auto">自動</Chip>}
+                          <span className="block text-[10px] text-indigo-400">
+                            {hist.length > 0 ? `履歴${hist.length}件 →` : "記入 →"}
+                          </span>
+                        </button>
+                      );
+                    })()}
+                  </td>
                   <td className="px-2 py-1.5">
                     <select className={inputCls} style={inputSty} value={r.frequency} disabled={!canEdit}
                       onChange={(e) => { onChange(r.id, { frequency: e.target.value as IndicatorFrequency }); onSave(); }}>
@@ -918,7 +987,7 @@ function IndicatorTable({
                 </tr>
                 {open && (
                   <tr style={{ background: "var(--bg-primary)" }}>
-                    <td colSpan={7} className="px-3 py-2">
+                    <td colSpan={8} className="px-3 py-2">
                       <p className="text-[10px] text-slate-500 mb-1">
                         評価時点 — 計画開始からの相対年次と絶対日付のどちらでも指定できます。
                         年次評価を行わない計画は「計画期間ごと」だけで足ります
@@ -993,6 +1062,222 @@ function IndicatorTable({
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * 実績の記入・履歴（measure_indicator_results — 058）。
+ * 実績は履歴で持つ: 測定のたびに1行を足し、表には最新値が出る。
+ * 自動集計値（auto_tasks）は評価の承認時に凍結されたものなので消せない。
+ */
+function ResultModal({
+  indicator,
+  rows,
+  canEdit,
+  base,
+  onClose,
+  onChanged,
+}: {
+  indicator: MeasureIndicatorRow;
+  rows: IndicatorResultRow[];
+  canEdit: boolean;
+  base: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [fiscalYear, setFiscalYear] = useState<string>("");
+  const [measuredOn, setMeasuredOn] = useState<string>("");
+  const [value, setValue] = useState<string>("");
+  const [valueText, setValueText] = useState<string>("");
+  const [note, setNote] = useState<string>("");
+  const [checkpointId, setCheckpointId] = useState<string>("");
+
+  const add = async () => {
+    if (busy) return;
+    if (!value && !valueText) {
+      setErr("実績値（数値または記述）を入力してください");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`${base}/results`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          measure_indicator_id: indicator.id,
+          checkpoint_id: checkpointId || null,
+          fiscal_year: fiscalYear ? Number(fiscalYear) : null,
+          measured_on: measuredOn || null,
+          value: value ? Number(value) : null,
+          value_text: valueText || null,
+          note: note || null,
+        }),
+      });
+      const json = (await res.json()) as { data: unknown; error: string | null };
+      if (json.error) setErr(json.error);
+      else {
+        setValue("");
+        setValueText("");
+        setNote("");
+        onChanged();
+      }
+    } catch {
+      setErr("通信エラーが発生しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (busy) return;
+    if (!confirm("この実績を削除しますか？")) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`${base}/results?id=${id}`, { method: "DELETE" });
+      const json = (await res.json()) as { data: unknown; error: string | null };
+      if (json.error) setErr(json.error);
+      else onChanged();
+    } catch {
+      setErr("通信エラーが発生しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sorted = [...rows].sort((a, b) => {
+    const da = a.measured_on ?? a.created_at.slice(0, 10);
+    const db = b.measured_on ?? b.created_at.slice(0, 10);
+    return da < db ? 1 : da > db ? -1 : a.created_at < b.created_at ? 1 : -1;
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.55)" }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-xl border w-full max-w-2xl max-h-[85vh] overflow-y-auto p-4"
+        style={card}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div>
+            <h4 className="text-sm font-semibold text-slate-100">
+              実績 — {INDICATOR_BY_NO[indicator.category_no]?.name}
+            </h4>
+            <p className="text-[11px] text-slate-500 mt-0.5">{indicator.label}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              基準値 {indicator.baseline_value ?? "—"}{indicator.unit ?? ""} ／ 目標値{" "}
+              {indicator.target_value ?? "—"}{indicator.unit ?? ""}（
+              {indicator.achievement_condition === "lte" ? "以下" : indicator.achievement_condition === "eq" ? "同じ" : "以上"}）
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 text-sm">✕ 閉じる</button>
+        </div>
+
+        {err && (
+          <p className="text-[11px] px-2 py-1.5 rounded mb-2" style={{ background: "#f8717118", color: "#f87171" }}>
+            {err}
+          </p>
+        )}
+
+        {canEdit && (
+          <div className="rounded-lg border p-3 mb-3" style={{ borderColor: "var(--border)" }}>
+            <p className="text-[11px] font-semibold text-slate-300 mb-2">実績を記入する</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <Field label="年度（西暦の開始年）">
+                <input type="number" className={inputCls} style={inputSty} value={fiscalYear}
+                  placeholder="2026" onChange={(e) => setFiscalYear(e.target.value)} />
+              </Field>
+              <Field label="測定日">
+                <input type="date" className={inputCls} style={inputSty} value={measuredOn}
+                  onChange={(e) => setMeasuredOn(e.target.value)} />
+              </Field>
+              <Field label={`実績値${indicator.unit ? `（${indicator.unit}）` : ""}`}>
+                <input type="number" className={`${inputCls} text-right`} style={inputSty} value={value}
+                  onChange={(e) => setValue(e.target.value)} />
+              </Field>
+              <Field label="評価時点">
+                <select className={inputCls} style={inputSty} value={checkpointId}
+                  onChange={(e) => setCheckpointId(e.target.value)}>
+                  <option value="">（随時測定）</option>
+                  {indicator.checkpoints.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <Field label="定性の実績（Yes/No・状況）">
+                <input className={inputCls} style={inputSty} value={valueText}
+                  placeholder="例: 仕様書に明記済み（Yes）"
+                  onChange={(e) => setValueText(e.target.value)} />
+              </Field>
+              <Field label="メモ（出所・算定の補足）">
+                <input className={inputCls} style={inputSty} value={note}
+                  onChange={(e) => setNote(e.target.value)} />
+              </Field>
+            </div>
+            <button
+              onClick={() => void add()}
+              disabled={busy}
+              className="mt-2 text-[11px] font-semibold px-3 py-1.5 rounded-lg border text-indigo-400 disabled:opacity-50"
+              style={{ borderColor: "var(--border)" }}
+            >
+              ＋ 実績を追加
+            </button>
+            <p className="text-[10px] text-slate-500 mt-1">
+              実績は履歴で残ります（上書きしません）。最新の測定が表と評価に使われます。
+            </p>
+          </div>
+        )}
+
+        <p className="text-[11px] font-semibold text-slate-300 mb-1">履歴（{sorted.length}件）</p>
+        {sorted.length === 0 ? (
+          <p className="text-[11px] text-slate-500">まだ実績がありません。</p>
+        ) : (
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="text-slate-500">
+                <th className="text-left px-2 py-1 font-medium">年度</th>
+                <th className="text-left px-2 py-1 font-medium">測定日</th>
+                <th className="text-right px-2 py-1 font-medium">実績</th>
+                <th className="text-left px-2 py-1 font-medium">出所</th>
+                <th className="text-left px-2 py-1 font-medium">メモ</th>
+                <th className="w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => (
+                <tr key={r.id} className="border-t align-top" style={{ borderColor: "var(--border)" }}>
+                  <td className="px-2 py-1.5 text-slate-400">
+                    {r.fiscal_year != null ? fiscalYearLabel(r.fiscal_year) : "—"}
+                  </td>
+                  <td className="px-2 py-1.5 text-slate-400">{r.measured_on ?? "—"}</td>
+                  <td className="px-2 py-1.5 text-right text-slate-200 font-semibold">
+                    {resultDisplay(r, indicator.unit)}
+                    {r.auto_computed && <span className="ml-1"><Chip kind="auto">自動</Chip></span>}
+                  </td>
+                  <td className="px-2 py-1.5 text-slate-500">{RESULT_SOURCE_LABEL[r.source]}</td>
+                  <td className="px-2 py-1.5 text-slate-500">{r.note ?? ""}</td>
+                  <td className="px-2 py-1.5 text-right">
+                    {canEdit && r.source !== "auto_tasks" && (
+                      <button onClick={() => void remove(r.id)} disabled={busy}
+                        className="text-[10px] text-rose-400 disabled:opacity-50">削除</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
