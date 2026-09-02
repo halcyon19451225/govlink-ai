@@ -52,19 +52,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
             cer.total_reduction::float, cer.cost_ratio::float,
             cer.actual_total_reduction::float, cer.actual_cost_ratio::float,
             cer.evidence_basis, cer.notes, cer.created_at::text,
-            json_build_object(
+            CASE WHEN pe.id IS NULL THEN NULL ELSE
+              json_build_object(
               'id', pe.id,
               'result', pe.result,
               'achievement_rate', pe.achievement_rate,
               'findings', pe.findings,
               'improvement_actions', pe.improvement_actions,
               'next_steps', pe.next_steps
-            ) FILTER (WHERE pe.id IS NOT NULL) AS upstream_program_evaluation,
-            json_build_object(
+            )
+            END AS upstream_program_evaluation,
+            CASE WHEN lm.id IS NULL THEN NULL ELSE
+              json_build_object(
               'id', lm.id,
               'name', lm.name,
               'inputs', lm.inputs
-            ) FILTER (WHERE lm.id IS NOT NULL) AS upstream_logic_model_prefill
+            )
+            END AS upstream_logic_model_prefill
      FROM cost_efficiency_records cer
      LEFT JOIN program_evaluations pe ON pe.id = cer.program_evaluation_id
      LEFT JOIN logic_models lm ON lm.id = pe.logic_model_id

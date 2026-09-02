@@ -35,7 +35,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
             s.title, s.has_interim_review, s.background, s.activities,
             s.target_and_metrics, s.evaluation_method, s.evaluation_timing,
             s.created_at::text,
-            json_build_object(
+            CASE WHEN pe.id IS NULL THEN NULL ELSE
+              json_build_object(
               'id', pe.id,
               'evaluation_tier', pe.evaluation_tier,
               'fiscal_year', pe.fiscal_year,
@@ -44,7 +45,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
               'findings', pe.findings,
               'improvement_actions', pe.improvement_actions,
               'next_steps', pe.next_steps
-            ) FILTER (WHERE pe.id IS NOT NULL) AS upstream_program_evaluation,
+            )
+            END AS upstream_program_evaluation,
             COALESCE(json_agg(
               json_build_object(
                 'id', e.id,

@@ -9,7 +9,7 @@
     "lint": "next lint",
     "check:vocab": "node scripts/check-status-vocab.mjs",
     "check:logicmodel": "node scripts/check-logicmodel-elements.mjs",
-    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest && npm run check:clone && npm run check:plandoc && npm run check:schedule && npm run check:report && npm run check:manual && npm run check:libera && npm run check:asyncturn && npm run check:issue && npm run check:measureint && npm run check:measureind && npm run check:copy && npm run check:evalresults && npm run check:evalflow",
+    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest && npm run check:clone && npm run check:plandoc && npm run check:schedule && npm run check:report && npm run check:manual && npm run check:libera && npm run check:asyncturn && npm run check:issue && npm run check:measureint && npm run check:measureind && npm run check:copy && npm run check:evalresults && npm run check:evalflow && npm run check:sqlpat",
     "check:consistency": "node scripts/check-logicmodel-consistency.mjs",
     "check:diff": "node scripts/check-logicmodel-diff.mjs",
     "check:revise": "node scripts/check-logicmodel-revise.mjs",
@@ -35,7 +35,8 @@
     "check:measureint": "node scripts/check-measure-integrity.mjs",
     "check:measureind": "node scripts/check-measure-indicators.mjs",
     "check:evalresults": "node scripts/check-eval-results.mjs",
-    "check:evalflow": "node scripts/check-eval-flow.mjs"
+    "check:evalflow": "node scripts/check-eval-flow.mjs",
+    "check:sqlpat": "node scripts/check-sql-patterns.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

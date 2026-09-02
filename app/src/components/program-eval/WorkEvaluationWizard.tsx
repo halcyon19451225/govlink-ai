@@ -140,6 +140,14 @@ export default function WorkEvaluationWizard({
     void load();
   }, [load]);
 
+  // 委任ステップで「ある」を選んだら、1件目の記入欄をすぐ出す
+  // （空のまま「＋ 委任する課題を追加」を探させない）
+  useEffect(() => {
+    if (choice === "has" && delegations.length === 0) {
+      setDelegations([{ title: "", detail: "", root_cause: "" }]);
+    }
+  }, [choice, delegations.length]);
+
   if (loadError) {
     return (
       <div className="rounded-2xl border p-6" style={cardStyle}>
@@ -697,7 +705,7 @@ export default function WorkEvaluationWizard({
         </div>
       )}
 
-      {/* 委任課題の記入 */}
+      {/* 委任課題の記入（「ある」を選ぶと1件目の記入欄が出る） */}
       {step.kind === "delegation" && choice === "has" && (
         <div className="space-y-2">
           {delegations.map((d, i) => (

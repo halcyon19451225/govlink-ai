@@ -93,15 +93,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
             pe.improvement_actions, pe.next_steps, pe.flow_decision_path, pe.kpi_ids,
             pe.evaluated_by, pe.ai_commentary, pe.logic_model_id, pe.created_at::text,
             pe.measure_design_id, md.title AS measure_title,
-            json_build_object(
+            pe.measure_work_id, mw.code AS measure_work_code, mw.title AS measure_work_title,
+            pe.indicator_snapshot, pe.approved_snapshot_at::text,
+            CASE WHEN lm.id IS NULL THEN NULL ELSE
+              json_build_object(
               'id', lm.id,
               'name', lm.name,
               'inputs', lm.inputs,
               'outputs', lm.outputs,
               'initial_outcomes', lm.initial_outcomes,
               'intermediate_outcomes', lm.intermediate_outcomes
-            ) FILTER (WHERE lm.id IS NOT NULL) AS upstream_logic_model,
-            json_build_object(
+            )
+            END AS upstream_logic_model,
+            CASE WHEN cer.id IS NULL THEN NULL ELSE
+              json_build_object(
               'id', cer.id,
               'major_policy_name', cer.major_policy_name,
               'evaluation_type', cer.evaluation_type,
@@ -112,10 +117,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
               'cost_ratio', cer.cost_ratio::float,
               'actual_total_reduction', cer.actual_total_reduction::float,
               'actual_cost_ratio', cer.actual_cost_ratio::float
-            ) FILTER (WHERE cer.id IS NOT NULL) AS efficiency_detail
+            )
+            END AS efficiency_detail
      FROM program_evaluations pe
      LEFT JOIN logic_models lm ON lm.id = pe.logic_model_id
      LEFT JOIN measure_designs md ON md.id = pe.measure_design_id
+     LEFT JOIN measure_works mw ON mw.id = pe.measure_work_id
      LEFT JOIN cost_efficiency_records cer ON cer.program_evaluation_id = pe.id
      WHERE pe.project_id = $1
      ORDER BY pe.fiscal_year, pe.created_at`,
