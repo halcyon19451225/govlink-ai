@@ -53,6 +53,7 @@ export default function MeasureEvaluationClient({
   const router = useRouter();
   const [active, setActive] = useState<MeasureRow | null>(null);
   const [busyEval, setBusyEval] = useState<string | null>(null);
+  const [reportBusy, setReportBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fiscalYear = useMemo(() => {
@@ -78,6 +79,37 @@ export default function MeasureEvaluationClient({
     );
   const carriedOverFor = (measureId: string) =>
     delegations.filter((d) => d.status === "carried_over" && d.measure_design_id === measureId);
+
+  /** 評価報告書（docx）をダウンロードする — CA2-5 */
+  const downloadReport = async (evalId: string) => {
+    if (reportBusy) return;
+    setReportBusy(evalId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/projects/${project.id}/evaluations/${evalId}/report`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(j?.error ?? "報告書の出力に失敗しました");
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const m = /filename\*=UTF-8''([^;]+)/.exec(cd);
+      const name = m?.[1] ? decodeURIComponent(m[1]) : "評価報告書.docx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setReportBusy(null);
+    }
+  };
 
   const advanceStatus = async (evalRow: MeasureEvalRow, next: "in_review" | "approved") => {
     if (busyEval) return;
@@ -262,6 +294,16 @@ export default function MeasureEvaluationClient({
                         承認する
                       </button>
                     )}
+                    {/* 報告書（CA2-5）— 未承認でも出せるが本文に「暫定」と刷られる */}
+                    <button
+                      type="button"
+                      disabled={reportBusy === e.id}
+                      onClick={() => void downloadReport(e.id)}
+                      className="text-slate-400 shrink-0 disabled:opacity-50"
+                      title="この評価の報告書をWordで出力"
+                    >
+                      {reportBusy === e.id ? "作成中…" : "📄 報告書"}
+                    </button>
                   </div>
                 );
               })}
