@@ -12,6 +12,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import WorkEvaluationWizard from "@/components/program-eval/WorkEvaluationWizard";
+import DueSchedulePanel from "@/components/program-eval/DueSchedulePanel";
+import type { DueItem } from "@/lib/evaluation/duecheck";
 import { fiscalYearLabel } from "@/lib/measure/indicators";
 import type {
   DelegationCountRow,
@@ -37,12 +39,14 @@ export default function WorkEvaluationClient({
   works,
   evaluations,
   delegationCounts,
+  dueItems,
 }: {
   project: { id: string; title: string; plan_start_date: string | null; plan_end_date: string | null };
   measures: MeasureRow[];
   works: WorkRow[];
   evaluations: WorkEvalRow[];
   delegationCounts: DelegationCountRow[];
+  dueItems: DueItem[];
 }) {
   const router = useRouter();
   const [active, setActive] = useState<{ work: WorkRow; measure: MeasureRow } | null>(null);
@@ -133,7 +137,18 @@ export default function WorkEvaluationClient({
   return (
     <div className="p-6 max-w-4xl space-y-5">
       <div>
-        <h2 className="text-2xl font-bold text-slate-100">取組評価（年次）</h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-2xl font-bold text-slate-100">取組評価（年次）</h2>
+          <a
+            href="/help/flow-fig6.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs px-3 py-1.5 rounded-lg shrink-0"
+            style={{ background: "var(--bg-input)", color: "#818cf8", border: "1px solid var(--border)" }}
+          >
+            🗺 フロー全体図を見る
+          </a>
+        </div>
         <p className="text-xs text-slate-500 mt-1">
           取組毎に、担当者レベルで年次評価（図6）を回します。目的は次年度以降の取組の効果性向上
           （初期アウトカム指標の改善）と、取組の改善だけでは解消できない課題の
@@ -141,6 +156,18 @@ export default function WorkEvaluationClient({
           実施率はタスク完了実績からの自動集計です。
         </p>
       </div>
+
+      {/* 評価予定（CA2-4）— 期日は指標の評価時点から出す */}
+      <DueSchedulePanel
+        items={dueItems}
+        level="work"
+        onStart={(item) => {
+          const w = works.find((x) => x.id === item.measure_work_id);
+          const m = w ? measures.find((x) => x.id === w.measure_design_id) : undefined;
+          if (item.fiscal_year != null) setFiscalYear(item.fiscal_year);
+          if (w && m) setActive({ work: w, measure: m });
+        }}
+      />
 
       <div className="flex items-center gap-3">
         <label className="text-xs text-slate-400">対象年度</label>

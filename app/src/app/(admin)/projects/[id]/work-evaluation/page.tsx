@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
+import { buildDueList, type DueSourceIndicator } from "@/lib/evaluation/duecheck";
 import WorkEvaluationClient from "./WorkEvaluationClient";
 
 export interface WorkRow {
@@ -93,6 +94,68 @@ export default async function WorkEvaluationPage({ params }: { params: { id: str
     ).catch(() => [] as DelegationCountRow[]),
   ]);
 
+  // 評価予定（CA2-4）— 指標の評価時点が正本。計画の年次を決め打ちしない
+  const [indicatorRows, allEvals] = await Promise.all([
+    query<{
+      id: string; category_no: number; label: string;
+      measure_work_id: string | null; measure_design_id: string;
+      checkpoint_id: string | null; cp_label: string | null;
+      relative_year: number | null; relative_period: string | null;
+      absolute_date: string | null; evaluation_type: string | null;
+    }>(
+      `SELECT i.id, i.category_no, i.label, i.measure_work_id, i.measure_design_id,
+              c.id AS checkpoint_id, c.label AS cp_label,
+              c.relative_year, c.relative_period,
+              to_char(c.absolute_date, 'YYYY-MM-DD') AS absolute_date,
+              c.evaluation_type
+         FROM measure_indicators i
+         JOIN measure_indicator_checkpoints c ON c.measure_indicator_id = i.id
+        WHERE i.project_id = $1
+        ORDER BY c.sort_order`,
+      [params.id],
+    ).catch(() => []),
+    query<{
+      id: string; measure_work_id: string | null; measure_design_id: string | null;
+      fiscal_year: number | null; evaluation_tier: string;
+    }>(
+      `SELECT id, measure_work_id, measure_design_id, fiscal_year, evaluation_tier
+         FROM program_evaluations WHERE project_id = $1`,
+      [params.id],
+    ).catch(() => []),
+  ]);
+
+  const byIndicator = new Map<string, DueSourceIndicator>();
+  for (const r of indicatorRows) {
+    if (!r.checkpoint_id) continue;
+    const cur = byIndicator.get(r.id) ?? {
+      id: r.id,
+      category_no: r.category_no,
+      label: r.label,
+      measure_work_id: r.measure_work_id,
+      measure_design_id: r.measure_design_id,
+      checkpoints: [],
+    };
+    cur.checkpoints.push({
+      id: r.checkpoint_id,
+      measure_indicator_id: r.id,
+      label: r.cp_label ?? "評価時点",
+      relative_year: r.relative_year,
+      relative_period: r.relative_period,
+      absolute_date: r.absolute_date,
+      evaluation_type: r.evaluation_type,
+    });
+    byIndicator.set(r.id, cur);
+  }
+  const planStartYear = project.plan_start_date
+    ? Number(project.plan_start_date.slice(0, 4))
+    : new Date().getFullYear();
+  const dueItems = buildDueList(
+    Array.from(byIndicator.values()),
+    allEvals,
+    planStartYear,
+    new Date().toISOString().slice(0, 10),
+  );
+
   return (
     <WorkEvaluationClient
       project={project}
@@ -100,6 +163,7 @@ export default async function WorkEvaluationPage({ params }: { params: { id: str
       works={works}
       evaluations={evaluations}
       delegationCounts={delegationCounts}
+      dueItems={dueItems}
     />
   );
 }

@@ -151,6 +151,60 @@ try {
   rmSync(work, { recursive: true, force: true });
 }
 
+// ── 1b. 評価予定の日付換算（CA2-4）─────────────────
+const work2 = mkdtempSync(join(tmpdir(), "eval-due-"));
+const dueFile = join(work2, "duecheck.mjs");
+try {
+  execFileSync(
+    "npx",
+    [
+      "--no-install", "esbuild",
+      join(APP_ROOT, "src", "lib", "evaluation", "duecheck.ts"),
+      "--bundle", "--format=esm", "--target=es2020", "--platform=neutral",
+      `--alias:@=${join(APP_ROOT, "src")}`,
+      `--outfile=${dueFile}`,
+    ],
+    { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT },
+  );
+  const d = await import(pathToFileURL(dueFile).href);
+
+  // 相対 → 絶対（計画開始2024年度）
+  check("第1年度・上期末は 2024-09-30",
+    d.resolveDueDate({ relative_year: 1, relative_period: "first", absolute_date: null }, 2024) === "2024-09-30");
+  check("第3年度・年度末は 2027-03-31",
+    d.resolveDueDate({ relative_year: 3, relative_period: "end", absolute_date: null }, 2024) === "2027-03-31");
+  check("絶対日付が相対より優先される",
+    d.resolveDueDate({ relative_year: 1, relative_period: "first", absolute_date: "2026-05-01" }, 2024) === "2026-05-01");
+  check("相対年次が無ければ期日未定",
+    d.resolveDueDate({ relative_year: null, relative_period: null, absolute_date: null }, 2024) === null);
+  // 年度の境界
+  check("3月31日は前年度、4月1日は当年度",
+    d.fiscalYearOfDate("2027-03-31") === 2026 && d.fiscalYearOfDate("2027-04-01") === 2027);
+
+  // 済み判定は 単位（取組/主要施策）×年度×tier で見る
+  const inds = [
+    { id: "i5", category_no: 5, label: "実施回数", measure_work_id: "w1", measure_design_id: "m1",
+      checkpoints: [{ id: "c1", measure_indicator_id: "i5", label: "年度末", relative_year: 1,
+                      relative_period: "end", absolute_date: null, evaluation_type: "process" }] },
+    { id: "i8", category_no: 8, label: "中間", measure_work_id: null, measure_design_id: "m1",
+      checkpoints: [{ id: "c2", measure_indicator_id: "i8", label: "計画期間末", relative_year: 3,
+                      relative_period: "end", absolute_date: null, evaluation_type: "outcome" }] },
+  ];
+  const listNone = d.buildDueList(inds, [], 2024, "2026-09-02");
+  check("期日を過ぎた未評価は due", listNone.find((x) => x.checkpoint_id === "c1").state === "due");
+  check("先の期日は upcoming", listNone.find((x) => x.checkpoint_id === "c2").state === "upcoming");
+  const listDone = d.buildDueList(inds, [
+    { id: "e1", measure_work_id: "w1", measure_design_id: "m1", fiscal_year: 2024, evaluation_tier: "outcome_initial" },
+  ], 2024, "2026-09-02");
+  check("同じ取組・同じ年度の評価があれば done",
+    listDone.find((x) => x.checkpoint_id === "c1").state === "done");
+  check("取組の評価は主要施策の予定を消さない",
+    listDone.find((x) => x.checkpoint_id === "c2").state === "upcoming");
+  check("要約が件数を返す", d.dueSummary(listDone).done === 1);
+} finally {
+  rmSync(work2, { recursive: true, force: true });
+}
+
 // ── 2. 保存（POST /evaluations）─────────────────
 const postRoute = read(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "evaluations", "route.ts"));
 check("POST が measure_work_id を受ける", /measure_work_id: z\.string\(\)\.uuid\(\)/.test(postRoute));
@@ -217,6 +271,29 @@ check("旧プログラム評価はメニューから外れている",
 const legacyPage = read(join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "program-evaluation", "page.tsx"));
 check("旧プログラム評価の画面が新メニューへ案内する",
   /work-evaluation/.test(legacyPage) && /measure-evaluation/.test(legacyPage));
+
+// ── 評価予定（CA2-4）────────────────────────────
+const wizard2 = read(join(APP_ROOT, "src", "components", "program-eval", "WorkEvaluationWizard.tsx"));
+const duePanel = read(join(APP_ROOT, "src", "components", "program-eval", "DueSchedulePanel.tsx"));
+check("評価予定パネルがある", duePanel.length > 0);
+check("評価予定は評価時点が未設定でも説明を出す", /評価時点がまだ設定されていません/.test(duePanel));
+const wePage = read(join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "work-evaluation", "page.tsx"));
+check("取組評価ページが評価予定を組み立てる", /buildDueList/.test(wePage));
+check("主要施策評価ページが評価予定を組み立てる", /buildDueList/.test(mePage));
+
+// ── フロー全体図（CA2-4）──────────────────────────
+for (const f of ["flow-fig6.html", "flow-fig7.html", "_flow.css"]) {
+  check(`ヘルプのフロー図 ${f} がある`, existsSync(join(APP_ROOT, "public", "help", f)));
+}
+const fig6Html = read(join(APP_ROOT, "public", "help", "flow-fig6.html"));
+const fig7Html = read(join(APP_ROOT, "public", "help", "flow-fig7.html"));
+check("図6の全体図に評価の目的が書いてある", /この評価の目的/.test(fig6Html) && /委任/.test(fig6Html));
+check("図7の全体図に処遇と引き継ぎが書いてある",
+  /処遇/.test(fig7Html) && /ニーズ評価・セオリー評価/.test(fig7Html));
+check("図7の全体図は現行計画を書き換えないと明記する",
+  /施策構築の内容）は評価では書き換えません/.test(fig7Html));
+check("ウィザードからフロー全体図へ行ける",
+  /help\/flow-fig6\.html/.test(wizard2) && /help\/flow-fig7\.html/.test(meWizard));
 
 const legacyWizard = read(join(APP_ROOT, "src", "components", "program-eval", "EvaluationWizard.tsx"));
 check("旧プログラム評価の画面に図6v2 を出さない",

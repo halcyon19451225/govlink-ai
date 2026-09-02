@@ -10,6 +10,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import MeasureEvaluationWizard from "@/components/program-eval/MeasureEvaluationWizard";
+import DueSchedulePanel from "@/components/program-eval/DueSchedulePanel";
+import type { DueItem } from "@/lib/evaluation/duecheck";
 import { fiscalYearLabel } from "@/lib/measure/indicators";
 import type { DelegationRow, MeasureEvalRow, MeasureRow, WorkEvalSummary } from "./page";
 
@@ -38,6 +40,7 @@ export default function MeasureEvaluationClient({
   workEvals,
   delegations,
   benchmarkCounts,
+  dueItems,
 }: {
   project: { id: string; title: string; plan_start_date: string | null; plan_end_date: string | null };
   measures: MeasureRow[];
@@ -45,6 +48,7 @@ export default function MeasureEvaluationClient({
   workEvals: WorkEvalSummary[];
   delegations: DelegationRow[];
   benchmarkCounts: { measure_design_id: string; n: number }[];
+  dueItems: DueItem[];
 }) {
   const router = useRouter();
   const [active, setActive] = useState<MeasureRow | null>(null);
@@ -122,7 +126,18 @@ export default function MeasureEvaluationClient({
   return (
     <div className="p-6 max-w-4xl space-y-5">
       <div>
-        <h2 className="text-2xl font-bold text-slate-100">主要施策評価（計画期間）</h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-2xl font-bold text-slate-100">主要施策評価（計画期間）</h2>
+          <a
+            href="/help/flow-fig7.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs px-3 py-1.5 rounded-lg shrink-0"
+            style={{ background: "var(--bg-input)", color: "#818cf8", border: "1px solid var(--border)" }}
+          >
+            🗺 フロー全体図を見る
+          </a>
+        </div>
         <p className="text-xs text-slate-500 mt-1">
           主要施策毎に、一計画期間の評価（図7）を回します。中間アウトカム指標が確定したタイミングで、
           取組評価から委任された課題を踏まえて実施します。目的は次期計画における処遇
@@ -130,6 +145,16 @@ export default function MeasureEvaluationClient({
           そして計画全体の見直しが要る課題を次期のニーズ評価・セオリー評価へ引き継ぐことです。
         </p>
       </div>
+
+      {/* 評価予定（CA2-4）— 中間アウトカム指標の評価時点が実施タイミングの正本 */}
+      <DueSchedulePanel
+        items={dueItems}
+        level="measure"
+        onStart={(item) => {
+          const m = measures.find((x) => x.id === item.measure_design_id);
+          if (m) setActive(m);
+        }}
+      />
 
       {error && <p className="text-xs text-rose-400">{error}</p>}
 

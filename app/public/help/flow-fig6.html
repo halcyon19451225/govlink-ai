@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>取組評価（年次・図6）のフロー — Coe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="/help/_flow.css">
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">評価フロー図</p>
+  <h1>取組評価（年次）<br>— 図6フロー</h1>
+  <p class="lede">
+    取組（W-1…）ごとに、担当者レベルで毎年度回す評価です。判定の材料は施策データセットの
+    指標と実績で、実施率はスケジュールのタスク完了実績から自動で集計されます。
+  </p>
+
+  <div class="purpose">
+    <h3>この評価の目的</h3>
+    <ol>
+      <li><b>次年度以降の取組の効果性を上げる</b> — 初期アウトカム指標の改善につながる、取組レベルの改善策を決める</li>
+      <li><b>上位の評価へ委任する</b> — 取組の改善だけでは解消できない課題（主要施策レベルの包括的な見直しが要るもの）を明らかにし、主要施策評価へ渡す</li>
+      <li><b>エビデンスを獲得し、記録として残す</b> — 判定に使った指標と実績を凍結し、報告書とコーパスの材料にする</li>
+    </ol>
+  </div>
+
+  <div class="legend">
+    <i><span class="sw" style="background:var(--accent)"></span>自動提示（指標・実績から判定）</i>
+    <i><span class="sw" style="background:var(--line-strong)"></span>指標が無ければ自動でスキップ</i>
+    <i><span class="sw" style="background:var(--act)"></span>結論</i>
+  </div>
+
+  <h2>フロー</h2>
+  <div class="flow">
+    <div class="node opt">
+      <div class="step">工程 0 ／ 実施体制<span class="tag opttag">No.4 があるとき</span></div>
+      <div class="q">実施に必要な体制は整っていましたか？</div>
+      <div class="src">ストラクチャー指標（No.4）。体制の不備を、工程1の実施不振と切り分けて記録します。</div>
+    </div>
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node auto">
+      <div class="step">工程 1 ／ 実施状況<span class="tag autotag">自動提示</span></div>
+      <div class="q">計画した取組は、予定どおり実施できましたか？</div>
+      <div class="src">アクティビティ指標（No.5）＝ タスク完了実績 ÷ 当該年度の計画件数。分母はスケジュール反映と同じ展開計算で数えます。</div>
+    </div>
+    <div class="branch">
+      <div class="b good"><b>予定どおり</b>次へ</div>
+      <div class="b warn"><b>一部・できなかった</b>要因を記述してから次へ</div>
+    </div>
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node opt">
+      <div class="step">工程 2b ／ 到達と質<span class="tag opttag">No.10・11 があるとき</span></div>
+      <div class="q">届くべき人に、設計どおりの質で届きましたか？</div>
+      <div class="src">カバレッジ・到達度（No.10）と実施品質・忠実度（No.11）。</div>
+    </div>
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node auto">
+      <div class="step">工程 2 ／ 取組結果<span class="tag autotag">自動提示</span></div>
+      <div class="q">取組結果（アウトプット）は目標値に達しましたか？</div>
+      <div class="src">アウトプット指標（No.6）の実績と目標値・達成条件から判定します。</div>
+    </div>
+    <div class="branch">
+      <div class="b good"><b>達した</b>次へ</div>
+      <div class="b bad"><b>達していない</b>要因を選ぶ（活動量／リーチ／内容不適合／外部要因／指標設定）</div>
+    </div>
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node auto">
+      <div class="step">工程 3 ／ 初期アウトカム<span class="tag autotag">自動提示</span></div>
+      <div class="q">初期アウトカム指標は目標値に達しましたか？</div>
+      <div class="src">初期アウトカム指標（No.7）。アウトプットは出ているのに成果に結びつかない場合は、その仮説を残します。</div>
+    </div>
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node">
+      <div class="step">工程 4 ／ 取組への帰属</div>
+      <div class="q">初期アウトカムの変化は、この取組の結果と言えますか？</div>
+      <div class="src">インパクト指標（No.13）と実験設計（比較の作り方・不採用手法の記録・前提の確かめ方）を材料に判断します。<b>比較データが未取得なら「暫定P判定」</b>を選べます。</div>
+    </div>
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node">
+      <div class="step">工程 6 ／ 年次コスト</div>
+      <div class="q">当該年度の投入は、実施状況と結果に見合っていましたか？</div>
+      <div class="src">インプット指標（No.3・執行率）、単位コスト（No.15）、年度別の事業費と財源。</div>
+    </div>
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node end">
+      <div class="step">結論 1 ／ 次年度の扱い<span class="tag endtag">改善へ</span></div>
+      <div class="q">継続・拡充・縮小・変更・終了 ＋ 担当者レベルの改善策</div>
+      <div class="src">改善策は改善アクションとして追跡できます。</div>
+    </div>
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node end">
+      <div class="step">結論 2 ／ 上位への委任<span class="tag endtag">主要施策評価へ</span></div>
+      <div class="q">取組の改善だけでは解消できない課題はありますか？</div>
+      <div class="src">記入した課題は主要施策評価（図7）の入力になり、そこで「扱った／次期計画へ引き継ぐ」が記録されます。</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>保存と承認。</b>保存は下書きです。<b>承認すると</b>、判定に使った指標の実績が凍結され、
+    No.5 の実施率が実績として確定し、該当年度の評価系PDCAチェックポイントが自動で完了します。
+    承認後の数字は、あとからタスクや実績を触っても動きません。<br><br>
+    <b>実施のタイミング。</b>「2年目・3年目」のような固定の年次は持ちません。
+    指標ごとに設定した<b>評価時点</b>（相対年次＋上期／下期／年度末、または絶対日付）が正本で、
+    期日が来たものは各メニュー冒頭の「評価予定」に並びます。
+  </div>
+</div>
+</body>
+</html>
