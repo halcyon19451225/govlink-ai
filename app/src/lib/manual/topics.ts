@@ -48,6 +48,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
   { id: "ebpm", label: "EBPMダッシュボード", menuPath: "/projects/[id]/ebpm", section: "C" },
   { id: "lineage", label: "リネージグラフ", menuPath: "/projects/[id]/lineage", section: "C" },
   // A: 改善
+  { id: "plan-reflection", label: "次期計画への反映", menuPath: "/projects/[id]/plan-reflection", section: "A" },
   { id: "improvement-actions", label: "改善アクション", menuPath: "/projects/[id]/improvement-actions", section: "A" },
   { id: "self-evaluation", label: "自己評価シート", menuPath: "/projects/[id]/self-evaluation", section: "A" },
   { id: "post", label: "AI改善提案", menuPath: "/projects/[id]/post", section: "A" },

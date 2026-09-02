@@ -15,7 +15,7 @@
  * 使い方: node scripts/check-eval-judgment.mjs
  */
 
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -193,6 +193,88 @@ const rows = read(join(APP_ROOT, "src", "lib", "evaluation", "reportRows.ts"));
 check("説明的な単位は括弧で添える（値と単位を直結しない）", /u\.length <= 4 \? `\$\{v\}\$\{u\}` : `\$\{v\}（\$\{u\}）`/.test(rows));
 const snap = read(join(APP_ROOT, "src", "lib", "evaluation", "indicatorSnapshot.ts"));
 check("凍結スナップショットに自然体推計を写す", /natural_baseline: ind\.natural_baseline/.test(snap));
+
+// ── 6. 様式H1 評価総括表（収束工程 段階1・全様式の転記元）──
+const refl = read(join(APP_ROOT, "src", "lib", "evaluation", "reflectionData.ts"));
+check("H1 は1行1指標セット（No.6→7→8）", /category_no IN \(6, 7, 8\)/.test(refl));
+check("H1 の判定は保存値を写す（承認済み > レビュー中 > 下書き）", /STATUS_RANK/.test(refl) && /judgment_path, report_no, route/.test(refl));
+check("H1 は事業費を按分しない（施策計）", /按分/.test(refl));
+check("H1 の実績は履歴の最新（LATERAL）", /LEFT JOIN LATERAL/.test(refl));
+check("H1 に「主要施策評価が未実施」「判定保留」「共有指標」の自動注記", /主要施策評価が未実施/.test(refl) && /判定保留/.test(refl) && /共有されている/.test(refl));
+const h1Route = read(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "plan-reflection", "h1", "route.ts"));
+check("H1 API がある（GET=JSON / POST=docx）", /export async function GET/.test(h1Route) && /export async function POST/.test(h1Route));
+check("H1 docx は横向き", /landscape: true/.test(h1Route));
+check("H1 docx は未承認の判定を【暫定】と刷る", /【暫定】/.test(h1Route));
+const sidebar = read(join(APP_ROOT, "src", "components", "ProjectSidebar.tsx"));
+check("サイドバーAに「次期計画への反映」がある", /plan-reflection/.test(sidebar) && sidebar.includes("次期計画への反映"));
+const topics = read(join(APP_ROOT, "src", "lib", "manual", "topics.ts"));
+check("マニュアル索引に plan-reflection がある", /id: "plan-reflection"/.test(topics));
+const client = read(join(APP_ROOT, "src", "app", "(admin)", "projects", "[id]", "plan-reflection", "PlanReflectionClient.tsx"));
+check("タブは H1→G1→G4→G2→H3 の順", /"h1"[\s\S]*"g1"[\s\S]*"g4"[\s\S]*"g2"[\s\S]*"h3"/.test(client));
+check("画面は施策データを書き換えない（PATCH/PUT を持たない）", !/method: "PATCH"|method: "PUT"/.test(client));
+
+// docx スモーク: 汎用帳票（formDocx）＋ H1 の行変換をダミーで組む
+const work3 = mkdtempSync(join(tmpdir(), "eval-form-docx-"));
+const bundleOut = join(APP_ROOT, "node_modules", ".check-eval-judgment.mjs");
+const stub = join(work3, "server-only.mjs");
+try {
+  writeFileSync(stub, "export {}\n");
+  const build = (src, out) => {
+    execFileSync(
+      "npx",
+      [
+        "--no-install", "esbuild", join(APP_ROOT, "src", "lib", "evaluation", src),
+        "--bundle", "--format=esm", "--platform=node", "--target=node18",
+        `--alias:@=${join(APP_ROOT, "src")}`, `--alias:server-only=${stub}`,
+        "--external:docx", "--external:pg", `--outfile=${out}`,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT },
+    );
+    return import(pathToFileURL(out).href);
+  };
+  const fd = await build("formDocx.ts", bundleOut);
+  const isZip = (buf) => Buffer.isBuffer(buf) && buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b;
+  const buf = await fd.buildFormDocx({
+    municipality: "団体", title: "様式H1 評価総括表", subtitle: "テスト", warnings: ["【暫定】"], landscape: true,
+    version: fd.REFLECT_FORM_VERSION,
+    sections: [{ heading: "1. 一覧", table: { headers: ["a", "b"], rows: [["1", "2\n3"]], widths: [30, 70] } }, { heading: "2. 空", table: { headers: ["a"], rows: [] } }, { heading: "3. kv", kv: [{ label: "x", value: "y" }] }],
+  });
+  check("汎用帳票 docx が組める（有効なZIP・横向き・空表・kv）", isZip(buf));
+  // h1RowText は DB を持つモジュール内にあるので、db を外して純粋関数だけ呼ぶ
+  const dbStub = join(work3, "db.mjs");
+  writeFileSync(dbStub, "export const query = async () => []; export const queryOne = async () => null;\n");
+  const out2 = join(APP_ROOT, "node_modules", ".check-eval-judgment-h1.mjs");
+  execFileSync(
+    "npx",
+    [
+      "--no-install", "esbuild", join(APP_ROOT, "src", "lib", "evaluation", "reflectionData.ts"),
+      "--bundle", "--format=esm", "--platform=node", "--target=node18",
+      `--alias:@=${join(APP_ROOT, "src")}`, `--alias:server-only=${stub}`, `--alias:@/lib/db=${dbStub}`,
+      "--external:pg", `--outfile=${out2}`,
+    ],
+    { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT },
+  );
+  const rd = await import(pathToFileURL(out2).href);
+  const row = {
+    set_no: 1, measure_id: "m", measure_title: "施策", work_id: "w", work_code: "W-1", work_title: "取組",
+    output: { indicator_id: "i6", label: "回数", target: "2回", result: "1回", baseline: "0回", achieved: "×", shared: false },
+    initial: { indicator_id: "i7", label: "完了", target: "1（実施=1・未実施=0）", result: "—", baseline: "0（実施=1・未実施=0）", achieved: "－", shared: true },
+    intermediate: { indicator_id: "i8", label: "認定率", target: "4.8%", result: "4.7%", baseline: "5.1%", achieved: "○", shared: false },
+    primary: true,
+    judgment: { evaluation_id: "e", status: "in_review", fiscal_year: 2026, path: "A→E→?", report_no: null, report_title: "判定保留", route: null, standard_treatment: null, decided_treatment: null, rationale_required: false, comparison_grade: "C", frozen: false },
+    cost_total: 350000, fiscal_rate: null, fiscal_mark: null, comparison_grade: "C", exemption: null,
+    auto_notes: ["※判定保留（記号列 A→E→?）"],
+  };
+  const t = rd.h1RowText(row);
+  check("H1 行は9列（H1-1〜H1-9）", t.length === 9 && rd.H1_HEADERS.length === 9);
+  check("H1 行に ◎・達否・共有・【暫定】・保留が写る", t[4].startsWith("◎") && t[2].includes("×") && t[3].includes("（共有）") && t[5].includes("判定保留") && t[5].includes("【暫定】"));
+  check("H1 の判定は報告書No.とルートを併記する",
+    rd.h1RowText({ ...row, judgment: { ...row.judgment, path: "A→E→J", report_no: 9, report_title: "達成・継続", route: "A", frozen: true } })[5] === "A→E→J → No.9 達成・継続（ルートA 校正（単一ループ））");
+  rmSync(out2, { force: true });
+} finally {
+  rmSync(work3, { recursive: true, force: true });
+  rmSync(bundleOut, { force: true });
+}
 
 console.log(`check-eval-judgment: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

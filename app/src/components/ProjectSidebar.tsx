@@ -67,6 +67,8 @@ const NAV_ITEMS = [
     label: "改善",
     color: "#b45309",
     items: [
+      // 収束工程（Act）: 期末評価の判定・処遇を次期計画へ流し込む様式（H1〜H4・G1〜G4）
+      { id: "plan-reflection",     label: "次期計画への反映", icon: "📋", path: "plan-reflection" },
       { id: "improvement-actions", label: "改善アクション",  icon: "🔧", path: "improvement-actions" },
       { id: "self-evaluation", label: "自己評価シート",      icon: "📝", path: "self-evaluation" },
       { id: "post",            label: "AI改善提案",          icon: "🤖", path: "post" },
