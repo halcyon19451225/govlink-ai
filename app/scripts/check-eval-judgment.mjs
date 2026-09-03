@@ -352,5 +352,39 @@ try {
   rmSync(bundleOut, { force: true });
 }
 
+// ── 9. "use client" のファイルが server-only モジュールから値を import していないこと ──
+// （Amplify のビルドで落ちた実績: ReflectionTabs → reflectionData の ADOPTION_LABEL）
+{
+  const { readdirSync, statSync } = await import("node:fs");
+  const walk = (dir, out = []) => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p, out);
+      else if (/\.(ts|tsx)$/.test(name)) out.push(p);
+    }
+    return out;
+  };
+  const files = walk(join(APP_ROOT, "src"));
+  const serverOnly = new Set(
+    files.filter((f) => /^\s*import "server-only";/m.test(read(f))).map((f) => f.replace(/\.tsx?$/, "")),
+  );
+  const offenders = [];
+  for (const f of files) {
+    const src = read(f);
+    if (!/^\s*"use client";/m.test(src)) continue;
+    const re = /^import\s+(?!type\s)([\s\S]*?)\s+from\s+"@\/([^"]+)";/gm;
+    let m;
+    while ((m = re.exec(src))) {
+      const target = join(APP_ROOT, "src", m[2]);
+      if (!serverOnly.has(target)) continue;
+      // `import { type A, type B }` だけなら型のみ
+      const names = m[1].replace(/[{}]/g, "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (names.every((n) => n.startsWith("type "))) continue;
+      offenders.push(`${f.replace(APP_ROOT + "/", "")} → @/${m[2]}`);
+    }
+  }
+  check(`"use client" が server-only モジュールから値を import しない${offenders.length ? `: ${offenders.join(", ")}` : ""}`, offenders.length === 0);
+}
+
 console.log(`check-eval-judgment: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

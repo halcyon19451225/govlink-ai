@@ -26,6 +26,13 @@ import {
 } from "@/lib/evaluation/judgment";
 import { isAchieved } from "@/lib/stats/achievement";
 import { withUnit } from "@/lib/evaluation/reportRows";
+import {
+  ADOPTION_LABEL,
+  type Adoption,
+  type DeferredReasonKind,
+  type DeferredStatus,
+  type ReflectKind,
+} from "@/lib/evaluation/reflectionTypes";
 
 /** H1-3/4/5 の1セル: 指標名：目標→実績　達否（○×－） */
 export interface H1IndicatorCell {
@@ -379,34 +386,17 @@ export function h1RowText(r: H1Row): string[] {
 // G1 評価・計画対応表 / G2 反映状況報告書 / G4 諮問事項整理書 / H3 未反映事項台帳 — migration 061
 // ═══════════════════════════════════════════════════════════════
 
-export type ReflectKind = "measure" | "chapter" | "not_adopted";
-export type Adoption = "adopted" | "partial" | "rejected";
-export type DeferredStatus = "deferred" | "re_proposed" | "adopted" | "dropped";
-export type DeferredReasonKind = "budget" | "staff" | "coordination" | "verification" | "other";
-
-export const ADOPTION_LABEL: Record<Adoption, string> = {
-  adopted: "採用",
-  partial: "一部採用",
-  rejected: "不採用",
-};
-export const REFLECT_KIND_LABEL: Record<ReflectKind, string> = {
-  measure: "次期施策へ",
-  chapter: "章・総論・指標へ",
-  not_adopted: "不採用（理由を明記）",
-};
-export const DEFERRED_STATUS_LABEL: Record<DeferredStatus, string> = {
-  deferred: "見送り",
-  re_proposed: "再上程",
-  adopted: "採用",
-  dropped: "取り下げ",
-};
-export const DEFERRED_REASON_LABEL: Record<DeferredReasonKind, string> = {
-  budget: "財源",
-  staff: "人材・体制",
-  coordination: "他計画・他部署調整",
-  verification: "効果検証に時間を要する",
-  other: "その他",
-};
+// 語彙とラベルはクライアントでも使うので reflectionTypes.ts に置く（server-only を持ち込まない）
+export {
+  ADOPTION_LABEL,
+  DEFERRED_REASON_LABEL,
+  DEFERRED_STATUS_LABEL,
+  REFLECT_KIND_LABEL,
+  type Adoption,
+  type DeferredReasonKind,
+  type DeferredStatus,
+  type ReflectKind,
+} from "@/lib/evaluation/reflectionTypes";
 
 export interface DecisionHistoryItem {
   at: string;

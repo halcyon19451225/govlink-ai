@@ -13,13 +13,11 @@ import {
   DEFERRED_STATUS_LABEL,
   REFLECT_KIND_LABEL,
   type Adoption,
-  type DeferredItem,
   type DeferredReasonKind,
   type DeferredStatus,
   type ReflectKind,
-  type ReflectionData,
-  type ReportRow,
-} from "@/lib/evaluation/reflectionData";
+} from "@/lib/evaluation/reflectionTypes";
+import type { DeferredItem, ReflectionData, ReportRow } from "@/lib/evaluation/reflectionData";
 
 const card: React.CSSProperties = { background: "var(--bg-secondary)", borderColor: "var(--border)" };
 const box: React.CSSProperties = { borderColor: "var(--border)", background: "var(--bg-primary)" };
