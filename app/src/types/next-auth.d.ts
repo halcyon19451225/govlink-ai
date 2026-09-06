@@ -23,8 +23,8 @@ declare module "next-auth/jwt" {
     idToken?: string;
     /** Ordo ID（Cognito）がメール到達性を確認済みか。email フォールバックの可否に使う */
     emailVerified?: boolean;
-    /** 権限をどのキーで解決したか（'sub' | 'email'）。移行の進捗を観測するため */
-    identityBoundBy?: "sub" | "email";
+    /** 権限をどのキーで解決したか。sub のみ（email 照合は 2026-09-06 に廃止） */
+    identityBoundBy?: "sub";
     municipalityId?: string;
     avatarUrl?: string;
     role?: string;

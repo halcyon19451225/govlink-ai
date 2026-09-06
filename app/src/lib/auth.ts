@@ -122,52 +122,62 @@ export const authOptions: NextAuthOptions = {
         if (user?.image) token.picture = user.image;
       }
 
-      // 権限の解決。
+      // 権限の解決 — **Cognito の sub のみを鍵にする**（2026-09-06 に email 照合を廃止）。
       //
-      // 第一キーは cognito_user_id（= Cognito の sub）。不変で、本人以外が名乗れない。
-      // email はフォールバックだが、**メールは可変で、複数テナントに同じ値が存在しうる**ため、
-      // 権限の鍵としては本質的に不適切。移行が終わり次第この分岐は削除すること。
-      //   ・email_verified が真のときのみ許可する
-      //   ・成立したら warn を出す（どの行が sub 未設定のまま残っているかを可視化する）
-      //   ・ここで sub を自動で書き戻してはいけない（攻撃者の sub を束ねてしまう）
+      // かつては user_roles.email で引いていたが、メールは可変で、同じ値が複数テナントに
+      // 存在しうるため認可の鍵として不適切だった。同じ Cognito プールを一般消費者向け SNS
+      // （Libera）が共有しているので、業務メールで Libera に登録すると業務権限が付く、
+      // という穴にもなっていた。詳細: claude/ordo-id-design.md §4
+      //
+      // sub は user_identities に持つ。1人が複数の identity を持ちうるため
+      // （ネイティブのメール+パスワードと Google 連携で sub が別々になる）、
+      // user_roles と 1対多 で紐付けている。
+      //
+      // ⚠ **ここに email によるフォールバックを足し直してはいけない。** 塞いだ穴が再び開く。
+      //   未登録の identity は「権限なし」として落とす（fail closed）。ログに sub を出すので、
+      //   正当な利用者なら user_identities に1行足せば復旧できる。
       type RoleRow = {
         id: string;
         municipality_id: string;
         avatar_url: string | null;
         role: string;
+        membership_count: string;
       };
-      if (token.sub || token.email) {
+      if (token.sub) {
         try {
-          let row: RoleRow | null = null;
-
-          if (token.sub) {
-            row = await queryOne<RoleRow>(
-              "SELECT id, municipality_id, avatar_url, role FROM user_roles WHERE cognito_user_id = $1 LIMIT 1",
-              [token.sub],
-            );
-            if (row) token.identityBoundBy = "sub";
-          }
-
-          if (!row && token.email && token.emailVerified === true) {
-            row = await queryOne<RoleRow>(
-              "SELECT id, municipality_id, avatar_url, role FROM user_roles WHERE email = $1 LIMIT 1",
-              [token.email],
-            );
-            if (row) {
-              token.identityBoundBy = "email";
-              console.warn(
-                `[auth] メール照合で権限を解決しました（移行未完了）: user_roles.id=${row.id} sub=${token.sub ?? "(なし)"}。` +
-                  `この行の cognito_user_id を実際の sub に更新してください。`,
-              );
-            }
-          }
+          const row = await queryOne<RoleRow>(
+            `SELECT u.id, u.municipality_id, u.avatar_url, u.role,
+                    count(*) OVER () AS membership_count
+             FROM user_roles u
+             JOIN user_identities i ON i.user_role_id = u.id
+             WHERE i.cognito_sub = $1
+             ORDER BY u.created_at
+             LIMIT 1`,
+            [token.sub],
+          );
 
           if (row) {
+            token.identityBoundBy = "sub";
             token.municipalityId = row.municipality_id;
             token.role = row.role;
             token.userRoleId = row.id;
             if (row.avatar_url) token.avatarUrl = row.avatar_url;
             token.isOrgAdmin = row.role === "admin" || await isOrgAdmin(row.id);
+
+            // 1人が複数自治体に所属している場合、今は「最も古い所属」を決定的に選ぶ。
+            // 以前の LIMIT 1（順序未定義）と違って結果は毎回同じだが、
+            // 本来は利用者に所属を選ばせるべき。未解決の課題として可視化しておく。
+            if (Number(row.membership_count) > 1) {
+              console.warn(
+                `[auth] sub=${token.sub} は ${row.membership_count} 件の所属を持ちます。` +
+                  `最も古い所属（user_roles.id=${row.id}）を選択しました。所属切替UIは未実装です。`,
+              );
+            }
+          } else {
+            console.warn(
+              `[auth] sub=${token.sub} に対応する user_identities がありません。権限を付与しません。` +
+                `正当な利用者であれば user_identities に (user_role_id, cognito_sub, provider) を追加してください。`,
+            );
           }
         } catch { /* DB不通時は既存tokenを維持 */ }
       }
