@@ -12,8 +12,12 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { buildH1Data, buildReflectionData } from "@/lib/evaluation/reflectionData";
 import PlanReflectionClient from "./PlanReflectionClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 export default async function PlanReflectionPage({ params }: { params: { id: string } }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const [h1, refl] = await Promise.all([buildH1Data(params.id), buildReflectionData(params.id)]);
   if (!h1 || !refl) notFound();
   return <PlanReflectionClient projectId={params.id} h1={h1} initialReflection={refl} />;

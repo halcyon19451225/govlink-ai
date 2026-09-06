@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import PostForm, { type KpiForForm } from "./PostForm";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface ProjectRow {
   id: string;
@@ -12,6 +13,9 @@ export default async function PostReportPage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const projects = await query<ProjectRow>(
     "SELECT id, title FROM projects WHERE id = $1",
     [params.id],

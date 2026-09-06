@@ -8,6 +8,7 @@ import { query, queryOne } from "@/lib/db";
 import ProgramEvaluationClient from "./ProgramEvaluationClient";
 import OutcomeScoreboard from "@/components/outcome/OutcomeScoreboard";
 import type { ScoreboardKpi } from "@/lib/outcome/tiers";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface ProgramEvalRow {
   id: string;
@@ -45,6 +46,9 @@ export default async function ProgramEvaluationPage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const session = await getServerSession(authOptions);
   if (!session) notFound();
 

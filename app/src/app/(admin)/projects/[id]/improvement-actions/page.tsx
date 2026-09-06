@@ -5,6 +5,7 @@ import { query, queryOne } from "@/lib/db";
 import ImprovementActionsClient, {
   type ReflectOption,
 } from "./ImprovementActionsClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 import type { ImprovementAction } from "@/lib/improvement/types";
 
 export default async function ImprovementActionsPage({
@@ -12,6 +13,9 @@ export default async function ImprovementActionsPage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const project = await queryOne<{ id: string; title: string }>(
     "SELECT id, title FROM projects WHERE id = $1",
     [params.id],

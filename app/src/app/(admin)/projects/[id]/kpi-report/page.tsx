@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import KpiReportForm from "./KpiReportForm";
 import type { AchievementCondition } from "@/lib/stats/achievement";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface KpiRow {
   id: string;
@@ -15,6 +16,9 @@ interface KpiRow {
 }
 
 export default async function KpiReportPage({ params }: { params: { id: string } }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const projects = await query<{ id: string; title: string }>(
     "SELECT id, title FROM projects WHERE id = $1",
     [params.id],

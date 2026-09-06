@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import AsisAnalysisClient, { type AsisRecord } from "./AsisAnalysisClient";
 import { EMPTY_SWOT, EMPTY_CROSS } from "@/lib/asis/types";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface KpiRow {
   id: string;
@@ -16,6 +17,9 @@ export default async function AsisAnalysisPage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const project = await queryOne<{ id: string; title: string }>(
     "SELECT id, title FROM projects WHERE id = $1",
     [params.id],

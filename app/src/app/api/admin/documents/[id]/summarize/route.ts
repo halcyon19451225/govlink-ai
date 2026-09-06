@@ -6,6 +6,7 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getS3 } from "@/lib/storage";
 import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
+import { requireChildRowAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 
 const s3 = getS3();
@@ -22,6 +23,10 @@ export async function POST(
   { params }: { params: { id: string } },
 ) {
   const session = await getServerSession(authOptions);
+  // テナント境界（claude/coe-tenant-isolation.md A-6）。
+  // URL は子リソースの id を指すので、documents → projects と辿って所属自治体を確認する
+  const outOfTenant = await requireChildRowAccess(session, "documents", params.id);
+  if (outOfTenant) return outOfTenant;
   if (!session) {
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
   }

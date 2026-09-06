@@ -6,6 +6,7 @@ import ScheduleClient, { PhaseRow, TaskRow } from "./ScheduleClient";
 import ScheduleTabs from "./ScheduleTabs";
 import PdcaDashboardClient from "../pdca/PdcaDashboardClient";
 import type { PdcaCheckpoint } from "../pdca/page";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface ProjectRow {
   id: string;
@@ -38,6 +39,9 @@ export default async function SchedulePage({
   params: { id: string };
   searchParams?: { tab?: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const session = await getServerSession(authOptions);
   if (!session) notFound();
 

@@ -16,6 +16,7 @@ import { buildDueList, type DueSourceIndicator } from "@/lib/evaluation/duecheck
 import { causeTypeFromWorkFlow } from "@/lib/evaluation/judgmentFromFlow";
 import type { IndicatorSnapshotItem } from "@/lib/evaluation/indicatorSnapshot";
 import MeasureEvaluationClient from "./MeasureEvaluationClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 export interface MeasureRow {
   id: string;
@@ -77,6 +78,9 @@ export interface DelegationRow {
 }
 
 export default async function MeasureEvaluationPage({ params }: { params: { id: string } }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const project = await queryOne<{
     id: string;
     title: string;

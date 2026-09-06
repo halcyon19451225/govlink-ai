@@ -4,12 +4,16 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import CheckpointWorkClient from "./CheckpointWorkClient";
 import type { PdcaCheckpoint } from "../page";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 export default async function CheckpointPage({
   params,
 }: {
   params: { id: string; checkpointId: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const checkpoint = await queryOne<PdcaCheckpoint & {
     project_id: string;
     started_at: string | null;

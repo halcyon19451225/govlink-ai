@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { transaction } from "@/lib/db";
 
 const kpiUpdateSchema = z.object({
@@ -45,6 +46,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { projectId, type, body, aiSummary, kpiUpdates } = parsed.data;
+  // テナント境界（claude/coe-tenant-isolation.md A-6）。
+  // この API は project を URL/本文の ID で直接指すため、所属自治体を必ず確認する
+  const outOfTenant = await requireProjectAccess(session, projectId);
+  if (outOfTenant) return outOfTenant;
+
 
   try {
     const postId = await transaction(async (client) => {

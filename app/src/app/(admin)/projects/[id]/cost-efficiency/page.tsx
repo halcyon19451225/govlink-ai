@@ -9,7 +9,11 @@
 // 旧UI実装（CostEfficiencyClient.tsx）は移植元の記録として残置している。
 
 import { redirect } from "next/navigation";
+import { assertProjectPage } from "@/lib/tenant-page";
 
-export default function CostEfficiencyPage({ params }: { params: { id: string } }) {
+export default async function CostEfficiencyPage({ params }: { params: { id: string } }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   redirect(`/projects/${params.id}/program-evaluation`);
 }

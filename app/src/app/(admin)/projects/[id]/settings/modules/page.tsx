@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import ModuleGraphClient from "./ModuleGraphClient";
 import CloneNextPeriodButton from "@/components/plan/CloneNextPeriodButton";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface PlanModule {
   id: string;
@@ -17,6 +18,9 @@ export default async function ModulesSettingsPage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const project = await queryOne<{
     id: string;
     title: string;

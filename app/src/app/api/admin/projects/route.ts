@@ -82,40 +82,41 @@ export async function POST(req: NextRequest) {
     goals, kpis,
   } = parsed.data;
 
-  // プラン制限チェック（セッションに自治体IDがある場合のみ）
+  // ⚠ 政策の所属自治体は **セッションからしか決めない**。
+  //
+  //   かつてここは「セッションに自治体IDが無ければ、リクエストの担当課名
+  //   （department）で municipalities を名前検索し、あれば合流・無ければ新規作成」
+  //   していた。これは §3-5 で /api/auth/register から取り除いたのと同じ
+  //   「名前による合流」で、ログイン済みでテナント未確定の利用者が
+  //   `department: "御船町"` を送るだけで、**他自治体に政策を書き込めた**。
+  //   （実データの `slug = dept-…` の自治体は、この経路で作られたものと見られる。
+  //     他は `org-…` で作られている）
+  //   claude/coe-tenant-isolation.md / claude/ordo-id-design.md §3-5
+  //
+  //   097a0dc 以降、user_identities に紐づかない利用者には municipalityId が付かない
+  //   （fail closed）。ここで弾けば、その状態のまま書き込むことはできない。
   const sessionMunId = session.user?.municipalityId;
-  if (sessionMunId) {
-    const limitCheck = await checkLimit(sessionMunId, "projects");
-    if (!limitCheck.allowed) {
-      return NextResponse.json(
-        { data: null, error: `プランの上限（${limitCheck.limit}件）に達しました`, upgrade_url: "/pricing" },
-        { status: 403 },
-      );
-    }
+  if (!sessionMunId) {
+    return NextResponse.json(
+      { data: null, error: "所属自治体が特定できないため、政策を登録できません" },
+      { status: 403 },
+    );
+  }
+
+  // プラン制限チェック
+  const limitCheck = await checkLimit(sessionMunId, "projects");
+  if (!limitCheck.allowed) {
+    return NextResponse.json(
+      { data: null, error: `プランの上限（${limitCheck.limit}件）に達しました`, upgrade_url: "/pricing" },
+      { status: 403 },
+    );
   }
 
   try {
     const projectId = await transaction(async (client) => {
-      // セッションから自治体ID取得、なければ担当課名でフォールバック
-      let municipalityId = session.user?.municipalityId ?? null;
-
-      if (!municipalityId) {
-        if (!department) throw new Error("自治体情報が取得できません");
-        const existing = await client.query<{ id: string }>(
-          "SELECT id FROM municipalities WHERE name = $1 LIMIT 1",
-          [department],
-        );
-        if (existing.rows[0]) {
-          municipalityId = existing.rows[0].id;
-        } else {
-          const inserted = await client.query<{ id: string }>(
-            "INSERT INTO municipalities (name, slug, prefecture) VALUES ($1, $2, '未設定') RETURNING id",
-            [department, `dept-${crypto.randomUUID()}`],
-          );
-          if (!inserted.rows[0]) throw new Error("municipality の作成に失敗しました");
-          municipalityId = inserted.rows[0].id;
-        }
-      }
+      // 所属自治体はセッションのものに固定する（上でチェック済み）。
+      // ⚠ ここに「名前で探して無ければ作る」を戻さないこと。テナント境界が壊れる
+      const municipalityId = sessionMunId;
 
       const projectResult = await client.query<{ id: string }>(
         `INSERT INTO projects

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import GapAnalysisClient from "./GapAnalysisClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface ProjectRow {
   id: string;
@@ -39,6 +40,9 @@ export default async function GapAnalysisPage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const project = await queryOne<ProjectRow>(
     "SELECT id, title FROM projects WHERE id = $1",
     [params.id],

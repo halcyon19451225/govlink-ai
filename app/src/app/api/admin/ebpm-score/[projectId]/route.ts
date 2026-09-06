@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 
@@ -26,6 +27,11 @@ export async function GET(
   }
 
   const { projectId } = params;
+  // テナント境界（claude/coe-tenant-isolation.md A-6）。
+  // この API は project を URL/本文の ID で直接指すため、所属自治体を必ず確認する
+  const outOfTenant = await requireProjectAccess(session, projectId);
+  if (outOfTenant) return outOfTenant;
+
 
   const [kpis, evidences, scheduleRows, docRows] = await Promise.all([
     query<KpiRow>(

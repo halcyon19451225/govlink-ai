@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 
 const bodySchema = z.object({
@@ -28,6 +29,11 @@ export async function GET(req: NextRequest) {
   if (!projectId) {
     return NextResponse.json({ data: null, error: "project_id は必須です" }, { status: 400 });
   }
+  // テナント境界（claude/coe-tenant-isolation.md A-6）。
+  // この API は project を URL/本文の ID で直接指すため、所属自治体を必ず確認する
+  const outOfTenant1 = await requireProjectAccess(session, projectId);
+  if (outOfTenant1) return outOfTenant1;
+
 
   const rows = await query<{
     id: string;
@@ -91,6 +97,11 @@ export async function POST(req: NextRequest) {
 
   const { projectId, outputKpiId, outcomeKpiId, evidenceType, strength, title, description, sourceUrl, documentId } =
     parsed.data;
+  // テナント境界（claude/coe-tenant-isolation.md A-6）。
+  // この API は project を URL/本文の ID で直接指すため、所属自治体を必ず確認する
+  const outOfTenant2 = await requireProjectAccess(session, projectId);
+  if (outOfTenant2) return outOfTenant2;
+
 
   const rows = await query<{ id: string }>(
     `INSERT INTO evidences

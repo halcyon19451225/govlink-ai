@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { aiCreateMessage } from "@/lib/ai/gateway";
 
 const bodySchema = z.object({
@@ -11,8 +12,14 @@ const bodySchema = z.object({
   data: z.record(z.string(), z.unknown()),
 });
 
-export async function POST(req: NextRequest) {
+// このハンドラは元々ルートパラメータを受け取っていなかった（[id] 配下なのに
+// project を一切参照していなかった）。テナント境界のために params を受け取る
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
+  // テナント境界。URL の project id が自分の自治体のものか確認する
+  // （claude/coe-tenant-isolation.md A-4）。拒否は 404 で、存在を漏らさない
+  const outOfTenant = await requireProjectAccess(session, params.id);
+  if (outOfTenant) return outOfTenant;
   if (!session) {
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
   }

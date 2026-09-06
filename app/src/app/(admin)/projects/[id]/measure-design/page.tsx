@@ -5,6 +5,7 @@ import { query, queryOne } from "@/lib/db";
 import { normalizeMeasure, type MeasureDesign } from "@/lib/measure/types";
 import type { ScoreboardKpi } from "@/lib/outcome/tiers";
 import MeasureDesignClient, { type MeasureFocus } from "./MeasureDesignClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 // 施策構築（EBPM）— E1: データセットの器と一覧・詳細
 // 設計: claude/coe-ebpm-plan.md
@@ -98,6 +99,9 @@ export default async function MeasureDesignPage({
   params: { id: string };
   searchParams?: { kpi?: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const project = await queryOne<{ id: string; title: string }>(
     "SELECT id, title FROM projects WHERE id = $1",
     [params.id],

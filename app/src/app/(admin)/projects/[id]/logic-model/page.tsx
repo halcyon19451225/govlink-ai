@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import LogicModelEditorClient from "./LogicModelEditorClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface LogicModelRow {
   id: string;
@@ -57,6 +58,9 @@ export default async function LogicModelPage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const project = await queryOne<{ id: string; title: string; description: string | null }>(
     "SELECT id, title, description FROM projects WHERE id = $1",
     [params.id],

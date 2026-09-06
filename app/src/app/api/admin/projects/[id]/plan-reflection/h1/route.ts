@@ -14,6 +14,7 @@ export const maxDuration = 120;
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { requireModulePermission } from "@/lib/permissions";
 import { uploadToStorage } from "@/lib/storage";
 import { H1_HEADERS, buildH1Data, h1RowText } from "@/lib/evaluation/reflectionData";
@@ -25,6 +26,10 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
+  // テナント境界。URL の project id が自分の自治体のものか確認する
+  // （claude/coe-tenant-isolation.md A-4）。拒否は 404 で、存在を漏らさない
+  const outOfTenant = await requireProjectAccess(session, params.id);
+  if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, "program_evaluation", "view");
   if (deny) return deny;
   const data = await buildH1Data(params.id);
@@ -34,6 +39,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
+  // テナント境界。URL の project id が自分の自治体のものか確認する
+  // （claude/coe-tenant-isolation.md A-4）。拒否は 404 で、存在を漏らさない
+  const outOfTenant = await requireProjectAccess(session, params.id);
+  if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, "program_evaluation", "view");
   if (deny) return deny;
   const data = await buildH1Data(params.id);

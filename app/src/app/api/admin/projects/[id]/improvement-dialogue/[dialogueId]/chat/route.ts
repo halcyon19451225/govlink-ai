@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
 import { queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
@@ -177,6 +178,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // ── A. 利用者からの発言 ─────────────────────────
   const session = await getServerSession(authOptions);
+  // テナント境界。URL の project id が自分の自治体のものか確認する
+  // （claude/coe-tenant-isolation.md A-4）。拒否は 404 で、存在を漏らさない
+  const outOfTenant = await requireProjectAccess(session, params.id);
+  if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, MODULE, "edit");
   if (deny) return deny;
 

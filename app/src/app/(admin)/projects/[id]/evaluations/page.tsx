@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface ProjectRow { id: string; title: string }
 
@@ -37,6 +38,9 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }
 };
 
 export default async function EvaluationsPage({ params }: { params: { id: string } }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const session = await getServerSession(authOptions);
   if (!session) notFound();
 

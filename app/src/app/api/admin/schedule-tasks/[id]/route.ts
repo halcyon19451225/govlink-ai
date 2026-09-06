@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { requireChildRowAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 
 const bodySchema = z.object({
@@ -15,6 +16,10 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   const session = await getServerSession(authOptions);
+  // テナント境界（claude/coe-tenant-isolation.md A-6）。
+  // URL は子リソースの id を指すので、schedule_tasks → projects と辿って所属自治体を確認する
+  const outOfTenant = await requireChildRowAccess(session, "schedule_tasks", params.id);
+  if (outOfTenant) return outOfTenant;
   if (!session) {
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
   }

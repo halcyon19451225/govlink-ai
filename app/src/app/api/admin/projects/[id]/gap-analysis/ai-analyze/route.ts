@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
 import { requireModulePermission } from "@/lib/permissions";
@@ -38,6 +39,10 @@ async function fetchStorageAsText(storagePath: string): Promise<string | null> {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
+  // テナント境界。URL の project id が自分の自治体のものか確認する
+  // （claude/coe-tenant-isolation.md A-4）。拒否は 404 で、存在を漏らさない
+  const outOfTenant = await requireProjectAccess(session, params.id);
+  if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, "gap_analysis", "edit");
   if (deny) return deny;
 

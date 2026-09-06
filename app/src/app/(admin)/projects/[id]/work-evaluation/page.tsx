@@ -13,6 +13,7 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import { buildDueList, type DueSourceIndicator } from "@/lib/evaluation/duecheck";
 import WorkEvaluationClient from "./WorkEvaluationClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 export interface WorkRow {
   id: string;
@@ -46,6 +47,9 @@ export interface DelegationCountRow {
 }
 
 export default async function WorkEvaluationPage({ params }: { params: { id: string } }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const project = await queryOne<{
     id: string;
     title: string;

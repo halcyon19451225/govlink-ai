@@ -2,6 +2,7 @@ import "server-only";
 import { type Session } from "next-auth";
 import { NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
+import { requireProjectAccess } from "@/lib/tenant";
 export type { PermissionLevel, ModuleId } from "@/lib/permission-types";
 export { PERMISSION_ORDER } from "@/lib/permission-types";
 import { PERMISSION_ORDER, type PermissionLevel, type ModuleId } from "@/lib/permission-types";
@@ -103,7 +104,17 @@ export async function requireModulePermission(
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
   }
 
+  // ⚠ **モジュール権限より先にテナント境界を見る。**
+  //   ここは「この人はこのモジュールを編集してよいか」を答える関数であって、
+  //   「この政策が自分の自治体のものか」は答えていなかった。そのため下の
+  //   `role === "admin"` の早期 return が、**他自治体の政策に対するフルアクセス**に
+  //   なっていた（claude/coe-tenant-isolation.md A-5）。
+  //   境界は必ず admin バイパスより前に置くこと。
+  const outOfTenant = await requireProjectAccess(session, projectId);
+  if (outOfTenant) return outOfTenant;
+
   // isOrgAdmin または role='admin' は常に全権限を持つ（後方互換）
+  // ただし上のテナント境界を通った政策に限る
   if (session.user.isOrgAdmin || session.user.role === "admin") {
     return null;
   }

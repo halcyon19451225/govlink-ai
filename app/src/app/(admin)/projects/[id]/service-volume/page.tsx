@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
 import ServiceVolumeClient from "./ServiceVolumeClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface ServiceVolumePlan {
   id: string;
@@ -40,6 +41,9 @@ export default async function ServiceVolumePage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const session = await getServerSession(authOptions);
   if (!session) notFound();
 

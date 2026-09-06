@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { normalizeSections } from "@/lib/plan/document";
@@ -23,6 +24,10 @@ const MODULE = "logic_model";
  */
 export async function GET(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
+  // テナント境界。URL の project id が自分の自治体のものか確認する
+  // （claude/coe-tenant-isolation.md A-4）。拒否は 404 で、存在を漏らさない
+  const outOfTenant = await requireProjectAccess(session, params.id);
+  if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, MODULE, "view");
   if (deny) return deny;
 
@@ -74,6 +79,10 @@ const patchSchema = z.object({
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
+  // テナント境界。URL の project id が自分の自治体のものか確認する
+  // （claude/coe-tenant-isolation.md A-4）。拒否は 404 で、存在を漏らさない
+  const outOfTenant = await requireProjectAccess(session, params.id);
+  if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, MODULE, "edit");
   if (deny) return deny;
 

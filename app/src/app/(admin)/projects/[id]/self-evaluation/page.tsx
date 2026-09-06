@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
 import SelfEvaluationClient from "./SelfEvaluationClient";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface EntryRow {
   id: string;
@@ -113,6 +114,9 @@ export default async function SelfEvaluationPage({
 }: {
   params: { id: string };
 }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const session = await getServerSession(authOptions);
   if (!session) notFound();
 

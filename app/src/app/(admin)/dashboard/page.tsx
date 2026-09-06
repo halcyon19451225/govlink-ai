@@ -27,25 +27,36 @@ function determinePdcaStage(row: ProjectRow): PdcaStage {
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
-  void session;
+
+  // ⚠ テナント境界。かつてここは `void session;` でセッションを捨て、WHERE 句なしで
+  //   projects を全件取得していた。その結果 **全自治体の政策が一覧に出て**おり、
+  //   他テナントの政策 UUID を配る「入口」にもなっていた
+  //   （claude/coe-tenant-isolation.md A-2）。自治体が確定しないなら何も出さない。
+  const municipalityId = session?.user?.municipalityId;
 
   let projects: ProjectRow[] = [];
   let dbError: string | null = null;
 
-  try {
-    projects = await query<ProjectRow>(
-      `SELECT p.id, p.title, p.description, p.status, m.name AS department, p.created_at,
-              COUNT(DISTINCT po.id)::int AS post_count,
-              COUNT(DISTINCT ps.id)::int AS suggestion_count
-       FROM projects p
-       JOIN municipalities m ON m.id = p.municipality_id
-       LEFT JOIN posts po ON po.project_id = p.id
-       LEFT JOIN policy_suggestions ps ON ps.project_id = p.id
-       GROUP BY p.id, p.title, p.description, p.status, m.name, p.created_at
-       ORDER BY p.created_at DESC`,
-    );
-  } catch {
-    dbError = "政策一覧の取得に失敗しました";
+  if (!municipalityId) {
+    dbError = "所属自治体が特定できないため、政策一覧を表示できません";
+  } else {
+    try {
+      projects = await query<ProjectRow>(
+        `SELECT p.id, p.title, p.description, p.status, m.name AS department, p.created_at,
+                COUNT(DISTINCT po.id)::int AS post_count,
+                COUNT(DISTINCT ps.id)::int AS suggestion_count
+         FROM projects p
+         JOIN municipalities m ON m.id = p.municipality_id
+         LEFT JOIN posts po ON po.project_id = p.id
+         LEFT JOIN policy_suggestions ps ON ps.project_id = p.id
+         WHERE p.municipality_id = $1
+         GROUP BY p.id, p.title, p.description, p.status, m.name, p.created_at
+         ORDER BY p.created_at DESC`,
+        [municipalityId],
+      );
+    } catch {
+      dbError = "政策一覧の取得に失敗しました";
+    }
   }
 
   return (

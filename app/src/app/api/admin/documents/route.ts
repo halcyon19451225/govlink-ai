@@ -7,6 +7,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getS3 } from "@/lib/storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { authOptions } from "@/lib/auth";
+import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 
 const s3 = getS3();
@@ -31,6 +32,11 @@ export async function GET(req: NextRequest) {
   if (!projectId) {
     return NextResponse.json({ data: null, error: "project_id は必須です" }, { status: 400 });
   }
+  // テナント境界（claude/coe-tenant-isolation.md A-6）。
+  // この API は project を URL/本文の ID で直接指すため、所属自治体を必ず確認する
+  const outOfTenant1 = await requireProjectAccess(session, projectId);
+  if (outOfTenant1) return outOfTenant1;
+
 
   const rows = await query<{
     id: string;
@@ -83,6 +89,11 @@ export async function POST(req: NextRequest) {
 
   const { projectId, scheduleTaskId, title, documentType, fileName, fileSize, contentType } =
     parsed.data;
+  // テナント境界（claude/coe-tenant-isolation.md A-6）。
+  // この API は project を URL/本文の ID で直接指すため、所属自治体を必ず確認する
+  const outOfTenant2 = await requireProjectAccess(session, projectId);
+  if (outOfTenant2) return outOfTenant2;
+
 
   const uploadedBy = session.user?.email ?? null;
   const s3Key = `documents/${projectId}/${Date.now()}_${fileName}`;

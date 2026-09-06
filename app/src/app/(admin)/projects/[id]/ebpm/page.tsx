@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import EbpmClient from "./EbpmClient";
 import type { AchievementCondition } from "@/lib/stats/achievement";
+import { assertProjectPage } from "@/lib/tenant-page";
 
 interface ProjectRow { id: string; title: string }
 interface KpiRow {
@@ -27,6 +28,9 @@ interface ReportRow {
 }
 
 export default async function EbpmPage({ params }: { params: { id: string } }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
+  // （claude/coe-tenant-isolation.md A-3）
+  await assertProjectPage(params.id);
   const projects = await query<ProjectRow>(
     "SELECT id, title FROM projects WHERE id = $1",
     [params.id],
