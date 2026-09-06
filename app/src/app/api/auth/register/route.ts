@@ -52,6 +52,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: null, error: "認証設定が不足しています" }, { status: 500 });
   }
 
+  // 既存の自治体名は、Cognito アカウントを作る前に弾く。
+  // （後段で弾くと、確認されない Cognito ユーザーだけが残ってしまう）
+  const orgName = municipalityName.trim();
+  if (!orgName) {
+    return NextResponse.json({ data: null, error: "自治体名は必須です" }, { status: 400 });
+  }
+  const munDup = await query<{ id: string }>(
+    "SELECT id FROM municipalities WHERE name = $1 LIMIT 1",
+    [orgName],
+  );
+  if (munDup[0]) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: "この自治体はすでに登録されています。既存の管理者にユーザー追加を依頼してください。",
+      },
+      { status: 409 },
+    );
+  }
+
   // Cognitoにサインアップ
   let cognitoUserId: string;
   try {
@@ -95,24 +115,32 @@ export async function POST(req: NextRequest) {
   }
 
   // 自治体をINSERT
-  const munExisting = await query<{ id: string }>(
-    "SELECT id FROM municipalities WHERE name = $1 LIMIT 1",
-    [municipalityName],
+  //
+  // ⚠ ここは絶対に「既存の自治体へ合流」させてはならない。
+  // このエンドポイントは未認証で公開されているため、名前一致で既存テナントに
+  // 合流できると、第三者が公開情報である自治体名を送るだけで、その自治体の
+  // 管理者（下の INSERT は role='admin' 固定）になれてしまう＝テナント乗っ取り。
+  // 2人目以降の追加は「設定 > ユーザー管理」からの招待に限定する。
+  //
+  // WHERE NOT EXISTS 付きの INSERT にしているのは、上の事前チェックとの間に
+  // 同名が作られた場合（競合）でも合流させないため。作れなければ 409 で返す。
+  const munInserted = await query<{ id: string }>(
+    `INSERT INTO municipalities (name, slug, prefecture)
+     SELECT $1, $2, '未設定'
+     WHERE NOT EXISTS (SELECT 1 FROM municipalities WHERE name = $1)
+     RETURNING id`,
+    [orgName, `org-${cognitoUserId.slice(0, 8)}`],
   );
-
-  let municipalityId: string;
-  if (munExisting[0]) {
-    municipalityId = munExisting[0].id;
-  } else {
-    const munInserted = await query<{ id: string }>(
-      "INSERT INTO municipalities (name, slug, prefecture) VALUES ($1, $2, '未設定') RETURNING id",
-      [municipalityName, `org-${cognitoUserId.slice(0, 8)}`],
+  if (!munInserted[0]) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: "この自治体はすでに登録されています。既存の管理者にユーザー追加を依頼してください。",
+      },
+      { status: 409 },
     );
-    if (!munInserted[0]) {
-      return NextResponse.json({ data: null, error: "自治体情報の作成に失敗しました" }, { status: 500 });
-    }
-    municipalityId = munInserted[0].id;
   }
+  const municipalityId = munInserted[0].id;
 
   // user_rolesにINSERT
   await query(
