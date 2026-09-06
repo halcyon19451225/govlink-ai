@@ -174,12 +174,32 @@ export const authOptions: NextAuthOptions = {
               );
             }
           } else {
+            // fail closed — **既にトークンに載っているクレームを必ず消す**。
+            //
+            // jwt コールバックは毎リクエスト走り、ここで返した token がそのリクエストの
+            // 認可判断に使われる（かつセッション更新時にクッキーへ再エンコードされる）。
+            // 消さずに warn だけ出すと、**修正前に email 照合で発行されたトークンが
+            // municipalityId / role を保持したまま生き続ける**。NextAuth の JWT は
+            // maxAge 30日・updateAge で延長されるため、使い続けている限り失効しない。
+            // つまり「新規ログインは塞いだが、既存セッションは素通り」という状態になる。
+            // 実際に 2026-09-06 の検証で、token.sub が Google の数値ID
+            // （直付け時代の識別子）のまま role=admin のセッションが生きていた。
+            delete token.municipalityId;
+            delete token.role;
+            delete token.userRoleId;
+            delete token.avatarUrl;
+            delete token.identityBoundBy;
+            token.isOrgAdmin = false;
+
             console.warn(
-              `[auth] sub=${token.sub} に対応する user_identities がありません。権限を付与しません。` +
+              `[auth] sub=${token.sub} に対応する user_identities がありません。権限を剥奪しました。` +
                 `正当な利用者であれば user_identities に (user_role_id, cognito_sub, provider) を追加してください。`,
             );
           }
-        } catch { /* DB不通時は既存tokenを維持 */ }
+        } catch {
+          // DB 不通は一過性なので既存 token を維持する（ここで消すと全員が締め出される）。
+          // 「identity が無い」という確定的な否定とは区別すること。
+        }
       }
 
       return token;

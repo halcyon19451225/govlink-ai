@@ -54,6 +54,16 @@ must(
 );
 
 must(
+  'identity 未登録のとき既存クレームを削除している（既存セッションの素通り防止）',
+  /delete token\.municipalityId/.test(src)
+    && /delete token\.role/.test(src)
+    && /delete token\.userRoleId/.test(src)
+    && /token\.isOrgAdmin\s*=\s*false/.test(src),
+  'warn するだけでクレームを消していない。修正前に email 照合で発行されたトークンが '
+    + 'municipalityId / role を保持したまま生き続ける（NextAuth の JWT は使い続ける限り失効しない）',
+);
+
+must(
   'LINE / GitHub の直付けプロバイダーが復活していない',
   !/LineProvider|GithubProvider/.test(src),
   'Cognito に載せられないプロバイダーが直付けで復活している（sub が Cognito のものにならない）',
