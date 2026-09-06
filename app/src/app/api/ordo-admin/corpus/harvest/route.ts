@@ -5,9 +5,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { runHarvest } from "@/lib/corpus/harvest/engine";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 /**
  * 収集の手動実行（「今すぐ収集」）— X7a
@@ -17,7 +17,7 @@ const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
  */
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
 

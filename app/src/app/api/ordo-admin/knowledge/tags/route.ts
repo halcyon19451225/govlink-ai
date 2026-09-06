@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query } from "@/lib/db";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 interface KnowledgeTag {
   id: string;
@@ -20,7 +20,7 @@ interface KnowledgeTag {
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
 

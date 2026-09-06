@@ -4,9 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { queryOne } from "@/lib/db";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
+// 検収者名の既定値。**認可判定には使わない**（判定は @/lib/ordo-admin の isOrdoAdmin）
+const REVIEWER_FALLBACK = "ordoservice.com@gmail.com";
 
 type Params = { params: { kind: string; rowId: string } };
 
@@ -32,7 +34,7 @@ function tableOf(kind: string): string | null {
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
   const table = tableOf(params.kind);
@@ -90,7 +92,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
 
@@ -126,7 +128,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (d.status !== undefined) {
     add("status", d.status);
     sets.push("reviewed_at = now()");
-    add("reviewed_by", session.user?.email ?? ORDO_ADMIN_EMAIL);
+    add("reviewed_by", session.user?.email ?? REVIEWER_FALLBACK);
   }
   if (d.field_category !== undefined) add("field_category", d.field_category);
   if (d.population_band !== undefined) add("population_band", d.population_band);

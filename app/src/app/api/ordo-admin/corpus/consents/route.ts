@@ -5,10 +5,10 @@ import { getServerSession } from "next-auth";
 import type { Session } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query, queryOne } from "@/lib/db";
 import { contributorKeyOf, deleteContributions } from "@/lib/corpus/server";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 /**
  * コーパス同意（オプトイン）の管理 — X3
@@ -21,7 +21,7 @@ const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
  */
 
 function guard(session: Session | null) {
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
   return null;

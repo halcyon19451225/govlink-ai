@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { queryOne } from "@/lib/db";
 import { sanitizeExtractionProposals } from "@/lib/corpus/types";
 import { upsertCorpusMeasure, upsertCorpusEvidence } from "@/lib/corpus/server";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 type Params = { params: { documentId: string } };
 
@@ -33,7 +33,7 @@ const bodySchema = z.object({
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
 

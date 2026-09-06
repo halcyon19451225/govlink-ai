@@ -2,15 +2,15 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import GradientBackground from "@/components/GradientBackground";
 import AutoHelpButton from "@/components/help/AutoHelpButton";
 import type { ReactNode } from "react";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 export default async function OrdoAdminLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     redirect("/dashboard");
   }
 

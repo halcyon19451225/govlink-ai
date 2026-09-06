@@ -5,14 +5,14 @@ import { getServerSession } from "next-auth";
 import type { Session } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { queryOne } from "@/lib/db";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 type Params = { params: { sourceId: string } };
 
 function guard(session: Session | null) {
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
   return null;

@@ -8,6 +8,7 @@ import AiManagementClient, {
   type GroundingStat,
   type CorpusCounts,
 } from "./AiManagementClient";
+import { assertOrdoAdminPage } from "@/lib/ordo-admin";
 
 /**
  * 独自AI管理 — X1/X5（Coe内の運営管理画面）
@@ -17,6 +18,9 @@ import AiManagementClient, {
  * 更新は /api/ordo-admin/ai/routing（セッション認可経路）を使う。
  */
 export default async function OrdoAiPage() {
+  // 運営者判定。**layout だけに頼らない**（Next.js の layout は認可の境界に
+  // してはならない。ナビゲーション時に再実行されず、層を飛ばせる）
+  await assertOrdoAdminPage();
   // 接地状況（X6）。041 未実行でも画面が落ちないよう握る
   let groundingStats: GroundingStat[] = [];
   try {

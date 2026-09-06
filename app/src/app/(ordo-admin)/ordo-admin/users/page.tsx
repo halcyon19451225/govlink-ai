@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { query } from "@/lib/db";
+import { assertOrdoAdminPage } from "@/lib/ordo-admin";
 
 interface UserRow {
   id: string;
@@ -12,6 +13,9 @@ interface UserRow {
 }
 
 export default async function OrdoUsersPage() {
+  // 運営者判定。**layout だけに頼らない**（Next.js の layout は認可の境界に
+  // してはならない。ナビゲーション時に再実行されず、層を飛ばせる）
+  await assertOrdoAdminPage();
   const rows = await query<UserRow>(
     `SELECT u.id, u.email, u.display_name, u.role,
             m.name AS municipality_name, u.created_at::text

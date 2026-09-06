@@ -18,6 +18,8 @@ import type { NextRequest } from "next/server";
  * 保護対象（未ログインなら /login へリダイレクト）:
  *   /dashboard/*   /projects/*   /settings/*   /knowledge/*
  *   /templates/*   /resources/*  /billing/*    /help/*
+ *   /ordo-admin/*（運営者向けの越境コンソール。運営者判定そのものは
+ *                  src/lib/ordo-admin.ts。ここは未ログインを弾くだけ）
  *   /api/ai/*
  *   （/api/admin/* は除外。理由は下の matcher のコメント）
  *
@@ -67,6 +69,9 @@ export const config = {
     "/resources/:path*",
     "/billing/:path*",
     "/help/:path*",
+    // 運営者向けの越境コンソール。実 URL は src/app/(ordo-admin)/ordo-admin/… の
+    // 内側の階層なので /ordo-admin/*（(ordo-admin) はルートグループで URL に出ない）
+    "/ordo-admin/:path*",
     // ⚠ /api/admin/* は **あえて入れない**。withAuth は未認証時に /login への 302 を返すため、
     //   API が返していた 401 JSON の契約が壊れ、呼び出し側の res.json() が HTML を掴む。
     //   api/admin 配下 131 本はすべて getServerSession で自前に 401 を返している（確認済み）。

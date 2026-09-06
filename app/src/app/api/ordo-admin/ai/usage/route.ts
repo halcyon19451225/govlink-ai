@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query } from "@/lib/db";
 
 /**
@@ -15,13 +16,12 @@ import { query } from "@/lib/db";
  * 認可は routing と同じ2経路（Ordo管理者セッション or 共有鍵）。
  */
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 async function authorize(req: NextRequest): Promise<NextResponse | null> {
   const key = process.env.AI_ADMIN_API_KEY;
   if (key && req.headers.get("x-ai-admin-key") === key) return null;
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
   return null;

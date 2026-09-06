@@ -5,10 +5,12 @@ import { getServerSession } from "next-auth";
 import type { Session } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query, queryOne, transaction } from "@/lib/db";
 import { SPOT_SAMPLE_RATE } from "@/lib/corpus/harvest/types";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
+// 検収者名の既定値。**認可判定には使わない**（判定は @/lib/ordo-admin の isOrdoAdmin）
+const REVIEWER_FALLBACK = "ordoservice.com@gmail.com";
 
 /**
  * 一括検収 — X7c §3-2・§3-4
@@ -30,7 +32,7 @@ const TABLES: Record<string, string> = {
 };
 
 function guard(session: Session | null): NextResponse | null {
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
   return null;
@@ -52,7 +54,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const deny = guard(session);
   if (deny) return deny;
-  const reviewer = session?.user?.email ?? ORDO_ADMIN_EMAIL;
+  const reviewer = session?.user?.email ?? REVIEWER_FALLBACK;
 
   let raw: unknown;
   try {

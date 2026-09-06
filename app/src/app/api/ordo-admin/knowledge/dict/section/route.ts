@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query } from "@/lib/db";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 interface DictSection {
   section_id?: string;
@@ -29,7 +29,7 @@ async function getDict(categoryId: string) {
 
 export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ ok: false, error: "権限がありません" }, { status: 403 });
   }
 
@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ ok: false, error: "権限がありません" }, { status: 403 });
   }
 

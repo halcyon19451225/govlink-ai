@@ -3,17 +3,17 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query } from "@/lib/db";
 import { triggerNextStep } from "@/lib/chain-fetch";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: { documentId: string } },
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ ok: false, error: "権限がありません" }, { status: 403 });
   }
 

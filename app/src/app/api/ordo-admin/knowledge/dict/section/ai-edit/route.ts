@@ -4,10 +4,10 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query } from "@/lib/db";
 import { aiCreateMessage } from "@/lib/ai/gateway";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 const MODEL = "claude-sonnet-4-6";
 
 interface DictSection {
@@ -48,7 +48,7 @@ interface ClaudeEditResult {
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ ok: false, error: "権限がありません" }, { status: 403 });
   }
 

@@ -2,8 +2,12 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { queryOne } from "@/lib/db";
+import { assertOrdoAdminPage } from "@/lib/ordo-admin";
 
 export default async function OrdoAdminDashboard() {
+  // 運営者判定。**layout だけに頼らない**（Next.js の layout は認可の境界に
+  // してはならない。ナビゲーション時に再実行されず、層を飛ばせる）
+  await assertOrdoAdminPage();
   const [
     municipalityCount,
     userCount,

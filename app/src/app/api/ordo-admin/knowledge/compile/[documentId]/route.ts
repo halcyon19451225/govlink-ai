@@ -4,10 +4,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query, queryOne } from "@/lib/db";
 import { downloadFromStorage } from "@/lib/storage";
 
-const ORDO_ADMIN_EMAIL = "ordoservice.com@gmail.com";
 const MAX_TEXT_CHARS = 80_000;
 
 type Params = { params: { documentId: string } };
@@ -59,7 +59,7 @@ async function extractTextFromS3(s3Key: string, fileType: string): Promise<strin
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user?.email !== ORDO_ADMIN_EMAIL) {
+  if (!isOrdoAdmin(session)) {
     return NextResponse.json({ data: null, error: "権限がありません" }, { status: 403 });
   }
 
