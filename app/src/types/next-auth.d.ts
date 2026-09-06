@@ -21,6 +21,10 @@ declare module "next-auth/jwt" {
   interface JWT {
     accessToken?: string;
     idToken?: string;
+    /** Ordo ID（Cognito）がメール到達性を確認済みか。email フォールバックの可否に使う */
+    emailVerified?: boolean;
+    /** 権限をどのキーで解決したか（'sub' | 'email'）。移行の進捗を観測するため */
+    identityBoundBy?: "sub" | "email";
     municipalityId?: string;
     avatarUrl?: string;
     role?: string;

@@ -2,9 +2,6 @@ import crypto from "crypto";
 import type { NextAuthOptions } from "next-auth";
 import CognitoProvider from "next-auth/providers/cognito";
 import CredentialsProvider from "next-auth/providers/credentials";
-import GoogleProvider from "next-auth/providers/google";
-import LineProvider from "next-auth/providers/line";
-import GithubProvider from "next-auth/providers/github";
 import { CognitoIdentityProviderClient, InitiateAuthCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { queryOne } from "@/lib/db";
 import { isOrgAdmin } from "@/lib/permissions";
@@ -25,6 +22,23 @@ const cognitoClient = new CognitoIdentityProviderClient({ region });
 
 const providers: NextAuthOptions["providers"] = [
   CognitoProvider({ clientId, clientSecret, issuer }),
+
+  // Google は「Cognito のフェデレーション経由」で使う。
+  // identity_provider=Google を渡すことで Cognito のホストUIを素通りして
+  // 直接 Google の同意画面へ飛ぶため、利用者から見た体験は直付けと変わらない。
+  // 違いは、返ってくる sub が **Cognito の sub** になること。これで user_roles を
+  // cognito_user_id で引けるようになり、メール照合を捨てられる。
+  //
+  // 前提: Coe のアプリクライアントの SupportedIdentityProviders に "Google" が入っていること。
+  //   aws cognito-idp update-user-pool-client --supported-identity-providers COGNITO Google ...
+  CognitoProvider({
+    id: "cognito-google",
+    name: "Google",
+    clientId,
+    clientSecret,
+    issuer,
+    authorization: { params: { identity_provider: "Google", scope: "openid email profile" } },
+  }),
 
   CredentialsProvider({
     id: "credentials",
@@ -64,26 +78,19 @@ const providers: NextAuthOptions["providers"] = [
   }),
 ];
 
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  providers.push(GoogleProvider({
-    clientId: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  }));
-}
-
-if (process.env.LINE_CLIENT_ID && process.env.LINE_CLIENT_SECRET) {
-  providers.push(LineProvider({
-    clientId: process.env.LINE_CLIENT_ID,
-    clientSecret: process.env.LINE_CLIENT_SECRET,
-  }));
-}
-
-if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
-  providers.push(GithubProvider({
-    clientId: process.env.GITHUB_ID,
-    clientSecret: process.env.GITHUB_SECRET,
-  }));
-}
+// ⚠ Google / LINE / GitHub を NextAuth に直付けしていたのを廃止した（2026-09-06）。
+//
+// 直付けだと token.sub が各プロバイダーの識別子になり、Cognito の sub と一致しない。
+// そのため権限解決が「メール一致」に退避し、
+//   ・同じプールを使う一般消費者向け SNS（Libera）に業務メールで登録すると業務権限が付く
+//   ・同一メールが複数テナントにあると LIMIT 1 で所属が不定になる
+// という穴になっていた。実データにも `cognito_user_id = 'google_1105...'` の行が残っている。
+//
+// 今後、ソーシャルログインは **Cognito のフェデレーション経由**に統一する
+// （Google IdP はプール ap-northeast-1_fskAOFUGZ に設定済み。Coe のアプリクライアントの
+//   SupportedIdentityProviders に "Google" を追加すれば、利用者から見た体験は変わらない）。
+// LINE は id_token が ES256 のみ、GitHub は OIDC 非対応のため Cognito に載らない。
+// 詳細と判断の記録: プロジェクト文書 claude/ordo-id-design.md §4
 
 export const authOptions: NextAuthOptions = {
   providers,
@@ -94,6 +101,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, account, profile, user }) {
       // CredentialsProvider
       if (account?.provider === "credentials" && user) {
+        // USER_PASSWORD_AUTH は Cognito 側で CONFIRMED のユーザーしか通らないため、
+        // ここに来た時点でメール到達性は確認済みとして扱ってよい
+        token.emailVerified = true;
         token.sub = user.id;
         if (user.email) token.email = user.email;
         if (user.name) token.name = user.name;
@@ -106,22 +116,52 @@ export const authOptions: NextAuthOptions = {
         if (typeof name === "string") token.name = name;
         if (account.access_token !== undefined) token.accessToken = account.access_token;
         if (account.id_token !== undefined) token.idToken = account.id_token;
+        const ev = (profile as Record<string, unknown>).email_verified;
+        token.emailVerified = ev === true || ev === "true";
         // ソーシャルログインのアバター
         if (user?.image) token.picture = user.image;
       }
 
-      // emailで検索（Google等ソーシャルログインはcognito_user_idが一致しないため）
-      if (token.email) {
+      // 権限の解決。
+      //
+      // 第一キーは cognito_user_id（= Cognito の sub）。不変で、本人以外が名乗れない。
+      // email はフォールバックだが、**メールは可変で、複数テナントに同じ値が存在しうる**ため、
+      // 権限の鍵としては本質的に不適切。移行が終わり次第この分岐は削除すること。
+      //   ・email_verified が真のときのみ許可する
+      //   ・成立したら warn を出す（どの行が sub 未設定のまま残っているかを可視化する）
+      //   ・ここで sub を自動で書き戻してはいけない（攻撃者の sub を束ねてしまう）
+      type RoleRow = {
+        id: string;
+        municipality_id: string;
+        avatar_url: string | null;
+        role: string;
+      };
+      if (token.sub || token.email) {
         try {
-          const row = await queryOne<{
-            id: string;
-            municipality_id: string;
-            avatar_url: string | null;
-            role: string;
-          }>(
-            "SELECT id, municipality_id, avatar_url, role FROM user_roles WHERE email = $1 LIMIT 1",
-            [token.email],
-          );
+          let row: RoleRow | null = null;
+
+          if (token.sub) {
+            row = await queryOne<RoleRow>(
+              "SELECT id, municipality_id, avatar_url, role FROM user_roles WHERE cognito_user_id = $1 LIMIT 1",
+              [token.sub],
+            );
+            if (row) token.identityBoundBy = "sub";
+          }
+
+          if (!row && token.email && token.emailVerified === true) {
+            row = await queryOne<RoleRow>(
+              "SELECT id, municipality_id, avatar_url, role FROM user_roles WHERE email = $1 LIMIT 1",
+              [token.email],
+            );
+            if (row) {
+              token.identityBoundBy = "email";
+              console.warn(
+                `[auth] メール照合で権限を解決しました（移行未完了）: user_roles.id=${row.id} sub=${token.sub ?? "(なし)"}。` +
+                  `この行の cognito_user_id を実際の sub に更新してください。`,
+              );
+            }
+          }
+
           if (row) {
             token.municipalityId = row.municipality_id;
             token.role = row.role;
