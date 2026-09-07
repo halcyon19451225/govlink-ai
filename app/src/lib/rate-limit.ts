@@ -39,34 +39,78 @@ function normalise(value: string | null | undefined): string {
 }
 
 /**
+ * 信頼できる前段ホップの数。
+ *
+ * X-Forwarded-For の**末尾から数えてこの数だけ捨てた要素**を閲覧者 IP とみなす。
+ *
+ * 2026-09-07 の本番実測（`claude/coe-rate-limit.md` §6）:
+ *   末尾は毎回異なる `64.252.x.x`（AWS の CloudFront オリジン向けレンジ）だった。
+ *   つまり Amplify SSR に届く時点でチェーンは
+ *
+ *     [閲覧者が偽装した値…] , <閲覧者IP: CloudFront が追記> , <CloudFrontのIP: さらに後段が追記>
+ *
+ *   の形で、**末尾は中間ホップ**。1 を捨てて末尾から 2 番目を採る。
+ *
+ * ⚠ この値を増減させると、レート制限が「効かない」または「偽装可能」のどちらかに倒れる。
+ *   前段の構成（CloudFront + Amplify の内部プロキシ）を変えたときは必ず測り直すこと。
+ *   測り方は下の logChainOnce が出すログか、
+ *   `node scripts/inspect-rate-limits.mjs` に記録される値を見る。
+ */
+const TRUSTED_PROXY_HOPS = 1
+
+/**
+ * 前段の構成を確かめるための診断ログ。
+ *
+ * Lambda インスタンスごとに **1 回だけ** 出す。毎回出すとログが膨らみ、
+ * 出さないと構成が変わったときに黙って壊れる。その折衷。
+ * 出力先は Amplify の SSR ログ（CloudWatch Logs /aws/amplify/<appId>）。
+ */
+let chainLogged = false
+function logChainOnce(xff: string | null, derived: string | null): void {
+  if (chainLogged) return
+  chainLogged = true
+  console.warn(
+    `[rate-limit] X-Forwarded-For の構成: raw="${xff ?? '(なし)'}" ` +
+      `hops=${TRUSTED_PROXY_HOPS} derived=${derived ?? '(取得できず)'}`,
+  )
+}
+
+/**
  * クライアント IP を取り出す。
  *
- * ⚠ **X-Forwarded-For は「末尾」を採る。先頭ではない。**
- *   CloudFront（Amplify Hosting の前段）は、閲覧者がすでに X-Forwarded-For を
- *   付けていた場合、**その後ろに実際の閲覧者 IP を追記する**。
- *   したがって先頭の要素は攻撃者が自由に詰められる値であり、
- *   先頭を採るとヘッダを1つ足すだけでレート制限を丸ごと回避できる。
- *   最後の要素だけが、前段が観測した実体である。
+ * ⚠ **先頭を採ってはいけない。** 閲覧者が X-Forwarded-For を付けて送れば、
+ *   その値が先頭に入る。先頭を採るとヘッダを 1 つ足すだけで制限を回避できる。
  *
- * ⚠ **この前提（Amplify SSR に届く時点で末尾＝閲覧者 IP）は本番で確認すること。**
- *   前段の構成が CloudFront 1段でなければ、末尾は内部ホップの IP になりうる。
- *   確認手順: X-Forwarded-For を偽装して1回叩き、
- *   `node scripts/inspect-rate-limits.mjs` で実際に記録されたキーを見る。
- *   偽装値が入っていれば先頭を採っている（誤り）、自分の IP なら正しい。
+ * ⚠ **末尾も採ってはいけない。** 2026-09-07 の実測で、末尾は CloudFront の
+ *   オリジン向け IP（毎リクエスト変化）だった。末尾を採ると
+ *   **リクエストごとに別バケットになり、制限が一切効かないうえに
+ *   `rate_limits` の行が無限に増える**。実際そうなっていた。
+ *
+ *   採るのは「末尾から TRUSTED_PROXY_HOPS 個を捨てた要素」。
  */
 export function clientIpFrom(headers: Headers): string | null {
   const xff = headers.get('x-forwarded-for')
+  let derived: string | null = null
+
   if (xff) {
     const parts = xff
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
-    const last = parts[parts.length - 1]
-    if (last && isIpLike(last)) return last
+    // 末尾から TRUSTED_PROXY_HOPS 個を捨てた位置。
+    // チェーンが想定より短いときは、残っている中で最も後ろ（＝最も信頼できる）を採る。
+    const index = Math.max(0, parts.length - 1 - TRUSTED_PROXY_HOPS)
+    const candidate = parts[index]
+    if (candidate && isIpLike(candidate)) derived = candidate
   }
-  const real = headers.get('x-real-ip')?.trim()
-  if (real && isIpLike(real)) return real
-  return null
+
+  if (!derived) {
+    const real = headers.get('x-real-ip')?.trim()
+    if (real && isIpLike(real)) derived = real
+  }
+
+  logChainOnce(xff, derived)
+  return derived
 }
 
 /** IPv4 / IPv6 として妥当な形か。厳密な検証ではなく、キーの汚染を防ぐための足切り */

@@ -54,14 +54,29 @@ must(
 );
 
 // ── 3. X-Forwarded-For の採り方 ────────────────────────────────
-// CloudFront は閲覧者が付けてきた XFF の**後ろに**実 IP を追記する。
-// 先頭を採ると、ヘッダを1つ足すだけで制限を回避できる。
+// 先頭は閲覧者が詰められる（偽装できる）。
+// 末尾は CloudFront のオリジン向け IP で毎回変わる（2026-09-07 の本番実測）。
+// 採るべきは「末尾から TRUSTED_PROXY_HOPS 個を捨てた位置」。
 must(
-  'X-Forwarded-For の末尾を採っている',
-  /parts\s*\[\s*parts\.length\s*-\s*1\s*\]/.test(libSrc) &&
-    !/return\s+parts\s*\[\s*0\s*\]/.test(libSrc),
-  'clientIpFrom が XFF の先頭を採っている。先頭は攻撃者が自由に詰められるので、' +
-    'ヘッダを1つ足すだけでレート制限を丸ごと回避できる。CloudFront が追記するのは末尾',
+  'X-Forwarded-For の先頭を採っていない',
+  !/return\s+parts\s*\[\s*0\s*\]/.test(libSrc) &&
+    !/const\s+\w+\s*=\s*parts\s*\[\s*0\s*\]/.test(libSrc),
+  'clientIpFrom が XFF の先頭を採っている。閲覧者がヘッダを1つ足すだけで回避できる',
+);
+
+must(
+  'X-Forwarded-For の末尾をそのまま採っていない',
+  !/parts\s*\[\s*parts\.length\s*-\s*1\s*\]/.test(libSrc),
+  '末尾は CloudFront のオリジン向け IP で、リクエストごとに変わる。' +
+    'これを採ると制限が一切効かないうえ rate_limits の行が無限に増える（2026-09-07 に本番で発生）',
+);
+
+must(
+  '信頼できる前段ホップ数が定数として明示されている',
+  /TRUSTED_PROXY_HOPS/.test(libSrc) &&
+    /parts\.length\s*-\s*1\s*-\s*TRUSTED_PROXY_HOPS/.test(libSrc),
+  'TRUSTED_PROXY_HOPS を使って位置を決めていない。' +
+    '前段の構成が変わったときにどこを直すべきかが分からなくなる',
 );
 
 // ── 4. DB が使えないときに素通りしないこと（fail closed）──────────
