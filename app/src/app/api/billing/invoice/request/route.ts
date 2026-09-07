@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { query } from "@/lib/db";
 import { sendMail } from "@/lib/mailer";
+import { clientIpFrom, enforceRateLimit } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   plan: z.enum(["light", "standard", "premium"]),
@@ -28,6 +29,13 @@ const PLAN_LABELS: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  // ── 回数制限（IP）─────────────────────────────────────────────
+  // 未認証で到達でき、1リクエストごとに invoices の行が増えメールが飛ぶ。
+  const ipLimited = await enforceRateLimit("invoice-request", [
+    { kind: "ip", value: clientIpFrom(req.headers), limit: 5, windowSeconds: 3600 },
+  ]);
+  if (ipLimited) return ipLimited;
+
   let raw: unknown;
   try { raw = await req.json(); } catch {
     return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
@@ -42,6 +50,12 @@ export async function POST(req: NextRequest) {
   }
 
   const { plan, municipalityName, contactName, contactEmail, contactPhone, address, invoiceNumber: invoiceNum, startMonth, notes } = parsed.data;
+
+  // ── 回数制限（宛先メールアドレス）──────────────────────────────
+  const mailLimited = await enforceRateLimit("invoice-request", [
+    { kind: "email", value: contactEmail, limit: 3, windowSeconds: 3600 },
+  ]);
+  if (mailLimited) return mailLimited;
 
   // ⚠ **既存の自治体名は受け付けない。**
   //

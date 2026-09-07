@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { CognitoIdentityProviderClient, ConfirmForgotPasswordCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { clientIpFrom, enforceRateLimit } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   email: z.string().email("メールアドレスの形式が正しくありません"),
@@ -23,6 +24,14 @@ function getSecretHash(username: string): string | undefined {
 const cognitoClient = new CognitoIdentityProviderClient({ region });
 
 export async function POST(req: NextRequest) {
+  // ── 回数制限（IP）─────────────────────────────────────────────
+  // 確認コードの総当たりを抑える。上限は打ち間違いを咎めない程度に緩くしてある
+  // （Cognito 側にも試行制限はあるが、その閾値は我々では選べない）。
+  const ipLimited = await enforceRateLimit("reset-password", [
+    { kind: "ip", value: clientIpFrom(req.headers), limit: 10, windowSeconds: 3600 },
+  ]);
+  if (ipLimited) return ipLimited;
+
   let raw: unknown;
   try { raw = await req.json(); } catch {
     return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
@@ -37,6 +46,13 @@ export async function POST(req: NextRequest) {
   }
 
   const { email, code, newPassword } = parsed.data;
+
+  // ── 回数制限（対象アカウント）──────────────────────────────────
+  // IP を変えながら1つのアカウントのコードを総当たりする形を、宛先側で止める。
+  const targetLimited = await enforceRateLimit("reset-password", [
+    { kind: "email", value: email, limit: 10, windowSeconds: 3600 },
+  ]);
+  if (targetLimited) return targetLimited;
 
   try {
     await cognitoClient.send(new ConfirmForgotPasswordCommand({

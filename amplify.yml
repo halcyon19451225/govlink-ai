@@ -9,12 +9,13 @@ frontend:
       commands:
         - export NODE_OPTIONS=--max-old-space-size=4096
         # ⚠ セキュリティ検査をデプロイの関門にする（2026-09-07）。
-        #   check:register / check:identity / check:tenant / check:ordoadmin は
-        #   いずれも「一度塞いだ穴が再び開いていないか」を構造的に見るもの。
+        #   check:register / check:identity / check:tenant / check:ordoadmin /
+        #   check:ratelimit は、いずれも「一度塞いだ穴が再び開いていないか」を
+        #   構造的に見るもの。
         #   ここに無いと、ガードを外したコードがそのまま本番に出る。
         #   落ちたらビルドを止めること。落ちる検査を消して通すのは本末転倒。
         #
-        # ⚠ **`npm run check`（全31項目）ではなく `check:security`（4項目）にしている。**
+        # ⚠ **`npm run check`（全31項目）ではなく `check:security`（5項目）にしている。**
         #   全体のうち 26 項目は TypeScript の実装をその場で変換して読むために
         #   `npx --no-install esbuild` を使うが、esbuild は package.json の依存に無く、
         #   「next に同梱されているはず」という前提になっている。
@@ -22,7 +23,7 @@ frontend:
         #   2026-09-07 のデプロイが check:logicmodel で落ちた。
         #   ここを `npm run check` に戻すなら、先に esbuild を devDependencies に
         #   入れて Amplify 上で通ることを確認すること。
-        #   セキュリティ検査4つは fs と正規表現だけで動くので依存が無い。
+        #   セキュリティ検査5つは fs と正規表現だけで動くので依存が無い。
         - npm run check:security
         - npm run build
         - node scripts/write-env.mjs

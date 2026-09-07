@@ -9,6 +9,7 @@ import {
   AdminConfirmSignUpCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { query } from "@/lib/db";
+import { clientIpFrom, enforceRateLimit } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   municipalityName: z.string().min(1, "自治体名は必須です"),
@@ -30,6 +31,15 @@ function getSecretHash(username: string): string | undefined {
 }
 
 export async function POST(req: NextRequest) {
+  // ── 回数制限（IP）─────────────────────────────────────────────
+  // このエンドポイントは未認証で、1リクエストごとに Cognito が任意の宛先へ
+  // 確認メールを送る。加えて自治体名の名前空間を占拠できる（実在する自治体名を
+  // 先に登録され、正規の登録が 409 で妨害される）。
+  const ipLimited = await enforceRateLimit("register", [
+    { kind: "ip", value: clientIpFrom(req.headers), limit: 3, windowSeconds: 3600 },
+  ]);
+  if (ipLimited) return ipLimited;
+
   let raw: unknown;
   try { raw = await req.json(); } catch {
     return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
@@ -44,6 +54,14 @@ export async function POST(req: NextRequest) {
   }
 
   const { municipalityName, email, password, displayName, avatarUrl } = parsed.data;
+
+  // ── 回数制限（宛先メールアドレス）──────────────────────────────
+  // 標的にされた1つのアドレスへ Cognito の確認メールを浴びせ続けることを止める。
+  // IP は回線を変えれば増やせるが、宛先は攻撃の目的そのものなので変えられない。
+  const mailLimited = await enforceRateLimit("register", [
+    { kind: "email", value: email, limit: 3, windowSeconds: 86_400 },
+  ]);
+  if (mailLimited) return mailLimited;
 
   const userPoolId = process.env.COGNITO_USER_POOL_ID;
   const clientId = process.env.COGNITO_CLIENT_ID;

@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { CognitoIdentityProviderClient, ForgotPasswordCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { clientIpFrom, enforceRateLimit } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   email: z.string().email("メールアドレスの形式が正しくありません"),
@@ -21,6 +22,15 @@ function getSecretHash(username: string): string | undefined {
 const cognitoClient = new CognitoIdentityProviderClient({ region });
 
 export async function POST(req: NextRequest) {
+  // ── 回数制限（IP）─────────────────────────────────────────────
+  // 未認証で、1リクエストごとに Cognito が再設定メールを送る。
+  // Cognito 側にも LimitExceededException はあるが、その上限は
+  // 我々の運用に合わせて選べないうえ、宛先単位の抑制にはならない。
+  const ipLimited = await enforceRateLimit("forgot-password", [
+    { kind: "ip", value: clientIpFrom(req.headers), limit: 5, windowSeconds: 3600 },
+  ]);
+  if (ipLimited) return ipLimited;
+
   let raw: unknown;
   try { raw = await req.json(); } catch {
     return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
@@ -35,6 +45,16 @@ export async function POST(req: NextRequest) {
   }
 
   const { email } = parsed.data;
+
+  // ── 回数制限（宛先メールアドレス）──────────────────────────────
+  // 「パスワード再設定メールを浴びせる」嫌がらせを、宛先の側で止める。
+  // ⚠ ここで 429 を返すと「そのアドレスが上限に達している」ことが分かるが、
+  //   上限は**存在しないアドレスでも同じように**消費されるので、
+  //   利用者の存否は漏れない（既存の列挙対策と矛盾しない）。
+  const mailLimited = await enforceRateLimit("forgot-password", [
+    { kind: "email", value: email, limit: 3, windowSeconds: 3600 },
+  ]);
+  if (mailLimited) return mailLimited;
 
   try {
     const secretHash = getSecretHash(email);
