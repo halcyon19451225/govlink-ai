@@ -42,7 +42,8 @@
     "check:register": "node scripts/check-register-tenant.mjs",
     "check:identity": "node scripts/check-identity-binding.mjs",
     "check:tenant": "node scripts/check-tenant-isolation.mjs",
-    "check:ordoadmin": "node scripts/check-ordo-admin.mjs"
+    "check:ordoadmin": "node scripts/check-ordo-admin.mjs",
+    "check:security": "npm run check:register && npm run check:identity && npm run check:tenant && npm run check:ordoadmin"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
