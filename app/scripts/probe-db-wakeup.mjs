@@ -53,9 +53,13 @@
  *   → 「復帰＝postmaster 再起動」は確定。
  *   → 40 秒程度の休止は 1 分刻みの ServerlessDatabaseCapacity に 0 が乗らない。
  *
- *   1 回きりの測定では休止の窓（30〜40 秒）に当たりにくい。
- *   --loop は当てずっぽうに繰り返す。--sync はログから最後の接続時刻を読み、
- *   その 300 秒後（＝休止直後、スキャナが戻る前）を狙って測る。
+ *   さらに（同日の追試で判明）:
+ *   ・スキャナの拒否接続は idle タイマーを**引き直さない**（休止中なら起こすだけ）
+ *   ・こちらの正常な接続は引き直す
+ *   ・休止は「最後の活動 + 300 秒」から 0〜75 秒ほど遅れる（判定の揺らぎ）
+ *   窓が 30〜40 秒しか無いうえに揺らぎと同程度なので、予測して待つだけでは外れる。
+ *   --sync はスキャナ到来の 100 秒前に自分で繋いで idle タイマーを引き直し、
+ *   休止（+300〜375s）とスキャナ再来（+410s〜）の間の +385s を狙う。
  *
  * 接続情報は inspect-tenants.mjs / run-migration.mjs と同じく app/.env.local の
  * DATABASE_URL を読む。認証情報は出力しない（ホスト名のみ表示する）。
@@ -283,23 +287,34 @@ function printFull(r) {
  *   その間に正常な接続（本番サイト等）があれば休止はずれ、measure() が無効を返す。
  */
 function latestFatalMs() {
-  const out = execFileSync(
-    "aws",
-    [
-      "logs", "filter-log-events",
-      "--log-group-name", PG_LOG_GROUP,
-      "--start-time", String(Date.now() - 20 * 60 * 1000),
-      "--region", REGION,
-      "--filter-pattern", "FATAL",
-      "--query", "max_by(events, &timestamp).timestamp",
-      "--output", "text",
-      "--no-cli-pager",
-    ],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-  ).trim();
-  if (!out || out === "None" || out === "null") return null;
-  const n = Number(out);
-  return Number.isFinite(n) ? n : null;
+  // --query で絞らず JSON をそのまま受け取り、こちらで最大値を取る。
+  // 何が返ってきたかを出力に残せるようにするため（推測で原因を当てにいかない）。
+  const args = [
+    "logs", "filter-log-events",
+    "--log-group-name", PG_LOG_GROUP,
+    "--start-time", String(Date.now() - 20 * 60 * 1000),
+    "--region", REGION,
+    "--filter-pattern", "FATAL",
+    "--output", "json",
+    "--no-cli-pager",
+  ];
+  const raw = execFileSync("aws", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    console.log("  [debug] aws logs の出力を JSON として読めません。先頭 300 文字:");
+    console.log("  " + raw.slice(0, 300).replace(/\n/g, "\n  "));
+    return null;
+  }
+  const events = Array.isArray(parsed.events) ? parsed.events : [];
+  if (events.length === 0) {
+    console.log(`  [debug] events が空。searchedLogStreams=${(parsed.searchedLogStreams ?? []).length} 件、` +
+      `start-time=${new Date(Number(args[5])).toISOString()}、nextToken=${parsed.nextToken ? "あり" : "なし"}`);
+    return null;
+  }
+  const max = events.reduce((m, e) => (e.timestamp > m ? e.timestamp : m), 0);
+  return max || null;
 }
 
 async function sleepMs(ms) {
@@ -321,10 +336,23 @@ if (waitMinutes > 0 && loopMinutes === null) {
 }
 
 if (syncMode) {
-  console.log("  --sync: PostgreSQL ログから最後の接続を読み、その 300 秒後（休止直後）を狙います。");
-  console.log("          スキャナは約 5.5 分周期なので、窓は 30〜40 秒。ずれたら次の周期で再試行。");
+  // 観測に基づく定数（2026-09-07・claude/coe-tenant-isolation.md §12-4）
+  //   ・スキャナの拒否接続は idle タイマーを引き直さないが、休止中なら DB を起こす
+  //   ・こちらの正常な接続は idle タイマーを引き直す
+  //   ・休止は「最後の活動 + 300 秒」からさらに 0〜75 秒ほど遅れる（判定の揺らぎ）
+  //   ・スキャナの周期は 310〜360 秒
+  // よって: スキャナ到来の 100 秒前に自分で 1 回繋いで idle タイマーを引き直せば、
+  //   休止は T0+300〜375 秒、スキャナ再来は T0+410 秒以降。T0+385 秒が窓になる。
+  const SCANNER_PERIOD_MS = 330_000;
+  const LEAD_MS = 100_000;
+  const PROBE_AFTER_MS = 385_000;
+
+  console.log("  --sync: スキャナの周期に合わせて自分で休止の窓を作ります。");
+  console.log("          ① スキャナ到来の 100 秒前に 1 回繋いで idle タイマーを引き直す");
+  console.log("          ② その 385 秒後（休止済み・スキャナ未到来）に測る");
+  console.log("          1 周期は約 8 分。外れたら次の周期で再試行。");
   console.log("");
-  const MARGIN_MS = 8_000; // 休止判定の直後に少し余裕
+
   for (let n = 1; n <= maxAttempts; n++) {
     let last;
     try {
@@ -339,10 +367,9 @@ if (syncMode) {
       await sleepMs(60_000);
       continue;
     }
-    let target = last + AUTO_PAUSE_SEC * 1000 + MARGIN_MS;
-    if (target < Date.now()) {
-      // 窓を過ぎている（スキャナがもう戻っているはず）。次の FATAL を待つ
-      process.stdout.write(`  [${n}/${maxAttempts}] 最後の接続 ${jst(last)} の窓は過ぎている。次の接続を待機…`);
+    let t0 = last + SCANNER_PERIOD_MS - LEAD_MS;
+    if (t0 < Date.now()) {
+      process.stdout.write(`  [${n}/${maxAttempts}] 最後の接続 ${jst(last)} は準備に間に合わない。次の接続を待機…`);
       const seen = last;
       while (true) {
         await sleepMs(15_000);
@@ -352,11 +379,23 @@ if (syncMode) {
         process.stdout.write(".");
       }
       process.stdout.write("\n");
-      target = last + AUTO_PAUSE_SEC * 1000 + MARGIN_MS;
+      t0 = last + SCANNER_PERIOD_MS - LEAD_MS;
     }
-    const waitMs = target - Date.now();
-    console.log(`  [${n}/${maxAttempts}] 最後の接続 ${jst(last)} → 休止見込み ${jst(last + AUTO_PAUSE_SEC * 1000)} → 測定 ${jst(target)}（${Math.round(waitMs / 1000)} 秒後）`);
-    if (waitMs > 0) await sleepMs(waitMs);
+    console.log(
+      `  [${n}/${maxAttempts}] 最後の接続 ${jst(last)} → 準備接続 ${jst(t0)}（${Math.round((t0 - Date.now()) / 1000)} 秒後）` +
+      ` → 測定 ${jst(t0 + PROBE_AFTER_MS)}`,
+    );
+    await sleepMs(Math.max(0, t0 - Date.now()));
+
+    const prep = await attempt("準備接続（idle タイマーを引き直す）", 30_000, true);
+    const prepUp = prep.extra ? `uptime ${prep.extra.uptime_seconds}s` : "";
+    console.log(`       準備接続 ${prep.ok ? "成功" : "失敗"} ${(prep.ms / 1000).toFixed(2)}s ${prepUp}`);
+    if (!prep.ok) {
+      console.log("       準備接続に失敗。次の周期へ。");
+      continue;
+    }
+
+    await sleepMs(Math.max(0, t0 + PROBE_AFTER_MS - Date.now()));
     const r = await measure();
     if (r.verdict.decisive) {
       console.log("");
