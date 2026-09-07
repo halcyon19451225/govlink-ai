@@ -7,6 +7,8 @@
  *   node scripts/probe-db-wakeup.mjs --wait 7      … DB に触れず 7 分待ってから 1回測る
  *   node scripts/probe-db-wakeup.mjs --loop        … 8 分おきに繰り返し、決着したら止まる（最大 12 回）
  *   node scripts/probe-db-wakeup.mjs --loop 10 --max 6
+ *   node scripts/probe-db-wakeup.mjs --sync        … PostgreSQL ログから「次に休止する時刻」を
+ *                                                   計算し、休止直後に測る（aws CLI が要る）
  *
  * 何を確かめるか
  * -------------
@@ -41,14 +43,25 @@
  *   CloudWatch の ServerlessDatabaseCapacity（60 秒刻み）で 0 → 非0 の切り替わりが
  *   起動時刻と一致するかで裏を取ること。2 回の観測（13:11:09Z・13:38:41Z）が突き合わせ待ち。
  *
- * ⚠ 何かが定期的に DB を起こしている（2026-09-07 の 2 回目は、7 分待っている間に
- *   起こされた）。1 回きりの測定では当たりにくいので --loop を用意した。
- *   各回の Phase 1 が DB を起こすため、間隔は自動一時停止（300 秒）より長く取る。
+ * 何が DB を起こしているか（2026-09-07 に PostgreSQL ログで特定）
+ * ------------------------------------------------------------
+ *   5432 が 0.0.0.0/0 に開いているため、インターネット上のスキャナ
+ *   （観測時は 159.65.148.75、admin@postgres で no pg_hba.conf entry）が
+ *   **約 5.5 分おき**に接続してくる。自動一時停止が 300 秒なので、
+ *   「休止 → 30〜40 秒後にスキャナが来て復帰」を一日中繰り返している。
+ *   postmaster の起動時刻とスキャナの FATAL が 1〜2 秒差で一致した（2 回とも）。
+ *   → 「復帰＝postmaster 再起動」は確定。
+ *   → 40 秒程度の休止は 1 分刻みの ServerlessDatabaseCapacity に 0 が乗らない。
+ *
+ *   1 回きりの測定では休止の窓（30〜40 秒）に当たりにくい。
+ *   --loop は当てずっぽうに繰り返す。--sync はログから最後の接続時刻を読み、
+ *   その 300 秒後（＝休止直後、スキャナが戻る前）を狙って測る。
  *
  * 接続情報は inspect-tenants.mjs / run-migration.mjs と同じく app/.env.local の
  * DATABASE_URL を読む。認証情報は出力しない（ホスト名のみ表示する）。
  */
 import pg from "pg";
+import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,6 +103,13 @@ function optNumber(name, fallback) {
 const waitMinutes = optNumber("--wait", 7) ?? 0;
 const loopMinutes = optNumber("--loop", 8); // null なら 1 回だけ
 const maxAttempts = optNumber("--max", 12) ?? 12;
+const syncMode = argv.includes("--sync");
+
+// --sync が読む PostgreSQL ログ（2026-09-07 に modify-db-cluster で有効化した）
+const REGION = "ap-northeast-1";
+const CLUSTER_ID = "govlinkdatastack-appdbae2ca689-nsxguoq1jyy4";
+const PG_LOG_GROUP = `/aws/rds/cluster/${CLUSTER_ID}/postgresql`;
+const AUTO_PAUSE_SEC = 300; // describe-db-clusters の SecondsUntilAutoPause（2026-09-07 確認）
 
 const SSL = { rejectUnauthorized: false };
 
@@ -255,6 +275,37 @@ function printFull(r) {
   }
 }
 
+/**
+ * PostgreSQL ログにある直近の接続（FATAL 行）の時刻をミリ秒で返す。
+ * スキャナの接続は認証で落ちるので必ず FATAL として残る。
+ * ⚠ 自分たちの正常な接続は FATAL にならないので、ここには出ない。
+ *   よって「最後の接続」＝「最後のスキャナ接続」として扱っている。
+ *   その間に正常な接続（本番サイト等）があれば休止はずれ、measure() が無効を返す。
+ */
+function latestFatalMs() {
+  const out = execFileSync(
+    "aws",
+    [
+      "logs", "filter-log-events",
+      "--log-group-name", PG_LOG_GROUP,
+      "--start-time", String(Date.now() - 20 * 60 * 1000),
+      "--region", REGION,
+      "--filter-pattern", "FATAL",
+      "--query", "max_by(events, &timestamp).timestamp",
+      "--output", "text",
+      "--no-cli-pager",
+    ],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  ).trim();
+  if (!out || out === "None" || out === "null") return null;
+  const n = Number(out);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function sleepMs(ms) {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
 // ── 本体 ──────────────────────────────────────────────────────
 console.log("");
 console.log("Aurora 休止復帰の検証（読み取りのみ）");
@@ -267,6 +318,57 @@ console.log("");
 if (waitMinutes > 0 && loopMinutes === null) {
   console.log(`  --wait ${waitMinutes}: DB に触れずに ${waitMinutes} 分待ってから測ります。`);
   await sleepMinutes(waitMinutes, "待機中");
+}
+
+if (syncMode) {
+  console.log("  --sync: PostgreSQL ログから最後の接続を読み、その 300 秒後（休止直後）を狙います。");
+  console.log("          スキャナは約 5.5 分周期なので、窓は 30〜40 秒。ずれたら次の周期で再試行。");
+  console.log("");
+  const MARGIN_MS = 8_000; // 休止判定の直後に少し余裕
+  for (let n = 1; n <= maxAttempts; n++) {
+    let last;
+    try {
+      last = latestFatalMs();
+    } catch (e) {
+      console.error("  aws logs の実行に失敗しました。aws CLI と認証情報を確認してください。");
+      console.error("  " + String(e.message).split("\n")[0]);
+      process.exit(1);
+    }
+    if (last === null) {
+      console.log("  直近 20 分に FATAL が無い。60 秒待って再確認します。");
+      await sleepMs(60_000);
+      continue;
+    }
+    let target = last + AUTO_PAUSE_SEC * 1000 + MARGIN_MS;
+    if (target < Date.now()) {
+      // 窓を過ぎている（スキャナがもう戻っているはず）。次の FATAL を待つ
+      process.stdout.write(`  [${n}/${maxAttempts}] 最後の接続 ${jst(last)} の窓は過ぎている。次の接続を待機…`);
+      const seen = last;
+      while (true) {
+        await sleepMs(15_000);
+        let now;
+        try { now = latestFatalMs(); } catch { now = null; }
+        if (now !== null && now > seen) { last = now; break; }
+        process.stdout.write(".");
+      }
+      process.stdout.write("\n");
+      target = last + AUTO_PAUSE_SEC * 1000 + MARGIN_MS;
+    }
+    const waitMs = target - Date.now();
+    console.log(`  [${n}/${maxAttempts}] 最後の接続 ${jst(last)} → 休止見込み ${jst(last + AUTO_PAUSE_SEC * 1000)} → 測定 ${jst(target)}（${Math.round(waitMs / 1000)} 秒後）`);
+    if (waitMs > 0) await sleepMs(waitMs);
+    const r = await measure();
+    if (r.verdict.decisive) {
+      console.log("");
+      printFull(r);
+      process.exit(0);
+    }
+    const up = r.uptimeSec !== null ? `uptime ${r.uptimeSec}s` : "uptime 不明";
+    console.log(`       → 無効（DB は起きていた・Phase1 ${(r.p1.ms / 1000).toFixed(2)}s・${up}）。次の周期へ。`);
+  }
+  console.log("");
+  console.log(`  ${maxAttempts} 回とも窓に当たりませんでした。`);
+  process.exit(0);
 }
 
 if (loopMinutes === null) {
