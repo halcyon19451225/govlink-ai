@@ -34,11 +34,18 @@ export async function GET(
 ) {
   try {
     const projects = await query<ProjectRow>(
+      // ⚠ **公開は明示的に選ばれたものだけ。**
+      //   かつては自治体の slug で引いて `ORDER BY p.created_at DESC LIMIT 1`、
+      //   つまり「その自治体で一番新しく作られた政策」が自動的に公開ページになっていた。
+      //   status の絞り込みも無く、draft の計画が KPI の目標値ごと公開されていた
+      //   （claude/coe-tenant-isolation.md §11）。
+      //   published_at が NULL のものは出さない（migration 064・既定は非公開）。
       `SELECT p.id, p.title, p.description, p.status, m.name AS department, m.slug
        FROM projects p
        JOIN municipalities m ON m.id = p.municipality_id
        WHERE m.slug = $1
-       ORDER BY p.created_at DESC
+         AND p.published_at IS NOT NULL
+       ORDER BY p.published_at DESC
        LIMIT 1`,
       [params.slug],
     );

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
@@ -60,12 +62,19 @@ export default async function PublicProjectPage({
 }: {
   params: { slug: string };
 }) {
+  // ⚠ **公開は明示的に選ばれたものだけ。**
+  //   かつては「その自治体で一番新しく作られた政策」が自動的に公開ページになり、
+  //   status の絞り込みも無かったため、draft の計画が KPI の目標値ごと公開されていた
+  //   （claude/coe-tenant-isolation.md §11）。
+  //   ここと api/public/projects/[slug] は**同じ条件**でなければならない。
+  //   片方だけ直すと、API から見えてページから見えない（またはその逆）になる。
   const rows = await query<ProjectRow>(
     `SELECT p.id, p.title, p.description, p.status, m.name AS department, m.slug
      FROM projects p
      JOIN municipalities m ON m.id = p.municipality_id
      WHERE m.slug = $1
-     ORDER BY p.created_at DESC
+       AND p.published_at IS NOT NULL
+     ORDER BY p.published_at DESC
      LIMIT 1`,
     [params.slug],
   );

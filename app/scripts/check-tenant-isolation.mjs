@@ -193,5 +193,28 @@ function walk(dir, name) {
   );
 }
 
+// ---- 11. 公開面が「明示的に公開されたもの」だけを出すこと ----
+//
+// 公開ページは自治体の slug で引くので、条件を1つ緩めるだけで
+// **その自治体の全政策**が住民に見える状態になる。ページと API は別々の SQL を
+// 持っているため、片方だけ直すと食い違う。両方を検査する。
+{
+  const targets = [
+    join(APP, 'public/[slug]/page.tsx'),
+    join(APP, 'api/public/projects/[slug]/route.ts'),
+  ];
+  const bad = targets.filter((f) => {
+    let src = '';
+    try { src = readFileSync(f, 'utf8'); } catch { return true; }
+    return !/p\.published_at IS NOT NULL/.test(src);
+  });
+  must(
+    '公開ページと公開APIが published_at で絞っている',
+    bad.length === 0,
+    `公開の絞り込みが無い: ${bad.map((f) => relative(APP, f)).join(', ')}。`
+      + '既定は非公開（migration 064）。ここを外すと未公開の計画と KPI の目標値が住民に出る',
+  );
+}
+
 console.log(`\ncheck:tenant — ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

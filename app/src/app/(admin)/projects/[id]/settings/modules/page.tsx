@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import ModuleGraphClient from "./ModuleGraphClient";
 import CloneNextPeriodButton from "@/components/plan/CloneNextPeriodButton";
+import PublishToggle from "./PublishToggle";
 import { assertProjectPage } from "@/lib/tenant-page";
 
 interface PlanModule {
@@ -26,11 +27,17 @@ export default async function ModulesSettingsPage({
     title: string;
     plan_start_date: string | null;
     plan_end_date: string | null;
+    published_at: string | null;
+    slug: string | null;
   }>(
-    `SELECT id, title,
-            to_char(plan_start_date, 'YYYY-MM-DD') AS plan_start_date,
-            to_char(plan_end_date, 'YYYY-MM-DD') AS plan_end_date
-     FROM projects WHERE id = $1`,
+    `SELECT p.id, p.title,
+            to_char(p.plan_start_date, 'YYYY-MM-DD') AS plan_start_date,
+            to_char(p.plan_end_date, 'YYYY-MM-DD') AS plan_end_date,
+            to_char(p.published_at, 'YYYY-MM-DD HH24:MI') AS published_at,
+            m.slug
+     FROM projects p
+     JOIN municipalities m ON m.id = p.municipality_id
+     WHERE p.id = $1`,
     [params.id],
   );
   if (!project) notFound();
@@ -72,6 +79,13 @@ export default async function ModulesSettingsPage({
           planEnd={project.plan_end_date}
         />
       </div>
+      {/* 住民向けの公開（既定は非公開）。claude/coe-tenant-isolation.md §11 */}
+      <PublishToggle
+        projectId={project.id}
+        initialPublishedAt={project.published_at}
+        publicPath={project.slug ? `/public/${project.slug}` : null}
+      />
+
       <ModuleGraphClient
         projectModules={projectModules}
         allModules={allModules}
