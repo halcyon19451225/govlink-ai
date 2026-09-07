@@ -81,9 +81,11 @@ async function attempt(label, timeoutMs, withQueries = false) {
     let extra = null;
     if (withQueries) {
       const r = await client.query(
+        // ⚠ interval をそのまま返すと node-pg がオブジェクトに変換し、
+        //   文字列化すると [object Object] になる。秒数（整数）で受け取る。
         `SELECT now() AS now,
                 pg_postmaster_start_time() AS started,
-                date_trunc('second', now() - pg_postmaster_start_time()) AS uptime,
+                EXTRACT(EPOCH FROM now() - pg_postmaster_start_time())::bigint AS uptime_seconds,
                 current_setting('server_version') AS version`,
       );
       extra = r.rows[0];
@@ -108,6 +110,11 @@ function line(r) {
   return `  ${r.label.padEnd(34, "…")} ${status}  ${s}s（上限 ${r.timeoutMs / 1000}s）${tail}`;
 }
 
+// --wait <分>: DB に触れずに指定分だけ待ってから測る。
+// 自分の手で DB を起こしてしまう事故を避けるための待機。
+const waitIdx = process.argv.indexOf("--wait");
+const waitMinutes = waitIdx >= 0 ? Number(process.argv[waitIdx + 1]) : 0;
+
 console.log("");
 console.log("Aurora 休止復帰の検証（読み取りのみ）");
 console.log(`  ホスト : ${hostLabel}`);
@@ -115,7 +122,20 @@ console.log(`  開始   : ${new Date().toISOString()}`);
 console.log("");
 console.log("  ⚠ 直前に本番サイトや他のスクリプトで DB に触れていると、");
 console.log("    DB が起きているため検証になりません。");
+console.log("    自動一時停止は 300 秒（2026-09-07 に describe-db-clusters で確認）。");
 console.log("");
+
+if (waitMinutes > 0) {
+  console.log(`  --wait ${waitMinutes}: DB に触れずに ${waitMinutes} 分待ってから測ります。`);
+  console.log("    この間、本番サイトを開かないでください。");
+  for (let left = waitMinutes; left > 0; left--) {
+    process.stdout.write(`\r    残り ${left} 分…   `);
+    await new Promise((r) => setTimeout(r, 60_000));
+  }
+  process.stdout.write("\r    待機おわり。測定します。\n\n");
+}
+
+const startedAt = Date.now();
 
 const p1 = await attempt("Phase 1 旧設定 5_000（8625022 相当）", 5_000);
 console.log(line(p1));
@@ -128,22 +148,49 @@ console.log(line(p3));
 
 console.log("");
 
+const uptimeSec = p2.extra ? Number(p2.extra.uptime_seconds) : null;
+
 if (p2.extra) {
-  console.log("  DB 側の申告（参考）");
+  const mm = Math.floor(uptimeSec / 60);
+  const ss = uptimeSec % 60;
+  console.log("  DB 側の申告");
   console.log(`    server_version          : ${p2.extra.version}`);
   console.log(`    pg_postmaster_start_time: ${p2.extra.started.toISOString()}`);
-  console.log(`    uptime                  : ${p2.extra.uptime}`);
+  console.log(`    uptime                  : ${uptimeSec} 秒（${mm}分${ss}秒）`);
   console.log("");
-  console.log("    ※ Aurora Serverless v2 の 0 ACU からの復帰で postmaster が");
-  console.log("      再起動するとは限らない。uptime が短ければ復帰の裏づけになるが、");
-  console.log("      長くても休止していなかったことの証明にはならない。");
-  console.log("      休止そのものの直接証拠は CloudWatch の ServerlessDatabaseCapacity。");
+  console.log("    ※ uptime が短ければ「最近 postmaster が起動した」ことは確かだが、");
+  console.log("      それが Aurora の 0 ACU からの復帰によるものだと**断定はできない**");
+  console.log("      （フェイルオーバーやパッチ適用でも再起動する）。");
+  console.log("      下の判定は「復帰＝postmaster 再起動」を前提に置いている。");
+  console.log("      前提の当否は CloudWatch の ServerlessDatabaseCapacity を");
+  console.log("      同じ時刻について 60 秒刻みで引き、0 → 非0 の切り替わりが");
+  console.log("      この起動時刻と一致するかで確かめること。");
   console.log("");
 }
 
 // ── 判定 ──────────────────────────────────────────────────────
+// この接続そのものが復帰を起動したのか、それとも既に起きていたのか。
+// uptime が「Phase 1 開始からの経過時間」に収まっていれば、起こしたのは我々。
+// ⚠ これは「Aurora の復帰時に postmaster が再起動する」ことを前提にした判定。
+//   その前提自体はまだ本番で確認できていない（上の注記を参照）。
+const elapsedSinceStart = Math.ceil((Date.now() - startedAt) / 1000) + 5;
+const wokeItOurselves = uptimeSec !== null && uptimeSec <= elapsedSinceStart;
+
 console.log("  判定");
-if (!p1.ok && p2.ok && p2.ms > 5_000) {
+if (p1.ok && wokeItOurselves) {
+  console.log("    ❗ **推定を否定しうる結果。** DB は休止していて、5秒以内に復帰した可能性が高い。");
+  console.log(`       postmaster の uptime が ${uptimeSec} 秒＝この検証の中で起動している。`);
+  console.log("       つまり休止していたにもかかわらず Phase 1（5s）が成功した。");
+  console.log("");
+  console.log("       これが正しければ、6b25bed の「5秒では復帰を待ちきれず落ちていた」");
+  console.log("       という説明は成り立たない。タイムアウトを 30 秒に揃えた判断自体は");
+  console.log("       単独で正しいが、coe-tenant-isolation.md §12-2 の因果の記述は");
+  console.log("       書き直しが要る（/public/[slug] の描画エラーには別の原因がある）。");
+  console.log("");
+  console.log("       ⚠ 結論づける前に、同じ時刻の ServerlessDatabaseCapacity を");
+  console.log("         60秒刻みで引き、0 → 非0 の切り替わりが上の");
+  console.log("         pg_postmaster_start_time と一致することを確かめること。");
+} else if (!p1.ok && p2.ok && p2.ms > 5_000) {
   console.log("    ✅ 推定を裏づけた。");
   console.log(`       旧設定（5s）では落ち、現行設定では ${(p2.ms / 1000).toFixed(2)}s 待って成功した。`);
   console.log("       休止後の最初のリクエストは、6b25bed の前なら確実に失敗していた。");
@@ -156,8 +203,24 @@ if (!p1.ok && p2.ok && p2.ms > 5_000) {
   console.log("       休止からの復帰中ではあったが、今回はぎりぎり間に合った。");
   console.log("       5s が危険な設定だったことの傍証にはなる。もう少し放置して再実行を。");
 } else if (p1.ok) {
-  console.log("    ⏸ 検証になっていない。DB は休止していなかった（即座に接続できた）。");
-  console.log("       本番サイトを触らずに、下記 SecondsUntilAutoPause + 5 分ほど放置して再実行してください。");
+  console.log("    ⏸ 検証になっていない。DB は既に起きていた（即座に接続できた）。");
+  if (uptimeSec !== null) {
+    console.log(`       postmaster の uptime は ${uptimeSec} 秒。この検証より前に`);
+    console.log("       別の何かが DB を起こしている（本番サイトへのアクセス、Amplify の");
+    console.log("       デプロイ、他のスクリプト、監視など）。");
+  }
+  console.log("");
+  console.log("       やり直す前に、CloudWatch で「今まさに 0 ACU か」を確認してください:");
+  console.log("");
+  console.log("         aws cloudwatch get-metric-statistics --namespace AWS/RDS \\");
+  console.log("           --metric-name ServerlessDatabaseCapacity --dimensions \\");
+  console.log("           Name=DBClusterIdentifier,Value=govlinkdatastack-appdbae2ca689-nsxguoq1jyy4 \\");
+  console.log("           --start-time $(date -u -v-20M +%Y-%m-%dT%H:%M:%SZ) \\");
+  console.log("           --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) --period 60 \\");
+  console.log("           --statistics Minimum --region ap-northeast-1 --output text --no-cli-pager");
+  console.log("");
+  console.log("       直近の行が 0.0 になってから、--wait を付けて実行するのが確実です:");
+  console.log("         node scripts/probe-db-wakeup.mjs --wait 7");
 } else if (!p2.ok) {
   console.log("    ❌ 30s でも接続できない。休止復帰とは別の原因（到達性・SG・認証・停止）。");
   console.log("       CloudShell の describe-db-clusters で Status を確認してください。");
