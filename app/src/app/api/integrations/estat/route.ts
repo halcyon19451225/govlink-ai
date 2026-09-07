@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { requireChildRowAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 
 const ESTAT_LIST_BASE = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsList";
@@ -138,6 +139,14 @@ export async function GET(req: NextRequest) {
     area: v["@area"] ?? usedArea,
     source: "estat",
   }));
+
+  // ⚠ kpiId は**クライアントが指定する**。自分のテナントの KPI かを必ず確認する。
+  //   かつては検査が無く、他テナントの KPI にベンチマーク値を注入できた
+  //   （評価の根拠データの汚染。claude/coe-tenant-isolation.md §10）
+  if (kpiId) {
+    const denied = await requireChildRowAccess(session, "kpis", kpiId);
+    if (denied) return denied;
+  }
 
   // kpiId が指定されていれば benchmark_values に保存
   if (kpiId && items.length > 0) {

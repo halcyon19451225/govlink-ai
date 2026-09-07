@@ -129,5 +129,69 @@ function walk(dir, name) {
   );
 }
 
+// ---- 8. 「名前による合流」が どこにも 無いこと ----
+//
+// 同じ穴を3回踏んでいる: /api/auth/register（§3-5）、api/admin/projects の POST、
+// api/billing/invoice/request（§10）。いずれも自治体名で municipalities を検索し、
+// 既存があればそこに合流していた。自治体名は公開情報なので、これは常に穴になる。
+{
+  const offenders = [];
+  const scan = (dir) => {
+    for (const e of readdirSync(dir)) {
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) { scan(p); continue; }
+      if (!/route\.ts$/.test(p)) continue;
+      const src = readFileSync(p, 'utf8');
+      // 「名前で引く」かつ「引けたら合流している（409 で拒否していない）」形
+      if (/FROM municipalities\s+WHERE name/i.test(src) && !/status: 409/.test(src)) {
+        offenders.push(relative(APP, p));
+      }
+    }
+  };
+  scan(join(APP, 'api'));
+  must(
+    '自治体名で既存テナントに合流している経路が無い',
+    offenders.length === 0,
+    `名前で引いて 409 で拒否していない route がある: ${offenders.join(', ')}。`
+      + '自治体名は公開情報。合流を許すとテナント乗っ取り／契約の書き換えになる',
+  );
+}
+
+// ---- 9. 課金の権利判定が許可リストであること ----
+{
+  const src = readFileSync('src/lib/plan-limits.ts', 'utf8');
+  must(
+    'プランの権利判定が「有効な状態の許可リスト」になっている',
+    /ENTITLED_STATUSES/.test(src),
+    '拒否リスト方式に戻っている。知らない status が増えたときに黙って権利を与えてしまう'
+      + '（未認証の申込が書く pending 状態で有償プランが有効になった）',
+  );
+}
+
+// ---- 10. 運営者判定に role==="admin" を使っていないこと ----
+{
+  const offenders = [];
+  const scan = (dir) => {
+    for (const e of readdirSync(dir)) {
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) { scan(p); continue; }
+      if (!/\.tsx?$/.test(p)) continue;
+      const src = readFileSync(p, 'utf8');
+      // 「運営者」を名乗る変数に role==="admin" を入れている形
+      if (/(isOperator|isOrdoStaff|運営者)[^\n]*\n?[^\n]*role\s*===\s*"admin"/.test(src)
+          || /const isOperator\s*=\s*session[^;]*role\s*===\s*"admin"/.test(src)) {
+        offenders.push(relative(APP, p));
+      }
+    }
+  };
+  scan(APP);
+  must(
+    '運営者判定に user_roles.role を使っていない',
+    offenders.length === 0,
+    `role==="admin" を運営者として扱っている: ${offenders.join(', ')}。`
+      + 'それは自治体内の管理者（新規登録の1人目に必ず付く）。運営者判定は isOrdoAdmin',
+  );
+}
+
 console.log(`\ncheck:tenant — ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

@@ -3,12 +3,23 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { requireOrdoAdmin } from "@/lib/ordo-admin";
 import { query } from "@/lib/db";
 import { sendMail } from "@/lib/mailer";
 
 type Params = { params: { id: string } };
 
 export async function POST(_req: NextRequest, { params }: Params) {
+  // ⚠ **これは運営者（Ordo 社）の操作**。入金を確認して請求書を消し込み、
+  //   契約を有効化し、利用者に「入金を確認しました」メールを送る。
+  //   かつては「ログインしていれば誰でも」通り、しかも**対象の請求書が
+  //   自分のテナントのものかも見ていなかった**ため、任意の請求書を
+  //   入金なしで paid にし、その契約を1か月 active にできた
+  //   （claude/coe-tenant-isolation.md §10）。UI からの呼び出し元は無く、
+  //   運営者が手で叩く前提のエンドポイント。
+  const denied = await requireOrdoAdmin();
+  if (denied) return denied;
+
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });

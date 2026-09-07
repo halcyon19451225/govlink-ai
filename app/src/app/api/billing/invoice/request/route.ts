@@ -43,34 +43,62 @@ export async function POST(req: NextRequest) {
 
   const { plan, municipalityName, contactName, contactEmail, contactPhone, address, invoiceNumber: invoiceNum, startMonth, notes } = parsed.data;
 
-  // 自治体を検索または作成
+  // ⚠ **既存の自治体名は受け付けない。**
+  //
+  //   ここは未認証で公開インターネットから到達できるフォーム（料金ページの
+  //   「請求書払いのご相談」）。かつては自治体名で `municipalities` を検索し、
+  //   **既存があればそこに合流**したうえで、その自治体の `subscriptions` を
+  //   `ON CONFLICT DO UPDATE SET plan = EXCLUDED.plan` で上書きしていた。
+  //   自治体名は公開情報なので、**誰でも任意のテナントのプランを書き換えられた**。
+  //   しかも `getActivePlan`（src/lib/plan-limits.ts）は `paused` を無効扱いに
+  //   しないため、書き換えたプランがそのまま有効になっていた。
+  //
+  //   これは §3-5 で `/api/auth/register` から、c3e3846 で
+  //   `api/admin/projects` の POST から取り除いたのと**同じ「名前による合流」**。
+  //   3度目なので、ここでも同じ結論にする: **合流させない。既存名は 409。**
+  //   claude/coe-tenant-isolation.md §10
   const munExisting = await query<{ id: string }>(
     "SELECT id FROM municipalities WHERE name = $1 LIMIT 1",
-    [municipalityName],
+    [municipalityName.trim()],
   );
-
-  let municipalityId: string;
   if (munExisting[0]) {
-    municipalityId = munExisting[0].id;
-  } else {
-    const munInserted = await query<{ id: string }>(
-      "INSERT INTO municipalities (name, slug, prefecture) VALUES ($1, $2, '未設定') RETURNING id",
-      [municipalityName, `org-${Date.now()}`],
+    return NextResponse.json(
+      {
+        data: null,
+        error:
+          "この自治体は既に登録されています。お手数ですが、管理者の方からお問い合わせください。",
+      },
+      { status: 409 },
     );
-    if (!munInserted[0]) {
-      return NextResponse.json({ data: null, error: "自治体情報の作成に失敗しました" }, { status: 500 });
-    }
-    municipalityId = munInserted[0].id;
   }
 
-  // サブスクリプションを仮登録（paused）
+  // 事前チェックとの競合でも合流させない（WHERE NOT EXISTS 付き）
+  const munInserted = await query<{ id: string }>(
+    `INSERT INTO municipalities (name, slug, prefecture)
+     SELECT $1, $2, '未設定'
+     WHERE NOT EXISTS (SELECT 1 FROM municipalities WHERE name = $1)
+     RETURNING id`,
+    [municipalityName.trim(), `org-${Date.now()}`],
+  );
+  if (!munInserted[0]) {
+    return NextResponse.json(
+      { data: null, error: "この自治体は既に登録されています。" },
+      { status: 409 },
+    );
+  }
+  const municipalityId = munInserted[0].id;
+
+  // 申込の記録として subscriptions を作る（**まだ権利は与えない**）。
+  //
+  // ⚠ `status = 'pending_invoice'` は getActivePlan が無効として扱う値。
+  //   ここで有効になる値を入れると、**未認証の申込だけで有償プランが使える**。
+  //   入金確認（運営者が invoice/[id]/pay を叩く）で 'active' になる。
+  //   新規テナントなので ON CONFLICT は起きないが、念のため何もしない形にしてある。
   await query(
     `INSERT INTO subscriptions
        (municipality_id, plan, status, billing_method, trial_ends_at)
-     VALUES ($1, $2, 'paused', 'invoice', NOW() + INTERVAL '14 days')
-     ON CONFLICT (municipality_id)
-     DO UPDATE SET plan = EXCLUDED.plan, status = 'paused',
-                   billing_method = 'invoice', updated_at = NOW()`,
+     VALUES ($1, $2, 'pending_invoice', 'invoice', NOW() + INTERVAL '14 days')
+     ON CONFLICT (municipality_id) DO NOTHING`,
     [municipalityId, plan],
   );
 

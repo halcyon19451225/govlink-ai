@@ -2,12 +2,24 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { uploadToStorage, getPublicUrl } from "@/lib/storage";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(req: NextRequest) {
+  // ⚠ かつてここには認証が無く、**未認証で誰でも S3 にオブジェクトを作れた**。
+  //   キーは `avatars/tmp-<uuid>` 固定なので他テナントの領域への越境は無いが、
+  //   ストレージ課金の消費と、任意バイト列の公開ホスティング（Content-Type は
+  //   クライアント申告値がそのまま S3 に載る）が成立していた。
+  //   claude/coe-tenant-isolation.md §10
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
+  }
+
   let formData: FormData;
   try {
     formData = await req.formData();

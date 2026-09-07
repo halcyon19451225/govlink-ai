@@ -121,6 +121,7 @@ const CHILD_TABLES = {
   schedule_tasks:    "schedule_tasks",
   documents:         "documents",
   project_schedules: "project_schedules",
+  kpis:              "kpis",
 } as const;
 
 export type ChildTable = keyof typeof CHILD_TABLES;

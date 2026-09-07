@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isOrdoAdmin } from "@/lib/ordo-admin";
 import { query } from "@/lib/db";
 import { renderInvoicePdf, type InvoiceData } from "@/lib/billing/invoicePdf";
 
@@ -40,11 +41,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  // 請求書は課金情報。ログインしていれば誰でも他団体の請求書を取れる状態だったので、
-  // 自分の自治体のものに限定する（運営者=admin は全件）。
+  // 請求書は課金情報。自分の自治体のものに限定する（運営者は全件）。
+  //
+  // ⚠ **`session.user.role === "admin"` は運営者ではない。**
+  //   それは `user_roles.role`、すなわち**自治体内の**管理者で、
+  //   新規登録の1人目には必ず付く（api/auth/register）。そのため
+  //   「運営者=admin は全件」という当初のコメントの意図に反して、
+  //   **どの自治体の管理者でも他団体の請求書 PDF を取れていた**
+  //   （claude/coe-tenant-isolation.md §10）。
+  //   運営者判定は src/lib/ordo-admin.ts の isOrdoAdmin が正本。
   const userMunicipalityId = session.user?.municipalityId;
-  const isOperator = session.user?.role === "admin";
-  if (!isOperator && userMunicipalityId !== inv.municipality_id) {
+  if (!isOrdoAdmin(session) && userMunicipalityId !== inv.municipality_id) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 

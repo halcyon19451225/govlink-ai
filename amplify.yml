@@ -8,6 +8,12 @@ frontend:
     build:
       commands:
         - export NODE_OPTIONS=--max-old-space-size=4096
+        # ⚠ 防御的検査をデプロイの関門にする（2026-09-07）。
+        #   check:register / check:identity / check:tenant / check:ordoadmin は
+        #   いずれも「一度塞いだ穴が再び開いていないか」を構造的に見るもの。
+        #   ここに無いと、ガードを外したコードがそのまま本番に出る。
+        #   落ちたらビルドを止めること。落ちる検査を消して通すのは本末転倒。
+        - npm run check
         - npm run build
         - node scripts/write-env.mjs
   artifacts:

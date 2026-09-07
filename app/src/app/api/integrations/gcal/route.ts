@@ -69,17 +69,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: null, error: message }, { status: 500 });
   }
 
-  // DB からタスク情報を取得
+  // ⚠ **taskIds はクライアントが指定する。自分のテナントのタスクに限定する。**
+  //   かつては projects / municipalities を経由する条件が無く、他テナントの
+  //   schedule_tasks を引いてそのタイトルを **GCAL_CALENDAR_ID の共有カレンダーへ
+  //   転記**し、さらにその行に gcal_event_id を書き込めた
+  //   （claude/coe-tenant-isolation.md §10）。
+  //   件数を返すだけなので直接の読み出しにはならないが、カレンダー側には
+  //   他テナントのタスク名が残る。
+  const municipalityId = session.user?.municipalityId;
+  if (!municipalityId) {
+    return NextResponse.json(
+      { data: null, error: "所属自治体が特定できません" },
+      { status: 403 },
+    );
+  }
+
+  // DB からタスク情報を取得（自テナントのものだけ）
   const placeholders = taskIds.map((_, i) => `$${i + 1}`).join(",");
   const tasks = await query<TaskForExport>(
-    `SELECT id, title,
-            to_char(due_date,          'YYYY-MM-DD') AS due_date,
-            to_char(document_deadline, 'YYYY-MM-DD') AS document_deadline,
-            gcal_event_id
-     FROM schedule_tasks
-     WHERE id IN (${placeholders})
-       AND gcal_event_id IS NULL`,
-    taskIds,
+    `SELECT t.id, t.title,
+            to_char(t.due_date,          'YYYY-MM-DD') AS due_date,
+            to_char(t.document_deadline, 'YYYY-MM-DD') AS document_deadline,
+            t.gcal_event_id
+     FROM schedule_tasks t
+     JOIN projects p ON p.id = t.project_id
+     WHERE t.id IN (${placeholders})
+       AND t.gcal_event_id IS NULL
+       AND p.municipality_id = $${taskIds.length + 1}`,
+    [...taskIds, municipalityId],
   );
 
   let exported = 0;
@@ -103,9 +120,12 @@ export async function POST(req: NextRequest) {
 
       const eventId = (event as { data?: { id?: string } }).data?.id;
       if (eventId) {
+        // 取得時点で絞ってあるが、更新側にも条件を付ける（二重の防御）
         await query(
-          "UPDATE schedule_tasks SET gcal_event_id = $1 WHERE id = $2",
-          [eventId, task.id],
+          `UPDATE schedule_tasks t SET gcal_event_id = $1
+             FROM projects p
+            WHERE p.id = t.project_id AND t.id = $2 AND p.municipality_id = $3`,
+          [eventId, task.id, municipalityId],
         );
         exported++;
       }

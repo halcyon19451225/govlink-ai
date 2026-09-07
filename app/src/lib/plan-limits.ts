@@ -54,14 +54,23 @@ export async function getActivePlan(municipalityId: string): Promise<Plan> {
   );
   const sub = rows[0];
 
+  // ⚠ **権利は「有効な状態の許可リスト」で判定する。**
+  //
+  //   かつては「`canceled` と `past_due` と期限切れ `trialing` **以外**は有効」という
+  //   拒否リストだった。そのため、未認証の請求書払い申込が書き込む `'paused'` が
+  //   素通りし、**申込を送るだけで有償プランが有効になっていた**
+  //   （claude/coe-tenant-isolation.md §10）。
+  //   知らない状態が増えたときに黙って権利を与えてしまう形なので、許可リストにする。
+  //   新しい状態を足すときは、ここに書かない限り「権利なし」になる（fail closed）。
+  const ENTITLED_STATUSES = new Set(["active", "trialing"]);
+
   let stripePlan: Plan = "free";
-  if (sub) {
+  if (sub && ENTITLED_STATUSES.has(sub.status)) {
     const trialExpired =
       sub.status === "trialing" &&
       !!sub.trial_ends_at &&
       new Date(sub.trial_ends_at) < new Date();
-    const inactive = sub.status === "canceled" || sub.status === "past_due";
-    if (!trialExpired && !inactive) {
+    if (!trialExpired) {
       stripePlan = (sub.plan as Plan) ?? "free";
     }
   }
