@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { loadManual } from "@/lib/manual/loader";
-import { topicOf, CONVENTIONS_ID } from "@/lib/manual/topics";
+import { isValidTopicId, topicOf, CONVENTIONS_ID } from "@/lib/manual/topics";
 import ManualView from "@/components/help/ManualView";
 
 /**
@@ -14,6 +14,13 @@ import ManualView from "@/components/help/ManualView";
 export default async function ManualPage({ params }: { params: { topicId: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
+
+  // ⚠ API 側（api/manual/[topicId]）は isValidTopicId で絞っているのに、
+  //   ここだけ params.topicId を無検証で loadManual に渡していた。
+  //   loadManual は join(MANUAL_DIR, `${id}.md`) を読むので、`../` を含む id で
+  //   マニュアル以外の .md を読まれうる（要ログイン・.md のみ・Next のルータが
+  //   正規化する可能性もあるため実害は小さいが、API と形を揃えておく）。
+  if (!isValidTopicId(params.topicId)) notFound();
 
   const manual = await loadManual(params.topicId);
   if (!manual) notFound();
