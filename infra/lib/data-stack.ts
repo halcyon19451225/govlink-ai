@@ -62,7 +62,17 @@ export class DataStack extends cdk.Stack {
         // （17.10 はデプロイコマンド内の sed で実バージョンに置換される）
         version: rds.AuroraPostgresEngineVersion.of('17.10', '17'),
       }),
-      serverlessV2MinCapacity: 0, // 0 ACU = アイドル時は自動停止（課金ほぼゼロ）
+      // ⚠ **0 にしないこと。** 2026-09-07 の実測（claude/coe-aurora-pause.md）:
+      //   0 ACU では休止からの復帰に **約 16 秒**かかり、その間の最初のリクエストは
+      //   src/lib/db.ts の 5 秒タイムアウトでは落ちていた（/public/[slug] の描画エラー）。
+      //
+      //   さらに、下の 5432 全公開のため**インターネット上のスキャナが約 5.5 分おきに
+      //   接続してくる**。自動一時停止 300 秒との差で「休止 → 30〜40 秒後に復帰」を
+      //   一日中繰り返しており、利用者が復帰待ちに当たる確率は常時 1 割前後あった。
+      //   起こされるたびの復帰・稼働（1.0〜1.5 ACU で 10 分前後）は結局課金されている。
+      //
+      //   0 に戻すなら、先に 5432 を閉じる（RDS Proxy / VPC 経由）こと。
+      serverlessV2MinCapacity: 0.5,
       serverlessV2MaxCapacity: 2,
       writer: rds.ClusterInstance.serverlessV2('writer', {
         publiclyAccessible: true,
