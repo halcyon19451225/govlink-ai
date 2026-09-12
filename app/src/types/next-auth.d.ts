@@ -13,6 +13,10 @@ declare module "next-auth" {
       role?: string;
       userRoleId?: string;
       isOrgAdmin?: boolean;
+      /** 運営者（Ordo 社）か。判定の本体は lib/ordo-admin.ts */
+      isOrdoStaff?: boolean;
+      /** 所属部署（Ordo 台帳から同期された表示用の値） */
+      department?: string;
     };
   }
 }
@@ -32,5 +36,7 @@ declare module "next-auth/jwt" {
     role?: string;
     userRoleId?: string;
     isOrgAdmin?: boolean;
+    isOrdoStaff?: boolean;
+    department?: string;
   }
 }

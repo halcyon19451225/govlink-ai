@@ -7,6 +7,9 @@ import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/contexts/ThemeContext";
 import SearchBox from "@/components/SearchBox";
 
+/** Ordo の組織管理者ページ。氏名・所属・利用者の追加はここが正本 */
+const ORG_ADMIN_URL = process.env.NEXT_PUBLIC_ORG_ADMIN_URL ?? "https://ordo.jp/org";
+
 function getInitials(name: string | null | undefined): string {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/);
@@ -169,17 +172,34 @@ export default function NavBar() {
                     <p className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
                       {userEmail ?? ""}
                     </p>
+                    {/* 所属は Ordo 台帳から同期された値。Coe 側では編集しない */}
+                    {session?.user?.department && (
+                      <p className="text-xs truncate mt-0.5" style={{ color: "var(--text-secondary)", opacity: 0.8 }}>
+                        {session.user.department}
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                {/* メニュー項目 */}
+                {/* メニュー項目
+                  *
+                  * 2026-09-12 に整理した。それまでは
+                  *   ・「アカウントを管理」と「設定」が同じ /settings/account
+                  *   ・「自治体設定」と「組織管理」が同じ /settings/organization
+                  *     （前者は非管理者にも見えていた）
+                  *   ・「運営側管理」の出し分けが **メールアドレスのハードコード**
+                  * という状態だった。運営者の判定は lib/ordo-admin.ts に一本化してあり、
+                  * ここは session.user.isOrdoStaff を見るだけにする。
+                  *
+                  * 組織・利用者の管理は Ordo の組織管理者ページが正本なので、
+                  * Coe 側には入口だけを置く（claude/coe-onboarding.md）。
+                  */}
                 <div className="py-1">
-                  {/* 運営側管理（ordoservice.com@gmail.comのみ） */}
-                  {userEmail === "ordoservice.com@gmail.com" && (
+                  {session?.user?.isOrdoStaff && (
                     <>
                       <div className="px-4 pt-3 pb-1">
                         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                          ─── 運営側管理 ───
+                          運営側管理
                         </p>
                       </div>
                       <Link href="/ordo-admin" onClick={() => setShowAccount(false)}
@@ -189,20 +209,16 @@ export default function NavBar() {
                       </Link>
                     </>
                   )}
+
                   <Link href="/settings/account" onClick={() => setShowAccount(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>
-                    <span className="text-base">👤</span>アカウントを管理
+                    <span className="text-base">👤</span>アカウント設定
                   </Link>
                   <Link href="/knowledge" onClick={() => setShowAccount(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>
                     <span className="text-base">📚</span>ナレッジ管理
-                  </Link>
-                  <Link href="/settings/organization" onClick={() => setShowAccount(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
-                    style={{ color: "var(--text-primary)" }}>
-                    <span className="text-base">🏛</span>自治体設定
                   </Link>
 
                   {/* 管理者メニュー */}
@@ -211,20 +227,24 @@ export default function NavBar() {
                       <div className="px-4 pt-3 pb-1">
                         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>管理者メニュー</p>
                       </div>
-                      <Link href="/settings/organization" onClick={() => setShowAccount(false)}
+                      {/* 氏名・所属・利用者の追加は Ordo の台帳が正本。Coe 側では編集しない */}
+                      <a href={ORG_ADMIN_URL} target="_blank" rel="noopener noreferrer"
+                        onClick={() => setShowAccount(false)}
                         className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                         style={{ color: "var(--text-primary)" }}>
-                        <span className="text-base">🏢</span>組織管理
-                      </Link>
-                      <Link href="/settings/members" onClick={() => setShowAccount(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
-                        style={{ color: "var(--text-primary)" }}>
-                        <span className="text-base">👥</span>メンバー管理
-                      </Link>
+                        <span className="text-base">🏢</span>
+                        <span className="flex-1">組織・利用者の管理</span>
+                        <span className="text-xs" style={{ color: "var(--text-secondary)" }}>↗</span>
+                      </a>
                       <Link href="/settings/permissions" onClick={() => setShowAccount(false)}
                         className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                         style={{ color: "var(--text-primary)" }}>
-                        <span className="text-base">🔐</span>権限設定
+                        <span className="text-base">🔐</span>Coe 内の権限設定
+                      </Link>
+                      <Link href="/billing" onClick={() => setShowAccount(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
+                        style={{ color: "var(--text-primary)" }}>
+                        <span className="text-base">💳</span>プランと請求
                       </Link>
                     </>
                   )}
@@ -258,14 +278,6 @@ export default function NavBar() {
                     </button>
                   </div>
 
-                  {/* 設定 */}
-                  <Link href="/settings/account" onClick={() => setShowAccount(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
-                    style={{ color: "var(--text-primary)" }}>
-                    <span className="text-base">⚙️</span>設定
-                  </Link>
-
-                  {/* ヘルプ */}
                   <Link href="/help" onClick={() => setShowAccount(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-black/5 transition-colors duration-200"
                     style={{ color: "var(--text-primary)" }}>

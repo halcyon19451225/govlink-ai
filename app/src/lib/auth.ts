@@ -6,6 +6,7 @@ import { CognitoIdentityProviderClient, InitiateAuthCommand } from "@aws-sdk/cli
 import { queryOne } from "@/lib/db";
 import { isOrgAdmin } from "@/lib/permissions";
 import { syncUserFromOrdo } from "@/lib/user-provisioning";
+import { isOrdoAdminIdentity } from "@/lib/ordo-admin";
 
 const region = process.env.AWS_REGION ?? "ap-northeast-1";
 const userPoolId = process.env.COGNITO_USER_POOL_ID ?? "";
@@ -137,11 +138,12 @@ export const authOptions: NextAuthOptions = {
         municipality_id: string;
         avatar_url: string | null;
         role: string;
+        department: string | null;
         membership_count: string;
       };
       const loadRole = (sub: string) =>
         queryOne<RoleRow>(
-          `SELECT u.id, u.municipality_id, u.avatar_url, u.role,
+          `SELECT u.id, u.municipality_id, u.avatar_url, u.role, u.department,
                   count(*) OVER () AS membership_count
            FROM user_roles u
            JOIN user_identities i ON i.user_role_id = u.id
@@ -178,6 +180,9 @@ export const authOptions: NextAuthOptions = {
             token.role = row.role;
             token.userRoleId = row.id;
             if (row.avatar_url) token.avatarUrl = row.avatar_url;
+            // 所属は Ordo 台帳から同期された値（user-provisioning.ts）。画面の表示用
+            if (row.department) token.department = row.department;
+            else delete token.department;
             token.isOrgAdmin = row.role === "admin" || await isOrgAdmin(row.id);
 
             // 1人が複数自治体に所属している場合、今は「最も古い所属」を決定的に選ぶ。
@@ -204,6 +209,7 @@ export const authOptions: NextAuthOptions = {
             delete token.role;
             delete token.userRoleId;
             delete token.avatarUrl;
+            delete token.department;
             delete token.identityBoundBy;
             token.isOrgAdmin = false;
 
@@ -220,6 +226,13 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
+      // 運営者フラグ。**判定の本体は lib/ordo-admin.ts**（check:ordoadmin が固定）。
+      // 画面側が独自に email を比べないよう、結果だけをセッションに載せる。
+      token.isOrdoStaff = isOrdoAdminIdentity(
+        typeof token.sub === "string" ? token.sub : null,
+        typeof token.email === "string" ? token.email : null,
+      );
+
       return token;
     },
 
@@ -234,6 +247,10 @@ export const authOptions: NextAuthOptions = {
         if (token.role) session.user.role = token.role;
         if (token.userRoleId) session.user.userRoleId = token.userRoleId;
         session.user.isOrgAdmin = token.isOrgAdmin ?? false;
+        session.user.isOrdoStaff = token.isOrdoStaff ?? false;
+        if (token.department && typeof token.department === "string") {
+          session.user.department = token.department;
+        }
       }
       return session;
     },

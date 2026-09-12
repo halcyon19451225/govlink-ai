@@ -59,14 +59,25 @@ const ORDO_ADMIN_SUBS: readonly string[] = (process.env.ORDO_ADMIN_SUBS ?? "")
  */
 export function isOrdoAdmin(session: Session | null): session is Session {
   if (!session?.user) return false;
+  return isOrdoAdminIdentity(session.user.id, session.user.email);
+}
 
+/**
+ * セッションを組み立てる前（NextAuth の jwt コールバック）から使える形。
+ *
+ * **判定の本体はここ。** `isOrdoAdmin` もこれを呼ぶだけにしてある。
+ * 画面の出し分け（ヘッダーのメニューなど）も、独自に email を比べるのではなく
+ * セッションに載った結果を見ること。判定が2箇所に分かれると、
+ * 2026-09-06 に片付けた「28ファイルに重複」の状態へ戻っていく。
+ */
+export function isOrdoAdminIdentity(
+  sub: string | null | undefined,
+  email: string | null | undefined,
+): boolean {
   // sub が設定されていれば、それだけで判定する（email には落ちない）
   if (ORDO_ADMIN_SUBS.length > 0) {
-    const sub = session.user.id;
     return typeof sub === "string" && ORDO_ADMIN_SUBS.includes(sub);
   }
-
-  const email = session.user.email;
   return typeof email === "string" && ORDO_ADMIN_EMAILS.includes(email);
 }
 
