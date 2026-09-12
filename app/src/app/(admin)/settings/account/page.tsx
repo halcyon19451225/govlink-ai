@@ -2,7 +2,10 @@
 
 import { useState, useRef, useCallback } from "react";
 import Image from "next/image";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
+
+/** Ordo の組織管理者ページ。氏名・所属・利用者の追加はここが正本 */
+const ORG_ADMIN_URL = process.env.NEXT_PUBLIC_ORG_ADMIN_URL ?? "https://ordo.jp/org";
 
 const sectionClass =
   "rounded-2xl border p-6 mb-6";
@@ -25,20 +28,6 @@ const PersonIcon = () => (
   </svg>
 );
 
-function StatusBadge({ connected }: { connected: boolean }) {
-  return (
-    <span
-      className="text-xs px-2 py-0.5 rounded-full font-medium"
-      style={connected
-        ? { background: "#10b98120", color: "#10b981" }
-        : { background: "rgba(255,255,255,0.05)", color: "var(--text-secondary)" }
-      }
-    >
-      {connected ? "連携済み" : "未連携"}
-    </span>
-  );
-}
-
 export default function AccountSettingsPage() {
   const { data: session, update: updateSession } = useSession();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,18 +38,11 @@ export default function AccountSettingsPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
 
-  const [displayName, setDisplayName] = useState(session?.user?.name ?? "");
-  const [nameLoading, setNameLoading] = useState(false);
-  const [nameSaved, setNameSaved] = useState(false);
-
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
-
-  const [deleteConfirm, setDeleteConfirm] = useState("");
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -106,26 +88,6 @@ export default function AccountSettingsPage() {
     if (file) handleFileSelect(file);
   }, [handleFileSelect]);
 
-  const handleNameSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!displayName.trim()) return;
-    setNameLoading(true);
-    try {
-      const res = await fetch("/api/admin/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName }),
-      });
-      if (res.ok) {
-        setNameSaved(true);
-        await updateSession();
-        setTimeout(() => setNameSaved(false), 2000);
-      }
-    } finally {
-      setNameLoading(false);
-    }
-  };
-
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== newPasswordConfirm) {
@@ -157,29 +119,6 @@ export default function AccountSettingsPage() {
       setPasswordLoading(false);
     }
   };
-
-  const handleDeleteAccount = async () => {
-    if (deleteConfirm !== "DELETE") return;
-    setDeleteLoading(true);
-    try {
-      const res = await fetch("/api/admin/profile/delete", { method: "DELETE" });
-      if (res.ok) {
-        await signOut({ callbackUrl: "/" });
-      } else {
-        setError("アカウントの削除に失敗しました");
-      }
-    } catch {
-      setError("通信エラーが発生しました");
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
-  const socialProviders = [
-    { id: "google", label: "Google", icon: "G", color: "#4285F4" },
-    { id: "apple", label: "Apple", icon: "", color: "#ffffff" },
-    { id: "azure-ad", label: "Microsoft", icon: "M", color: "#2563eb" },
-  ];
 
   return (
     <div className="max-w-2xl mx-auto py-8">
@@ -251,41 +190,43 @@ export default function AccountSettingsPage() {
         </div>
       </div>
 
-      {/* 氏名変更 */}
+      {/* 台帳の情報（表示のみ）
+        *
+        * 氏名・所属・メールは Ordo の組織台帳が正本で、ログインのたびに同期される
+        * （lib/user-provisioning.ts）。ここで編集できるようにすると、保存はできるのに
+        * 次のログインで元へ戻る、という分かりにくい壊れ方をする。実際そうなっていた。
+        */}
       <div className={sectionClass} style={sectionStyle}>
-        <h2 className="text-base font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
-          氏名
+        <h2 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
+          氏名・所属・メールアドレス
         </h2>
-        <form onSubmit={handleNameSave} className="flex gap-3">
-          <input
-            type="text" required value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            className={`${inputClass} flex-1`} style={inputStyle}
-            placeholder="氏名を入力"
-          />
-          <div className="neu-button-wrap">
-            <button
-            type="submit" disabled={nameLoading}
-            className="px-5 py-3 rounded-xl text-sm font-medium text-white transition-all duration-200 hover:opacity-90 disabled:opacity-40 shrink-0 neu-button-primary"
-            style={{ background: "linear-gradient(135deg, #06b6d4, #0891b2)" }}
-          >
-            {nameSaved ? "保存済み ✓" : nameLoading ? "保存中..." : "保存"}
-          </button>
-          </div>
-        </form>
-      </div>
-
-      {/* メールアドレス */}
-      <div className={sectionClass} style={sectionStyle}>
-        <h2 className="text-base font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
-          メールアドレス
-        </h2>
-        <div className={inputClass} style={{ ...inputStyle, opacity: 0.7, cursor: "not-allowed" }}>
-          {session?.user?.email ?? "—"}
-        </div>
-        <p className="text-xs mt-2" style={{ color: "var(--text-secondary)", opacity: 0.6 }}>
-          メールアドレスの変更はサポートまでお問い合わせください。
+        <p className="text-xs mb-4" style={{ color: "var(--text-secondary)" }}>
+          これらは所属組織の台帳で管理されています。変更は組織のご担当者にご依頼ください。
         </p>
+
+        <dl className="space-y-3">
+          {[
+            { k: "氏名", v: session?.user?.name ?? "—" },
+            { k: "所属", v: session?.user?.department ?? "—" },
+            { k: "メールアドレス", v: session?.user?.email ?? "—" },
+          ].map((row) => (
+            <div key={row.k} className="flex items-baseline gap-4">
+              <dt className="text-xs shrink-0" style={{ color: "var(--text-secondary)", width: "8rem" }}>{row.k}</dt>
+              <dd className="text-sm" style={{ color: "var(--text-primary)" }}>{row.v}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {(session?.user?.role === "admin" || session?.user?.isOrgAdmin) && (
+          <a
+            href={ORG_ADMIN_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 mt-5 text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors duration-200"
+          >
+            組織・利用者の管理を開く ↗
+          </a>
+        )}
       </div>
 
       {/* パスワード変更 */}
@@ -337,62 +278,22 @@ export default function AccountSettingsPage() {
         </form>
       </div>
 
-      {/* ソーシャルアカウント連携 */}
+      {/* アカウントの削除は Coe からは行わない
+        *
+        * Ordo ID は Libera・Coe・Akoya・組織管理者ページで共通のアカウント。
+        * ここから Cognito のユーザーごと消すと、**他のサービスからも締め出される**し、
+        * Ordo 台帳の MemberCode.ordoSub が宙に浮く。組織が契約して招待したアカウントを
+        * 利用者本人が消せるのは、権限の設計としても逆。退職処理は台帳側で行う。
+        */}
       <div className={sectionClass} style={sectionStyle}>
-        <h2 className="text-base font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
-          ソーシャルアカウントの連携
+        <h2 className="text-base font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+          アカウントの停止
         </h2>
-        <div className="space-y-3">
-          {socialProviders.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center justify-between px-4 py-3 rounded-xl border"
-              style={{ borderColor: "var(--border)", background: "rgba(255,255,255,0.02)" }}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                  style={{ background: p.color }}
-                >
-                  {p.icon}
-                </span>
-                <span className="text-sm" style={{ color: "var(--text-primary)" }}>{p.label}</span>
-              </div>
-              <StatusBadge connected={false} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* アカウント削除 */}
-      <div
-        className="rounded-2xl border p-6"
-        style={{ borderColor: "#ef444430", background: "#ef444408" }}
-      >
-        <h2 className="text-base font-semibold mb-2" style={{ color: "#f87171" }}>
-          アカウントの削除
-        </h2>
-        <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
-          アカウントを削除すると、すべてのデータが完全に失われます。この操作は取り消せません。
+        <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+          Ordo ID は Libera・Coe・Akoya で共通のアカウントのため、Coe から削除することはできません。
+          退職・異動などで利用を終える場合は、所属組織のご担当者にご依頼ください。
+          台帳で退職として登録すると、各サービスの利用が停止されます。
         </p>
-        <div className="space-y-3">
-          <input
-            type="text" value={deleteConfirm}
-            onChange={(e) => setDeleteConfirm(e.target.value)}
-            className={inputClass}
-            style={{ ...inputStyle, borderColor: "#ef444440" }}
-            placeholder='確認のため「DELETE」と入力してください'
-          />
-          <button
-            type="button"
-            disabled={deleteConfirm !== "DELETE" || deleteLoading}
-            onClick={handleDeleteAccount}
-            className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-all duration-200 hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{ background: "#ef4444" }}
-          >
-            {deleteLoading ? "削除中..." : "アカウントを削除する"}
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -1,35 +1,28 @@
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic'
 
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { z } from "zod";
-import { authOptions } from "@/lib/auth";
-import { query } from "@/lib/db";
+import { NextResponse } from "next/server";
 
-const bodySchema = z.object({
-  displayName: z.string().min(1, "氏名は必須です"),
-});
-
-export async function PATCH(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
-
-  let raw: unknown;
-  try { raw = await req.json(); } catch {
-    return NextResponse.json({ data: null, error: "リクエスト本文が不正です" }, { status: 400 });
-  }
-
-  const parsed = bodySchema.safeParse(raw);
-  if (!parsed.success) {
-    return NextResponse.json({ data: null, error: parsed.error.issues[0]?.message ?? "入力が不正です" }, { status: 400 });
-  }
-
-  await query(
-    "UPDATE user_roles SET display_name = $1 WHERE cognito_user_id = $2",
-    [parsed.data.displayName, session.user.id],
+/**
+ * 表示名の変更 — **2026-09-12 に閉鎖**
+ *
+ * user_roles.display_name を直接書き換えていたが、Coe のローカルの行を
+ * 書き換えるだけで Ordo の台帳には届かない。さらに同日入れたプロビジョニングが
+ * ログインのたびに台帳の氏名で display_name を上書きするため、
+ * **「保存済み ✓」と出たあと、次のログインで元に戻る**という壊れ方をしていた。
+ *
+ * 氏名・所属・メールは Ordo の組織台帳が正本。変更は組織管理者ページで行う。
+ * 本人が直したい場合は、台帳の「本人からの変更申請」を使う（組織管理者が承認する）。
+ *
+ * 再び開けるなら、ここで台帳へ書き戻すか申請を作るかを決めてからにすること。
+ * Coe のローカルだけを更新する実装に戻してはいけない。
+ */
+export async function PATCH() {
+  return NextResponse.json(
+    {
+      data: null,
+      error:
+        "氏名は所属組織の台帳で管理されています。変更は組織のご担当者にご依頼ください。",
+    },
+    { status: 410 },
   );
-
-  return NextResponse.json({ data: { ok: true }, error: null });
 }

@@ -1,43 +1,28 @@
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic'
 
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import {
-  CognitoIdentityProviderClient,
-  AdminDeleteUserCommand,
-} from "@aws-sdk/client-cognito-identity-provider";
-import { authOptions } from "@/lib/auth";
-import { query } from "@/lib/db";
 
-const cognitoClient = new CognitoIdentityProviderClient({
-  region: process.env.AWS_REGION ?? "ap-northeast-1",
-});
-
+/**
+ * アカウントの削除 — **2026-09-12 に閉鎖**
+ *
+ * `DELETE FROM user_roles` に続けて Cognito の AdminDeleteUser を呼んでいた。
+ * Ordo ID は **Libera・Coe・Akoya・組織管理者ページで共通のアカウント**なので、
+ * Coe の設定画面から「DELETE」と打つだけで、その人が全サービスから締め出される。
+ * さらに Ordo 台帳の MemberCode.ordoSub は残るため、台帳の紐づけが宙に浮く。
+ *
+ * 組織が契約して招待したアカウントを利用者本人が消せるのは、権限の設計としても逆。
+ * 退職処理は組織管理者が台帳で行い、そこから各サービスの利用が止まる。
+ *
+ * ⚠ 再び開けるなら、消す対象を **Coe の user_roles / user_identities だけ**にすること。
+ *   共有プールの Cognito ユーザーを1サービスから消してはいけない。
+ */
 export async function DELETE() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || !session?.user?.email) {
-    return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
-  }
-
-  const userPoolId = process.env.COGNITO_USER_POOL_ID;
-  if (!userPoolId) {
-    return NextResponse.json({ data: null, error: "認証設定が不足しています" }, { status: 500 });
-  }
-
-  try {
-    await query(
-      "DELETE FROM user_roles WHERE cognito_user_id = $1",
-      [session.user.id],
-    );
-
-    await cognitoClient.send(new AdminDeleteUserCommand({
-      UserPoolId: userPoolId,
-      Username: session.user.email,
-    }));
-
-    return NextResponse.json({ data: { ok: true }, error: null });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "アカウント削除に失敗しました";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
-  }
+  return NextResponse.json(
+    {
+      data: null,
+      error:
+        "Ordo ID は複数のサービスで共通のため、Coe から削除することはできません。所属組織のご担当者にご依頼ください。",
+    },
+    { status: 410 },
+  );
 }

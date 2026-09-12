@@ -100,5 +100,24 @@ must(
     + ' /api/directory/resolve 経由で見る形に一本化してある',
 );
 
+const PROFILE = 'src/app/api/admin/profile/route.ts';
+const DELETE_ROUTE = 'src/app/api/admin/profile/delete/route.ts';
+const profileSrc = readFileSync(PROFILE, 'utf8');
+const deleteSrc = readFileSync(DELETE_ROUTE, 'utf8');
+
+must(
+  '氏名を Coe のローカルだけで書き換えていない',
+  !/UPDATE\s+user_roles\s+SET\s+display_name/i.test(profileSrc),
+  '台帳から毎回同期しているので、ローカルだけ更新しても次のログインで戻る。'
+    + '「保存できたのに反映されない」という分かりにくい壊れ方になる',
+);
+
+must(
+  '共有プールの Cognito ユーザーを Coe から削除していない',
+  !/AdminDeleteUserCommand/.test(deleteSrc),
+  'Ordo ID は Libera / Coe / Akoya 共通。1サービスの設定画面から消すと全サービスから'
+    + '締め出され、Ordo 台帳の MemberCode.ordoSub も宙に浮く',
+);
+
 console.log(`\ncheck:provisioning — ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
