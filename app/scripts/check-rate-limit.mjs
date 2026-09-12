@@ -98,6 +98,9 @@ const EXEMPT = {
     'CORPUS_CRON_KEY の共有鍵が必須。未設定なら 500 で停止する（フェイルクローズ）',
   'src/app/api/public/report/[token]/route.ts':
     '192bit の能力トークン方式。総当たりは現実的でなく、対象もトークンで引いた行に限定される',
+  'src/app/api/auth/register/route.ts':
+    '2026-09-12 に閉鎖。常に 410 を返すだけで、DB もメール送信も外部呼び出しも行わない'
+      + '（閉じたままであることは check:register が固定している）',
 };
 
 function walk(dir, out = []) {

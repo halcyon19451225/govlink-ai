@@ -245,11 +245,11 @@ export default function LoginForm() {
               ）。
             </p>
 
-            {/* 登録リンク */}
+            {/* 自己登録は廃止。導入は「契約 → 組織を作成 → 管理者を招待」の1本 */}
             <p className="text-xs text-center" style={{ color: "var(--text-secondary)" }}>
               アカウントをお持ちでない方は{" "}
               <Link href="/register" className="text-cyan-400 hover:text-cyan-300 transition-colors duration-200">
-                こちら
+                ご利用開始の流れ
               </Link>
             </p>
           </>

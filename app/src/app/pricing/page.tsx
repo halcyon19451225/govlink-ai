@@ -213,11 +213,11 @@ export default function PricingPage() {
             </Link>
             <div className="neu-button-wrap">
               <Link
-                href="/register"
+                href="/contact"
                 className="text-sm font-semibold text-white px-4 py-2 rounded-xl transition-all duration-200 hover:opacity-90 neu-button-primary"
                 style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
               >
-                アカウント登録
+                お問い合わせ
               </Link>
             </div>
           </div>
@@ -292,11 +292,11 @@ export default function PricingPage() {
               <div className="flex justify-start">
                 <div className="neu-button-wrap">
                   <Link
-                    href="/register"
+                    href="/contact"
                     className="inline-block text-white font-bold px-8 py-3.5 rounded-xl text-sm transition-all duration-200 hover:opacity-90 hover:scale-105 neu-button-primary"
                     style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}
                   >
-                    アカウント登録 →
+                    お問い合わせ →
                   </Link>
                 </div>
               </div>
