@@ -6,7 +6,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { query, queryOne, isPgError, PgErrorCode } from "@/lib/db";
 import { isOrgAdmin } from "@/lib/permissions";
-import { verifyOrgCode, mapOrdoPlanToCoe, invalidateOrgPlanCache } from "@/lib/org-license";
+import { verifyOrgCode, mapOrdoPlanToCoe, invalidateOrgPlanCache, getOrgPlan } from "@/lib/org-license";
 
 /**
  * 組織コード連携（Ordo 契約との紐づけ）
@@ -44,6 +44,14 @@ export async function GET() {
     [ctx.municipalityId],
   );
   const code = row?.org_code ?? null;
+
+  // 「紐づいている」ことと「プランが適用されている」ことは別物。
+  // 保存した組織IDが古くなる・契約が失効するなどで、紐づけ表示はそのままに
+  // プランだけ無料へ落ちることがある（実際 2026-08-23〜09-12 に起きていた）。
+  // 画面が「紐づいています」と言い続けるせいで原因が分からなくなるため、
+  // ここで実際に適用されているプランも返す。
+  const plan = code ? await getOrgPlan(ctx.municipalityId).catch(() => null) : null;
+
   return NextResponse.json({
     data: {
       linked: !!code,
@@ -51,6 +59,8 @@ export async function GET() {
       codeMasked: code ? `****-${code.slice(-4)}` : null,
       orgName: row?.org_name ?? null,
       linkedAt: row?.org_linked_at ?? null,
+      plan,
+      applied: !!plan && plan !== "free",
     },
     error: null,
   });

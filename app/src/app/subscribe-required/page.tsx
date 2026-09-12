@@ -56,7 +56,7 @@ export default async function SubscribeRequiredPage() {
           </div>
 
           {/* 組織コード・許諾コードの登録（組織の管理者のみ保存可能） */}
-          <OrgCodeSection />
+          <OrgCodeSection continueHref="/dashboard" />
           <p className="text-xs mt-2" style={{ color: "var(--text-secondary)", opacity: 0.7 }}>
             許諾コードの登録は組織の管理者アカウントで行ってください。登録が完了すると、
             組織の全メンバーが契約プランでご利用いただけるようになります。
