@@ -25,6 +25,8 @@ declare module "next-auth/jwt" {
     emailVerified?: boolean;
     /** 権限をどのキーで解決したか。sub のみ（email 照合は 2026-09-06 に廃止） */
     identityBoundBy?: "sub";
+    /** Ordo 台帳と最後に同期した時刻（epoch ms）。再同期の頻度を抑えるために持つ */
+    ordoSyncedAt?: number;
     municipalityId?: string;
     avatarUrl?: string;
     role?: string;

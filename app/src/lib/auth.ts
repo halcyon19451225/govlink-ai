@@ -5,6 +5,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { CognitoIdentityProviderClient, InitiateAuthCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { queryOne } from "@/lib/db";
 import { isOrgAdmin } from "@/lib/permissions";
+import { syncUserFromOrdo } from "@/lib/user-provisioning";
 
 const region = process.env.AWS_REGION ?? "ap-northeast-1";
 const userPoolId = process.env.COGNITO_USER_POOL_ID ?? "";
@@ -19,6 +20,9 @@ function getSecretHash(username: string): string | undefined {
 
 
 const cognitoClient = new CognitoIdentityProviderClient({ region });
+
+/** Ordo 台帳との再同期の間隔。組織コード契約のキャッシュ（6時間）と揃えてある。 */
+const ORDO_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 const providers: NextAuthOptions["providers"] = [
   CognitoProvider({ clientId, clientSecret, issuer }),
@@ -135,18 +139,38 @@ export const authOptions: NextAuthOptions = {
         role: string;
         membership_count: string;
       };
+      const loadRole = (sub: string) =>
+        queryOne<RoleRow>(
+          `SELECT u.id, u.municipality_id, u.avatar_url, u.role,
+                  count(*) OVER () AS membership_count
+           FROM user_roles u
+           JOIN user_identities i ON i.user_role_id = u.id
+           WHERE i.cognito_sub = $1
+           ORDER BY u.created_at
+           LIMIT 1`,
+          [sub],
+        );
+
       if (token.sub) {
         try {
-          const row = await queryOne<RoleRow>(
-            `SELECT u.id, u.municipality_id, u.avatar_url, u.role,
-                    count(*) OVER () AS membership_count
-             FROM user_roles u
-             JOIN user_identities i ON i.user_role_id = u.id
-             WHERE i.cognito_sub = $1
-             ORDER BY u.created_at
-             LIMIT 1`,
-            [token.sub],
-          );
+          let row = await loadRole(token.sub);
+
+          // Ordo 台帳との同期 —
+          // 招待された利用者は Cognito には居ても Coe には行が無い。台帳を正本として
+          // 受け入れる（作成する）のがここ。**メールではなく sub で引く**ので、
+          // 2026-09-06 に塞いだ穴は開かない。詳細: lib/user-provisioning.ts
+          //
+          // 毎リクエストでは呼ばない。行が無いとき・サインイン直後・前回同期から
+          // ORDO_SYNC_INTERVAL_MS 以上経ったときだけ。ログインの待ち時間に
+          // Ordo への往復が乗るため、頻度は抑える。
+          const lastSync = typeof token.ordoSyncedAt === "number" ? token.ordoSyncedAt : 0;
+          const stale = Date.now() - lastSync > ORDO_SYNC_INTERVAL_MS;
+          if (!row || !!account || stale) {
+            const outcome = await syncUserFromOrdo(token.sub);
+            if (outcome.status !== "unreachable") token.ordoSyncedAt = Date.now();
+            // 作成・更新があったら読み直す（unreachable なら既存の row のまま進む）
+            if (outcome.status === "synced") row = await loadRole(token.sub);
+          }
 
           if (row) {
             token.identityBoundBy = "sub";
@@ -185,7 +209,9 @@ export const authOptions: NextAuthOptions = {
 
             console.warn(
               `[auth] sub=${token.sub} に対応する user_identities がありません。権限を剥奪しました。` +
-                `正当な利用者であれば user_identities に (user_role_id, cognito_sub, provider) を追加してください。`,
+                `直前に Ordo 台帳との同期を試みています（[provision] のログに理由が出ます）。` +
+                `台帳に居るのにここへ来る場合は、組織コードの紐づけ・契約の有効性・` +
+                `利用者のサービス許可のいずれかを確認してください。`,
             );
           }
         } catch {
