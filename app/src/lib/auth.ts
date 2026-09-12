@@ -23,22 +23,12 @@ const cognitoClient = new CognitoIdentityProviderClient({ region });
 const providers: NextAuthOptions["providers"] = [
   CognitoProvider({ clientId, clientSecret, issuer }),
 
-  // Google は「Cognito のフェデレーション経由」で使う。
-  // identity_provider=Google を渡すことで Cognito のホストUIを素通りして
-  // 直接 Google の同意画面へ飛ぶため、利用者から見た体験は直付けと変わらない。
-  // 違いは、返ってくる sub が **Cognito の sub** になること。これで user_roles を
-  // cognito_user_id で引けるようになり、メール照合を捨てられる。
-  //
-  // 前提: Coe のアプリクライアントの SupportedIdentityProviders に "Google" が入っていること。
-  //   aws cognito-idp update-user-pool-client --supported-identity-providers COGNITO Google ...
-  CognitoProvider({
-    id: "cognito-google",
-    name: "Google",
-    clientId,
-    clientSecret,
-    issuer,
-    authorization: { params: { identity_provider: "Google", scope: "openid email profile" } },
-  }),
+  // ⚠ Google のフェデレーションプロバイダーは 2026-09-12 に廃止した。
+  // Ordo ID をメール＋パスワードのみに一本化する方針（Ordo 側 claude/ordo-id-unify.md）。
+  // 招待型プロビジョニング（管理者がメールアドレスから Ordo ID を発行して招待する運用）と
+  // ソーシャルログインは両立しない。同じ人に Cognito の sub が2つでき、
+  // 組織台帳との紐づけが静かに壊れるため。
+  // → Coe のログイン手段は Cognito（メール＋パスワード）のみ。
 
   CredentialsProvider({
     id: "credentials",
@@ -86,11 +76,13 @@ const providers: NextAuthOptions["providers"] = [
 //   ・同一メールが複数テナントにあると LIMIT 1 で所属が不定になる
 // という穴になっていた。実データにも `cognito_user_id = 'google_1105...'` の行が残っている。
 //
-// 今後、ソーシャルログインは **Cognito のフェデレーション経由**に統一する
-// （Google IdP はプール ap-northeast-1_fskAOFUGZ に設定済み。Coe のアプリクライアントの
-//   SupportedIdentityProviders に "Google" を追加すれば、利用者から見た体験は変わらない）。
-// LINE は id_token が ES256 のみ、GitHub は OIDC 非対応のため Cognito に載らない。
-// 詳細と判断の記録: プロジェクト文書 claude/ordo-id-design.md §4
+// 【2026-09-12 追記】その後、**ソーシャルログインそのものを全廃**した。
+// 一度は Cognito のフェデレーション経由（cognito-google）に寄せたが、Ordo ID を
+// メールアドレスから発行して招待する運用に切り替えたため、Google 連携が邪魔になった
+// （同じ人に sub が2つでき、組織台帳との紐づけが静かに壊れる）。
+// 本番プールの棚卸しでも Google 連携ユーザーは内部2件のみで、顧客の利用実績は無かった。
+// → 残る手段は Cognito（メール＋パスワード）のみ。
+// 詳細と判断の記録: プロジェクト文書 claude/ordo-id-unify.md（経緯は ordo-id-design.md §4）
 
 export const authOptions: NextAuthOptions = {
   providers,
@@ -108,7 +100,7 @@ export const authOptions: NextAuthOptions = {
         if (user.email) token.email = user.email;
         if (user.name) token.name = user.name;
       }
-      // OAuth プロバイダー（Cognito / Google / LINE / GitHub）
+      // OAuth プロバイダー（Cognito のみ。ソーシャルログインは全廃）
       if (account && profile && account.provider !== "credentials") {
         if (profile.sub !== undefined) token.sub = profile.sub;
         if (profile.email !== undefined) token.email = profile.email;
