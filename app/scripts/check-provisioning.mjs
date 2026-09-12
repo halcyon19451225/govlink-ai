@@ -89,5 +89,16 @@ must(
   'jwt コールバックは毎リクエスト走る。無条件に同期すると Ordo への往復が全リクエストに乗る',
 );
 
+const ORGCODE = 'src/app/api/admin/org-code/route.ts';
+const orgcode = readFileSync(ORGCODE, 'utf8');
+
+must(
+  '組織の紐づけに個人許諾コードを受け付けない',
+  /lic\.codeType === "member"/.test(orgcode),
+  '個人コードを通すと、保存されるのは CUST:<組織ID> なので入力した瞬間に組織レベルへ退化する。'
+    + '「人単位で管理できているつもり」になるのが危ない。人単位の権限は組織台帳（services / status）を'
+    + ' /api/directory/resolve 経由で見る形に一本化してある',
+);
+
 console.log(`\ncheck:provisioning — ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

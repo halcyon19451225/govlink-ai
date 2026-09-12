@@ -11,7 +11,7 @@ export const metadata = { title: "ご利用には契約が必要です | Coe" };
 /**
  * 完全有償化: 有効な有料プランを持たないユーザーがログインした際の案内ページ。
  * - 有料プランの申し込み（/pricing）への導線
- * - 組織から発行された許諾コードの入力（管理者のみ登録可能）
+ * - 組織から発行された組織コードの入力（管理者のみ登録可能）
  */
 export default async function SubscribeRequiredPage() {
   const session = await getServerSession(authOptions);
@@ -35,7 +35,7 @@ export default async function SubscribeRequiredPage() {
           </h1>
           <p className="text-sm mb-6 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             Coe は有償サービスです。ご利用を開始するには、有料プランをお申し込みいただくか、
-            所属組織の担当者から発行された許諾コードを登録してください。
+            所属組織の担当者から配布された組織コードを登録してください。
           </p>
 
           <div className="flex gap-3 flex-wrap mb-8">
@@ -55,10 +55,10 @@ export default async function SubscribeRequiredPage() {
             </Link>
           </div>
 
-          {/* 組織コード・許諾コードの登録（組織の管理者のみ保存可能） */}
+          {/* 組織コードの登録（組織の管理者のみ保存可能） */}
           <OrgCodeSection continueHref="/dashboard" />
           <p className="text-xs mt-2" style={{ color: "var(--text-secondary)", opacity: 0.7 }}>
-            許諾コードの登録は組織の管理者アカウントで行ってください。登録が完了すると、
+            組織コードの登録は組織の管理者アカウントで行ってください。登録が完了すると、
             組織の全メンバーが契約プランでご利用いただけるようになります。
           </p>
         </div>

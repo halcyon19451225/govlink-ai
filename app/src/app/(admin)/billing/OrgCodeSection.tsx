@@ -184,7 +184,7 @@ export default function OrgCodeSection({ continueHref }: { continueHref?: string
         ) : (
           <>
             <p className="text-sm text-slate-400 mb-3">
-              組織契約（請求書払い等）をお持ちの場合は、組織の担当者に発行された許諾コードを入力すると契約プランが適用されます。
+              組織契約（請求書払い等）をお持ちの場合は、組織の担当者から配布された組織コード（ORG-XXXX-XXXX）を入力すると契約プランが適用されます。
             </p>
             {inputBlock}
           </>

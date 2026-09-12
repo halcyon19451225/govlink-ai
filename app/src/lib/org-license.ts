@@ -31,7 +31,8 @@ const ORDO_LICENSE_API =
 export async function verifyOrgCode(code: string): Promise<OrgLicense | null> {
   const trimmed = code.trim().toUpperCase();
   if (!trimmed) return null;
-  // code= は個人許諾コード（COEM-）・組織コード（COE-）の両対応（Ordo側で自動判別）
+  // code= は Ordo 側で自動判別されるが、**Coe が受け付けるのは組織コードのみ**。
+  // 個人コードは呼び出し側（api/admin/org-code）で弾く。理由はそちらのコメント参照
   const url = `${ORDO_LICENSE_API}?code=${encodeURIComponent(trimmed)}&product=Coe`;
   const res = await fetch(url, { cache: "no-store" });
   if (res.status === 404) {

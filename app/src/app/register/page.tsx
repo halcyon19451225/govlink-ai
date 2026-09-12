@@ -124,7 +124,7 @@ export default function RegisterPage() {
             <Image src="/logo-coe.svg" alt="Coe" width={80} height={40} style={{ objectFit: "contain" }} />
           </Link>
           <p className="text-sm mt-2" style={{ color: "var(--text-secondary)" }}>
-            ご利用には有料プランの契約、または組織から発行された許諾コードが必要です
+            ご利用には有料プランの契約、または組織から発行された組織コードが必要です
           </p>
         </div>
 

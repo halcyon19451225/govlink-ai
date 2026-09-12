@@ -91,6 +91,25 @@ export async function POST(req: NextRequest) {
   if (!lic || lic.reason === "not_found") {
     return NextResponse.json({ data: null, error: "組織コードが見つかりません" }, { status: 404 });
   }
+  // 個人許諾コードは受け付けない（2026-09-12）。
+  //
+  // 以前は個人コードでも通していたが、保存するのは結局 `CUST:<組織ID>` なので、
+  // **入力した瞬間に組織レベルの紐づけへ退化していた**。個人コードを失効させても
+  // Coe には何も起きず、「人単位で管理できているつもり」になるのが危ない。
+  // Coe の人単位の権限は、組織台帳（MemberCode の services / status）を
+  // /api/directory/resolve 経由で見る形に一本化した（lib/user-provisioning.ts）。
+  // ここは組織コード専用にして、経路を1本にしておく。
+  if (lic.codeType === "member") {
+    return NextResponse.json(
+      {
+        data: null,
+        error:
+          "これは個人向けの許諾コードです。Coe では組織コード（ORG-XXXX-XXXX）を登録してください。組織の担当者にお問い合わせください。",
+      },
+      { status: 400 },
+    );
+  }
+
   if (lic.reason === "product_mismatch") {
     return NextResponse.json({ data: null, error: "このコードは Coe 用ではありません" }, { status: 400 });
   }
