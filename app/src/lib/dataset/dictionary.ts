@@ -1,9 +1,13 @@
 /**
- * 属性辞書（Coe 共通辞書）— 設計: claude/coe-dataset-model.md §5-1
+ * 属性辞書 — コア（分野中立）— 設計: claude/coe-dataset-model.md §5-1
  *
  * 「何の情報か」はここにあるキーに限る。**自由記述型は存在しない。**
- * 汎用性は辞書を増やして得る（スキーマは増やさない）。介護保険の初期辞書は
- * claude/coe-cohort-etl-plan.md §3-2 の粗化表をそのまま辞書化したもの。
+ * 汎用性は辞書を増やして得る（スキーマは増やさない）。
+ *
+ * ★ **このファイルには特定の行政分野の語彙を書かない。**
+ *   どの分野の計画でも意味が変わらない属性だけを置く。分野に固有の属性は
+ *   `domains/<分野>.ts`（分野パック）へ、自治体に固有の属性はテナント拡張へ置く。
+ *   `check:generic` がこの規律を機械で守る。
  *
  * role の意味:
  *   quasi_identifier … k 検定で数える。粗化のはしご（generalization）が必須
@@ -12,64 +16,54 @@
  *   neutral          … どちらでもない
  *
  * cloudAllowed が false の属性は、辞書に載っていても変換ツールが出力しない。
- * 共通辞書で明示的に true にしたものだけが Coe に届く。
+ * localCodes が true の属性は、値の語彙を自治体が登録して初めて使える。
  */
 import type { AttributeDefinition } from "./types";
 
-export const DICTIONARY_VERSION = 1;
+export const DICTIONARY_VERSION = 2;
 
 const AGE5 = [
-  "u40",
-  "40-44", "45-49", "50-54", "55-59", "60-64", "65-69", "70-74", "75-79",
-  "80-84", "85-89", "90-94", "95-99", "100+",
+  "u20", "20-24", "25-29", "30-34", "35-39", "40-44", "45-49", "50-54", "55-59",
+  "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90-94", "95-99", "100+",
 ] as const;
 
 const AGE5_TO_10: Record<string, string> = {
-  u40: "u40",
+  u20: "u20",
+  "20-24": "20-29", "25-29": "20-29", "30-34": "30-39", "35-39": "30-39",
   "40-44": "40-49", "45-49": "40-49", "50-54": "50-59", "55-59": "50-59",
   "60-64": "60-69", "65-69": "60-69", "70-74": "70-79", "75-79": "70-79",
   "80-84": "80-89", "85-89": "80-89", "90-94": "90+", "95-99": "90+", "100+": "90+",
 };
-const AGE10_TO_ELDERLY: Record<string, string> = {
-  u40: "u65", "40-49": "u65", "50-59": "u65", "60-69": "u65_or_65-74",
-  "70-79": "65-74_or_75+", "80-89": "75+", "90+": "75+",
+const AGE10_TO_20: Record<string, string> = {
+  u20: "u20", "20-29": "20-39", "30-39": "20-39", "40-49": "40-59", "50-59": "40-59",
+  "60-69": "60-79", "70-79": "60-79", "80-89": "80+", "90+": "80+",
 };
 
-const CARE_LEVEL: Record<string, string> = {
-  none: "非該当", target: "事業対象者",
-  support1: "要支援1", support2: "要支援2",
-  care1: "要介護1", care2: "要介護2", care3: "要介護3", care4: "要介護4", care5: "要介護5",
-};
-const CARE_LEVEL_TO_5: Record<string, string> = {
-  none: "none", target: "target", support1: "support", support2: "support",
-  care1: "care12", care2: "care12", care3: "care345", care4: "care345", care5: "care345",
-};
-const CARE5_TO_2: Record<string, string> = {
-  none: "no_cert", target: "no_cert", support: "cert", care12: "cert", care345: "cert",
+const HOUSE_SIZE: Record<string, string> = { s1: "1人", s2: "2人", s3_4: "3〜4人", s5: "5人以上" };
+const INCOME_BAND: Record<string, string> = { low: "低", mid: "中", high: "高" };
+const SUBJECT_STATUS: Record<string, string> = {
+  active: "対象として在籍", moved_out: "転出", deceased: "死亡", out_of_scope: "対象外になった",
 };
 
-function all(codes: Record<string, string>, to: string): Record<string, string> {
-  return Object.fromEntries(Object.keys(codes).map((k) => [k, to]));
-}
-
-const AREA_CODES = Object.fromEntries(
-  Array.from({ length: 10 }, (_, i) => [`area${String(i + 1).padStart(2, "0")}`, `圏域${i + 1}`]),
-);
-
-export const CARE_INSURANCE_DICTIONARY: readonly AttributeDefinition[] = [
+/**
+ * コア辞書。**planTypes は必ず空**（どの分野でも出る）。
+ */
+export const CORE_DICTIONARY: readonly AttributeDefinition[] = [
   // ── 準識別子（k 検定の対象。はしご必須） ──────────────
   {
     key: "demo.age_band5",
     label: "年齢（5歳階級）",
     description: "基準日時点の年齢を5歳階級にしたもの。生年月日そのものは持ち込めない",
     valueType: "band",
-    codes: Object.fromEntries(AGE5.map((b) => [b, b === "u40" ? "40歳未満" : b === "100+" ? "100歳以上" : `${b}歳`])),
+    codes: Object.fromEntries(
+      AGE5.map((b) => [b, b === "u20" ? "20歳未満" : b === "100+" ? "100歳以上" : `${b}歳`]),
+    ),
     role: "quasi_identifier",
     generalization: {
       priority: 2,
       levels: [
         { label: "10歳階級", map: AGE5_TO_10 },
-        { label: "前期／後期", map: AGE10_TO_ELDERLY },
+        { label: "20歳階級", map: AGE10_TO_20 },
       ],
     },
     timeGranularity: "fiscal_year",
@@ -80,187 +74,169 @@ export const CARE_INSURANCE_DICTIONARY: readonly AttributeDefinition[] = [
   {
     key: "demo.sex",
     label: "性別",
-    description: "M / F / X",
+    description: "M / F / X（その他・不明）",
     valueType: "code",
     codes: { M: "男性", F: "女性", X: "その他・不明" },
     role: "quasi_identifier",
-    generalization: { priority: 3, levels: [{ label: "削除", map: { M: "*", F: "*", X: "*" } }] },
+    generalization: { priority: 3, levels: [{ label: "削除", collapseTo: "*" }] },
     timeGranularity: "static",
     cloudAllowed: true,
     sourceHints: ["性別"],
+    planTypes: [],
   },
   {
     key: "demo.area",
-    label: "日常生活圏域",
-    description: "居住地の日常生活圏域。町丁目より細かい区分は持ち込めない（テナント拡張で圏域名を定義する）",
+    label: "地区",
+    description:
+      "居住地の区分。どんな区分を使うか（小学校区・支所管内・地域自治区など）は自治体ごとに違うため、値の語彙は自治体が登録する。町丁目より細かい区分は登録できない",
     valueType: "code",
-    codes: AREA_CODES,
+    codes: {},
+    localCodes: true,
     role: "quasi_identifier",
-    generalization: { priority: 1, levels: [{ label: "全域", map: all(AREA_CODES, "*") }] },
+    generalization: { priority: 1, levels: [{ label: "全域", collapseTo: "*" }] },
     timeGranularity: "fiscal_year",
     cloudAllowed: true,
-    sourceHints: ["圏域", "日常生活圏域", "地区"],
+    sourceHints: ["地区", "圏域", "区分"],
+    planTypes: [],
   },
   {
-    key: "care.level",
-    label: "要介護度",
-    description: "基準日時点の要介護認定の区分。経年比較（維持改善率）はこの属性の2時点で計算する",
-    valueType: "code",
-    codes: CARE_LEVEL,
-    role: "quasi_identifier",
-    generalization: {
-      priority: 4,
-      levels: [
-        { label: "5区分（非該当／事業対象者／要支援／要介護1-2／要介護3-5）", map: CARE_LEVEL_TO_5 },
-        { label: "認定有無", map: CARE5_TO_2 },
-      ],
-    },
-    timeGranularity: "month",
-    cloudAllowed: true,
-    sourceHints: ["要介護度", "認定区分", "要介護状態区分"],
-  },
-  {
-    key: "house.type",
-    label: "世帯類型",
-    description: "独居／高齢者のみ世帯／同居あり",
-    valueType: "code",
-    codes: { alone: "独居", elderly_only: "高齢者のみ", with_others: "同居あり" },
+    key: "house.size_band",
+    label: "世帯人数（帯）",
+    description: "基準日時点の同一世帯の人数",
+    valueType: "band",
+    codes: HOUSE_SIZE,
     role: "quasi_identifier",
     generalization: {
       priority: 2,
-      levels: [{ label: "独居か否か", map: { alone: "alone", elderly_only: "not_alone", with_others: "not_alone" } }],
+      levels: [{ label: "単身か否か", map: { s1: "s1", s2: "s2+", s3_4: "s2+", s5: "s2+" } }],
     },
     timeGranularity: "fiscal_year",
     cloudAllowed: true,
-    sourceHints: ["世帯類型", "世帯構成"],
+    sourceHints: ["世帯人数", "世帯員数"],
+    planTypes: [],
   },
   // ── 機微属性（ℓ 検定の対象） ─────────────────────────
   {
-    key: "econ.premium_band",
-    label: "保険料段階（帯）",
-    description: "第1号保険料の所得段階を3帯にしたもの",
+    key: "econ.income_band",
+    label: "所得の段階（帯）",
+    description:
+      "所得・課税の区分を3段階に粗化したもの。どの区分を低・中・高に当てるかは自治体が決める（制度上の段階をそのまま持ち込まない）",
     valueType: "band",
-    codes: { b1_3: "第1〜3段階", b4_6: "第4〜6段階", b7_: "第7段階以上" },
+    codes: INCOME_BAND,
     role: "sensitive",
-    generalization: { priority: 1, levels: [{ label: "削除", map: { b1_3: "*", b4_6: "*", b7_: "*" } }] },
+    generalization: { priority: 1, levels: [{ label: "削除", collapseTo: "*" }] },
     timeGranularity: "fiscal_year",
     cloudAllowed: true,
-    sourceHints: ["保険料段階", "所得段階"],
+    sourceHints: ["所得段階", "課税区分"],
+    planTypes: [],
   },
-  {
-    key: "health.dementia_level",
-    label: "認知症高齢者の日常生活自立度",
-    description: "認定調査・主治医意見書の区分",
-    valueType: "code",
-    codes: { none: "自立", I: "Ⅰ", IIa: "Ⅱa", IIb: "Ⅱb", IIIa: "Ⅲa", IIIb: "Ⅲb", IV: "Ⅳ", M: "M" },
-    role: "sensitive",
-    generalization: {
-      priority: 1,
-      levels: [{ label: "3区分", map: { none: "none", I: "I_II", IIa: "I_II", IIb: "I_II", IIIa: "III+", IIIb: "III+", IV: "III+", M: "III+" } }],
-    },
-    timeGranularity: "month",
-    cloudAllowed: true,
-    sourceHints: ["認知症自立度", "認知症高齢者の日常生活自立度"],
-  },
-  {
-    key: "health.adl_level",
-    label: "障害高齢者の日常生活自立度",
-    description: "認定調査・主治医意見書の区分",
-    valueType: "code",
-    codes: { none: "自立", J1: "J1", J2: "J2", A1: "A1", A2: "A2", B1: "B1", B2: "B2", C1: "C1", C2: "C2" },
-    role: "sensitive",
-    generalization: {
-      priority: 1,
-      levels: [{ label: "3区分", map: { none: "none", J1: "J", J2: "J", A1: "A", A2: "A", B1: "B_C", B2: "B_C", C1: "B_C", C2: "B_C" } }],
-    },
-    timeGranularity: "month",
-    cloudAllowed: true,
-    sourceHints: ["障害自立度", "障害高齢者の日常生活自立度"],
-  },
-  // ── 曝露（施策への参加等） ────────────────────────────
+  // ── 曝露（施策・事業を受けたか） ──────────────────────
   {
     key: "prog.participated",
-    label: "事業への参加歴",
-    description: "対象事業に参加した（有無）",
+    label: "事業への参加",
+    description: "対象の事業・サービスに参加した（有無）",
     valueType: "bool",
     role: "exposure",
     timeGranularity: "fiscal_year",
     cloudAllowed: true,
-    sourceHints: ["参加", "参加歴", "利用歴"],
+    sourceHints: ["参加", "参加歴", "受講"],
+    planTypes: [],
+  },
+  {
+    key: "prog.notified",
+    label: "案内・勧奨の到達",
+    description: "案内や勧奨が届いた（有無）。実験の割付と実際の到達を分けて見るために使う",
+    valueType: "bool",
+    role: "exposure",
+    timeGranularity: "fiscal_year",
+    cloudAllowed: true,
+    sourceHints: ["通知", "勧奨", "案内"],
+    planTypes: [],
   },
   // ── アウトカム ────────────────────────────────────────
   {
-    key: "outcome.cert_new",
-    label: "新規認定の発生",
-    description: "当該年度に要支援・要介護の新規認定を受けた（有無）",
+    key: "outcome.service_used",
+    label: "サービス・制度の利用",
+    description: "当該期間にサービス・制度を利用した（有無）",
     valueType: "bool",
     role: "outcome",
     timeGranularity: "fiscal_year",
     cloudAllowed: true,
-    sourceHints: ["新規認定", "認定申請区分"],
+    sourceHints: ["利用", "受給"],
+    planTypes: [],
   },
   {
-    key: "outcome.checkup_attended",
-    label: "健診受診",
-    description: "当該年度に特定健診等を受診した（有無）",
-    valueType: "bool",
-    role: "outcome",
-    timeGranularity: "fiscal_year",
-    cloudAllowed: true,
-    sourceHints: ["健診受診", "受診有無"],
-  },
-  {
-    key: "outcome.benefit_amount",
-    label: "介護給付費（年額）",
-    description: "当該年度の介護給付費の合計（円）",
+    key: "outcome.cost_amount",
+    label: "費用額（年額）",
+    description: "当該年度に公費・保険等から支出された額の合計（円）",
     valueType: "int",
     unit: "円",
     role: "outcome",
     timeGranularity: "fiscal_year",
     cloudAllowed: true,
-    sourceHints: ["給付費", "給付額"],
+    sourceHints: ["費用", "支給額", "支出額"],
+    planTypes: [],
   },
-  {
-    key: "outcome.hospitalized",
-    label: "入院の発生",
-    description: "当該年度に入院した（有無）",
-    valueType: "bool",
-    role: "outcome",
-    timeGranularity: "fiscal_year",
-    cloudAllowed: true,
-    sourceHints: ["入院"],
-  },
+  // ── 追跡の打ち切り ────────────────────────────────────
   {
     key: "demo.status",
-    label: "資格の状態",
-    description: "基準日時点で、在住／転出／死亡のどれか。追跡の打ち切り（センサリング）に使う",
+    label: "対象としての状態",
+    description: "基準日時点で追跡の対象に含まれるか。転出・死亡・対象外は打ち切り（センサリング）として扱う",
     valueType: "code",
-    codes: { active: "在住", moved_out: "転出", deceased: "死亡" },
+    codes: SUBJECT_STATUS,
     role: "neutral",
     timeGranularity: "month",
     cloudAllowed: true,
-    sourceHints: ["資格喪失事由", "異動事由"],
+    sourceHints: ["異動事由", "資格喪失事由", "状態"],
+    planTypes: [],
   },
   // ── 庁内でだけ使う（Coe に出ない例） ──────────────────
   {
     key: "id.address_code",
-    label: "町丁目コード（庁内限定）",
-    description: "日常生活圏域（demo.area）を導くための入力。**Coe には出ない**",
+    label: "住所コード（庁内限定）",
+    description: "地区（demo.area）を導くための入力。**Coe には出ない**",
     valueType: "code",
     codes: {},
+    localCodes: true,
     role: "quasi_identifier",
-    generalization: { priority: 0, levels: [] },
+    generalization: { priority: 0, levels: [{ label: "地区へ丸める", collapseTo: "*" }] },
     timeGranularity: "fiscal_year",
     cloudAllowed: false,
-    sourceHints: ["町丁目コード", "住所コード"],
+    sourceHints: ["住所コード", "町丁目コード"],
+    planTypes: [],
   },
 ];
 
+/** 値の語彙が未設定（localCodes で codes が空）なら、まだ使えない */
+export function isUsable(def: AttributeDefinition): boolean {
+  if (!def.cloudAllowed) return false;
+  if ((def.valueType === "code" || def.valueType === "band") && Object.keys(def.codes ?? {}).length === 0) return false;
+  return true;
+}
+
 export function findAttribute(
   key: string,
-  dict: readonly AttributeDefinition[] = CARE_INSURANCE_DICTIONARY,
+  dict: readonly AttributeDefinition[],
 ): AttributeDefinition | undefined {
   return dict.find((d) => d.key === key);
+}
+
+/**
+ * 辞書を重ね合わせる。あとに来たものが前を**上書き**する。
+ * 想定: コア → 分野パック → テナント拡張。
+ * テナントは `demo.area` の codes を足すだけ、といった部分上書きもできる。
+ */
+export function mergeDictionaries(
+  ...layers: Array<readonly AttributeDefinition[]>
+): AttributeDefinition[] {
+  const byKey = new Map<string, AttributeDefinition>();
+  for (const layer of layers) {
+    for (const d of layer) {
+      const prev = byKey.get(d.key);
+      byKey.set(d.key, prev ? { ...prev, ...d } : d);
+    }
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.key.localeCompare(b.key));
 }
 
 /** 辞書の構造検査（check:dataset とテナント拡張の登録時に使う） */
@@ -268,24 +244,34 @@ export function validateDictionary(dict: readonly AttributeDefinition[]): string
   const errors: string[] = [];
   const seen = new Set<string>();
   for (const d of dict) {
-    if (!/^[a-z]+\.[a-z0-9_]+$/.test(d.key)) errors.push(`${d.key}: キーの形式が不正`);
+    if (!/^[a-z][a-z0-9_]*\.[a-z0-9_]+$/.test(d.key)) errors.push(`${d.key}: キーの形式が不正`);
     if (seen.has(d.key)) errors.push(`${d.key}: 重複`);
     seen.add(d.key);
     if ((d.valueType as string) === "text") errors.push(`${d.key}: 自由記述型は許可されない`);
-    if ((d.valueType === "code" || d.valueType === "band") && !d.codes) {
-      errors.push(`${d.key}: code/band には codes が必要`);
+    if (d.valueType === "code" || d.valueType === "band") {
+      const hasCodes = Object.keys(d.codes ?? {}).length > 0;
+      if (!hasCodes && !d.localCodes) errors.push(`${d.key}: code/band には codes が必要（自治体ごとに違うなら localCodes を立てる）`);
     }
     if (d.role === "quasi_identifier" && !d.generalization) {
       errors.push(`${d.key}: 準識別子には粗化のはしごが必要`);
     }
-    if (d.generalization && d.codes) {
-      // はしごの各段が前段の全コードを写していること
-      let prev = Object.keys(d.codes);
+    if (d.generalization) {
       d.generalization.levels.forEach((lv, i) => {
-        const missing = prev.filter((c) => !(c in lv.map));
-        if (missing.length) errors.push(`${d.key}: はしご第${i + 1}段に写像の無いコード: ${missing.join(",")}`);
-        prev = Array.from(new Set(Object.values(lv.map)));
+        if (!lv.map && !lv.collapseTo) errors.push(`${d.key}: はしご第${i + 1}段に map も collapseTo も無い`);
       });
+      // 値の語彙が分かっている属性は、はしごの各段が前段の全コードを写していること
+      if (d.codes && Object.keys(d.codes).length > 0) {
+        let prev = Object.keys(d.codes);
+        d.generalization.levels.forEach((lv, i) => {
+          if (lv.collapseTo) {
+            prev = [lv.collapseTo];
+            return;
+          }
+          const missing = prev.filter((c) => !(c in (lv.map ?? {})));
+          if (missing.length) errors.push(`${d.key}: はしご第${i + 1}段に写像の無いコード: ${missing.join(",")}`);
+          prev = Array.from(new Set(Object.values(lv.map ?? {})));
+        });
+      }
     }
   }
   return errors;

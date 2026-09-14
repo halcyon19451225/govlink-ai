@@ -36,12 +36,12 @@ export function calcSensitivity(params: CostParams): SensitivityResult {
   type ParamKey = keyof Omit<CostParams, "total_investment">;
 
   const paramDefs: Array<{ param: ParamKey; label: string }> = [
-    { param: "insured_n", label: "第1号被保険者数" },
-    { param: "delta_cert_rate", label: "認定率改善幅(%)" },
-    { param: "unit_benefit", label: "1人当たり給付費" },
-    { param: "delta_recep_rate", label: "受給率改善幅(%)" },
-    { param: "recipient_count", label: "受給者数" },
-    { param: "delta_unit_benefit", label: "単位給付費改善幅" },
+    { param: "insured_n", label: "対象者数" },
+    { param: "delta_cert_rate", label: "発生率の改善幅(%)" },
+    { param: "unit_benefit", label: "1件あたり費用" },
+    { param: "delta_recep_rate", label: "利用率の改善幅(%)" },
+    { param: "recipient_count", label: "利用者数" },
+    { param: "delta_unit_benefit", label: "1件あたり費用の改善幅" },
   ];
 
   const items = paramDefs.map(({ param, label }) => {

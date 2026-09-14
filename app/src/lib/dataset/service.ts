@@ -12,11 +12,12 @@ import { randomUUID, createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { query, queryOne, transaction } from "@/lib/db";
 import { uploadToStorage, downloadFromStorage } from "@/lib/storage";
-import type { ColumnSpec, DatasetKind } from "./types";
+import type { AttributeDefinition, ColumnSpec, DatasetKind, KeyTypeDefinition } from "./types";
 import { validateColumnSchema, validateAggregateRows, type RowError } from "./aggregateSchema";
 import { parseCsv } from "./csv";
 import { scanForMyNumber } from "./guard";
-import { CARE_INSURANCE_DICTIONARY } from "./dictionary";
+import { isUsable, mergeDictionaries, validateDictionary } from "./dictionary";
+import { KEY_TYPE_CODE_RE, validateNormalization, type KeyNormalization } from "./keyTypes";
 
 // ── 操作主体 ────────────────────────────────────────────────
 
@@ -121,7 +122,7 @@ export async function logActivity(
   entry: {
     projectId: string | null;
     actor: Actor;
-    entity: "dataset" | "dataset_version";
+    entity: "dataset" | "dataset_version" | "attribute" | "key_type";
     entityId: string;
     action: "create" | "update" | "ingest" | "reject" | "download";
     summary?: Record<string, unknown>;
@@ -259,8 +260,16 @@ export async function createDataset(actor: Actor, projectId: string, input: Crea
   } else {
     const keys = Array.from(new Set((input.attrKeys ?? []).map((k) => String(k).trim()).filter(Boolean)));
     if (keys.length === 0) throw new DatasetError("個票データの箱には属性（辞書のキー）が1つ以上必要です");
-    const unknown = keys.filter((k) => !CARE_INSURANCE_DICTIONARY.some((d) => d.key === k && d.cloudAllowed));
-    if (unknown.length) throw new DatasetError(`辞書に無い、または持ち込めない属性です: ${unknown.join(", ")}`);
+    // 辞書は DB から解決する（コア＋その計画種別の分野パック＋この自治体の拡張）。
+    // 分野を固定しないため、コード上の定数と突き合わせない
+    const dict = await resolveDictionary(projectId, actor.municipalityId);
+    const unknown = keys.filter((k) => !dict.some((d) => d.key === k && isUsable(d)));
+    if (unknown.length) {
+      throw new DatasetError(
+        `この計画の辞書に無い、または値の語彙が未設定の属性です: ${unknown.join(", ")}。` +
+        "属性辞書に登録してから選んでください",
+      );
+    }
     schema = { attr_keys: keys };
   }
 
@@ -543,5 +552,243 @@ export function actorFromSession(session: Session, via: ActivityVia = "ui", dial
     municipalityId: session.user?.municipalityId ?? "",
     via,
     ...(dialogueRef ? { dialogueRef } : {}),
+  };
+}
+
+// ── 属性辞書の解決（分野を固定しないための中心） ─────────────
+//
+// 辞書は3層を重ねて作る（あとが前を上書きする）:
+//   ① コア     … どの分野でも意味が変わらない属性（plan_types = {}）
+//   ② 分野パック … その計画種別の属性（plan_types にその分野）
+//   ③ テナント拡張 … その自治体だけの属性、または ①② の値の語彙の上書き
+// DB の attribute_definitions がこの3層をそのまま持つ。コード上の定数は
+// マイグレーションの投入元であって、実行時の正本ではない。
+
+interface AttributeRow {
+  key: string;
+  municipality_id: string | null;
+  label: string;
+  description: string | null;
+  value_type: AttributeDefinition["valueType"];
+  codes: Record<string, string> | null;
+  unit: string | null;
+  role: AttributeDefinition["role"];
+  generalization: AttributeDefinition["generalization"] | null;
+  time_granularity: AttributeDefinition["timeGranularity"];
+  cloud_allowed: boolean;
+  source_hints: string[] | null;
+  plan_types: string[] | null;
+  local_codes: boolean;
+}
+
+function rowToAttribute(r: AttributeRow): AttributeDefinition {
+  return {
+    key: r.key,
+    label: r.label,
+    description: r.description ?? "",
+    valueType: r.value_type,
+    ...(r.codes ? { codes: r.codes } : {}),
+    ...(r.unit ? { unit: r.unit } : {}),
+    role: r.role,
+    ...(r.generalization ? { generalization: r.generalization } : {}),
+    timeGranularity: r.time_granularity,
+    cloudAllowed: r.cloud_allowed,
+    ...(r.source_hints ? { sourceHints: r.source_hints } : {}),
+    planTypes: r.plan_types ?? [],
+    ...(r.local_codes ? { localCodes: true } : {}),
+    origin: r.municipality_id ? "tenant" : (r.plan_types ?? []).length > 0 ? "domain" : "core",
+  };
+}
+
+/**
+ * その計画で使える属性辞書を返す。
+ * @param projectId       計画（plan_type で分野パックを選ぶ）
+ * @param municipalityId  テナント拡張の絞り込み
+ */
+export async function resolveDictionary(projectId: string, municipalityId: string): Promise<AttributeDefinition[]> {
+  const rows = await query<AttributeRow>(
+    `SELECT a.key, a.municipality_id, a.label, a.description, a.value_type, a.codes, a.unit, a.role,
+            a.generalization, a.time_granularity, a.cloud_allowed, a.source_hints, a.plan_types, a.local_codes
+       FROM attribute_definitions a
+       JOIN projects p ON p.id = $1
+      WHERE (a.municipality_id IS NULL OR a.municipality_id = $2)
+        AND (a.plan_types IS NULL OR cardinality(a.plan_types) = 0
+             OR COALESCE(p.plan_type, '') = ANY(a.plan_types))
+      ORDER BY (a.municipality_id IS NOT NULL), a.key`,
+    [projectId, municipalityId],
+  );
+  const common = rows.filter((r) => r.municipality_id === null).map(rowToAttribute);
+  const tenant = rows.filter((r) => r.municipality_id !== null).map(rowToAttribute);
+  return mergeDictionaries(common, tenant);
+}
+
+export interface TenantAttributeInput {
+  key: string;
+  label: string;
+  description?: string;
+  valueType: AttributeDefinition["valueType"];
+  codes?: Record<string, string>;
+  unit?: string | null;
+  role: AttributeDefinition["role"];
+  timeGranularity: AttributeDefinition["timeGranularity"];
+  sourceHints?: string[];
+}
+
+/**
+ * 自治体ごとの属性を登録・更新する（テナント拡張）。
+ * 既存キーと同じキーなら「値の語彙の上書き」になる（例: 地区の区分を自治体が定義する）。
+ * 準識別子のはしごは自動で作る（1段で全部まとめる）。担当者に粗化の設計までは求めない。
+ */
+export async function upsertTenantAttribute(
+  actor: Actor,
+  projectId: string,
+  input: TenantAttributeInput,
+): Promise<AttributeDefinition> {
+  const key = String(input.key ?? "").trim();
+  if (!/^[a-z][a-z0-9_]*\.[a-z0-9_]+$/.test(key)) {
+    throw new DatasetError("キーは「分類.名前」の形（英小文字・数字・_）で指定してください。例: demo.area");
+  }
+  const codes = input.codes && Object.keys(input.codes).length > 0 ? input.codes : undefined;
+  const needsCodes = input.valueType === "code" || input.valueType === "band";
+  if (needsCodes && !codes) throw new DatasetError("この型では、取りうる値（コードと表示名）が必要です");
+  if (codes) {
+    for (const c of Object.keys(codes)) {
+      if (!/^[0-9A-Za-z_.\-+]{1,40}$/.test(c)) throw new DatasetError(`値のコードに使えない文字があります: ${c}`);
+    }
+    if (Object.keys(codes).length > 200) throw new DatasetError("値の種類が多すぎます（200 まで）");
+  }
+
+  const def: AttributeDefinition = {
+    key,
+    label: String(input.label ?? "").trim(),
+    description: String(input.description ?? "").trim(),
+    valueType: input.valueType,
+    ...(codes ? { codes } : {}),
+    ...(input.unit ? { unit: input.unit } : {}),
+    role: input.role,
+    ...(input.role === "quasi_identifier"
+      ? { generalization: { priority: 2, levels: [{ label: "削除", collapseTo: "*" }] } }
+      : {}),
+    timeGranularity: input.timeGranularity,
+    cloudAllowed: true,
+    ...(input.sourceHints?.length ? { sourceHints: input.sourceHints } : {}),
+    planTypes: [],
+  };
+  if (!def.label) throw new DatasetError("表示名が必要です");
+  const errors = validateDictionary([def]);
+  if (errors.length) throw new DatasetError(`属性の定義に誤りがあります: ${errors.join("・")}`);
+
+  const saved = await transaction(async (client) => {
+    const r = await client.query<AttributeRow>(
+      `INSERT INTO attribute_definitions
+         (key, municipality_id, label, description, value_type, codes, unit, role, generalization,
+          time_granularity, cloud_allowed, source_hints, plan_types, local_codes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, ARRAY[]::text[], false)
+       ON CONFLICT (key, municipality_id) DO UPDATE SET
+         label = EXCLUDED.label, description = EXCLUDED.description, value_type = EXCLUDED.value_type,
+         codes = EXCLUDED.codes, unit = EXCLUDED.unit, role = EXCLUDED.role,
+         generalization = EXCLUDED.generalization, time_granularity = EXCLUDED.time_granularity,
+         source_hints = EXCLUDED.source_hints, updated_at = now()
+       RETURNING key, municipality_id, label, description, value_type, codes, unit, role, generalization,
+                 time_granularity, cloud_allowed, source_hints, plan_types, local_codes`,
+      [
+        key, actor.municipalityId, def.label, def.description, def.valueType,
+        def.codes ? JSON.stringify(def.codes) : null, def.unit ?? null, def.role,
+        def.generalization ? JSON.stringify(def.generalization) : null,
+        def.timeGranularity, def.sourceHints ?? null,
+      ],
+    );
+    await logActivity(client, {
+      projectId, actor, entity: "attribute", entityId: key, action: "update",
+      summary: { label: def.label, value_type: def.valueType, role: def.role, codes: Object.keys(def.codes ?? {}).length },
+    });
+    return r.rows[0]!;
+  });
+  return rowToAttribute(saved);
+}
+
+// ── キー種別（庁内キーの語彙） ────────────────────────────────
+//
+// どの業務システムのどの番号を使うかは分野・自治体によって違うので、
+// コアは正規化の「型」だけを持ち、キー種別の実体はここで登録する。
+
+interface KeyTypeRow {
+  code: string;
+  municipality_id: string | null;
+  label: string;
+  description: string | null;
+  normalization: KeyNormalization;
+  is_primary: boolean;
+}
+
+export async function listKeyTypes(municipalityId: string): Promise<KeyTypeDefinition[]> {
+  const rows = await query<KeyTypeRow>(
+    `SELECT code, municipality_id, label, description, normalization, is_primary
+       FROM key_type_definitions
+      WHERE municipality_id IS NULL OR municipality_id = $1
+      ORDER BY is_primary DESC, code`,
+    [municipalityId],
+  );
+  return rows.map((r) => ({
+    code: r.code,
+    label: r.label,
+    description: r.description ?? "",
+    normalization: r.normalization,
+    municipalityId: r.municipality_id,
+    isPrimary: r.is_primary,
+  }));
+}
+
+export interface KeyTypeInput {
+  code: string;
+  label: string;
+  description?: string;
+  normalization: KeyNormalization;
+  isPrimary?: boolean;
+}
+
+export async function createKeyType(actor: Actor, projectId: string | null, input: KeyTypeInput): Promise<KeyTypeDefinition> {
+  const code = String(input.code ?? "").trim().toLowerCase();
+  if (!KEY_TYPE_CODE_RE.test(code)) {
+    throw new DatasetError("コードは英小文字で始まる 30 文字までの英小文字・数字・_ で指定してください");
+  }
+  const label = String(input.label ?? "").trim();
+  if (!label) throw new DatasetError("表示名が必要です");
+  const errors = validateNormalization(input.normalization);
+  if (errors.length) throw new DatasetError(`正規化の指定に誤りがあります: ${errors.join("・")}`);
+
+  const existing = await queryOne<{ code: string }>(
+    `SELECT code FROM key_type_definitions WHERE code = $1 AND (municipality_id IS NULL OR municipality_id = $2)`,
+    [code, actor.municipalityId],
+  );
+  if (existing) {
+    // コードは sid の導出に入る。あとから意味を変えると同じ人が別の sid になる
+    throw new DatasetError("そのコードは既に使われています。別のコードにしてください", 409);
+  }
+
+  const saved = await transaction(async (client) => {
+    if (input.isPrimary) {
+      await client.query(`UPDATE key_type_definitions SET is_primary = false WHERE municipality_id = $1`, [actor.municipalityId]);
+    }
+    const r = await client.query<KeyTypeRow>(
+      `INSERT INTO key_type_definitions (code, municipality_id, label, description, normalization, is_primary)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING code, municipality_id, label, description, normalization, is_primary`,
+      [code, actor.municipalityId, label, String(input.description ?? "").trim() || null,
+       JSON.stringify(input.normalization), input.isPrimary === true],
+    );
+    await logActivity(client, {
+      projectId, actor, entity: "key_type", entityId: code, action: "create",
+      summary: { label, normalization: input.normalization, is_primary: input.isPrimary === true },
+    });
+    return r.rows[0]!;
+  });
+  return {
+    code: saved.code,
+    label: saved.label,
+    description: saved.description ?? "",
+    normalization: saved.normalization,
+    municipalityId: saved.municipality_id,
+    isPrimary: saved.is_primary,
   };
 }

@@ -221,7 +221,7 @@ function Step2({
           onChange={(e) => onChange("title", e.target.value)}
           className={inputClass}
           style={inputStyle}
-          placeholder="例: 第8期介護保険事業計画"
+          placeholder="例: 第○期○○事業計画"
         />
       </div>
 
@@ -851,7 +851,7 @@ function StepGoals({
                     <input type="text" value={kpi.indicator_name}
                       onChange={(e) => updateKpi(gIdx, kIdx, "indicator_name", e.target.value)}
                       className={inputClass} style={inputStyle}
-                      placeholder="指標名（例: 要介護認定率）" />
+                      placeholder="指標名（例: ○○率）" />
                     <button type="button" onClick={() => removeKpi(gIdx, kIdx)}
                       className="w-6 h-6 flex items-center justify-center rounded text-red-500 hover:text-red-400 transition-colors shrink-0">✕</button>
                   </div>

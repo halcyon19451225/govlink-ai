@@ -50,7 +50,7 @@ function safeInt(s: string): number {
 }
 
 const EMPTY_FORM = {
-  major_policy_name: "介護予防・フレイル対策事業",
+  major_policy_name: "",
   fiscal_year: String(new Date().getFullYear()),
   evaluation_type: "ex_ante" as "ex_ante" | "ex_post",
   labor_cost: "",
@@ -466,18 +466,18 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">認定率改善</p>
+                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">発生率の改善</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-slate-500 mb-1 block">第1号被保険者数（人）</label>
+                    <label className="text-xs text-slate-500 mb-1 block">対象者数（人）</label>
                     <input type="number" value={form.insured_n} onChange={(e) => setField("insured_n", e.target.value)} className={inputClass} style={subCardStyle} placeholder="例: 6085" />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500 mb-1 block">認定率改善幅 (%)</label>
+                    <label className="text-xs text-slate-500 mb-1 block">発生率の改善幅 (%)</label>
                     <input type="number" value={form.delta_cert_rate} onChange={(e) => setField("delta_cert_rate", e.target.value)} className={inputClass} style={subCardStyle} placeholder="例: 0.5" />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-slate-500 mb-1 block">1人当たり給付費（万円）</label>
+                    <label className="text-xs text-slate-500 mb-1 block">1件あたり費用（万円）</label>
                     <input type="number" value={form.unit_benefit} onChange={(e) => setField("unit_benefit", e.target.value)} className={inputClass} style={subCardStyle} placeholder="例: 16.19" />
                   </div>
                 </div>
@@ -487,14 +487,14 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">受給率改善</p>
+                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">利用率の改善</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-slate-500 mb-1 block">受給者数（人）</label>
                     <input type="number" value={form.recipient_count} onChange={(e) => setField("recipient_count", e.target.value)} className={inputClass} style={subCardStyle} placeholder="例: 993" />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500 mb-1 block">受給率改善幅 (%)</label>
+                    <label className="text-xs text-slate-500 mb-1 block">利用率の改善幅 (%)</label>
                     <input type="number" value={form.delta_recep_rate} onChange={(e) => setField("delta_recep_rate", e.target.value)} className={inputClass} style={subCardStyle} placeholder="例: 0.5" />
                   </div>
                 </div>
@@ -504,9 +504,9 @@ export default function EfficiencyEvaluationPanel({ projectId }: Props) {
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">単位給付費改善</p>
+                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">単価の改善</p>
                 <div>
-                  <label className="text-xs text-slate-500 mb-1 block">単位給付費改善幅（万円）</label>
+                  <label className="text-xs text-slate-500 mb-1 block">1件あたり費用の改善幅（万円）</label>
                   <input type="number" value={form.delta_unit_benefit} onChange={(e) => setField("delta_unit_benefit", e.target.value)} className={inputClass} style={subCardStyle} placeholder="0" />
                 </div>
                 <div className="rounded-lg border px-3 py-2 text-xs text-slate-400" style={subCardStyle}>

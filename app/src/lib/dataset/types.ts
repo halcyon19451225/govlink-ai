@@ -3,7 +3,10 @@
  *
  * ここにある型は、庁内の変換ツールと Coe の取込口の両方が使う。
  * **個人を特定しうる列は、どの型にも存在しない。**（氏名・住所・生年月日・電話・
- * 個人番号・宛名番号・被保険者番号は、変換ツールの入力までで消える）
+ * 個人番号・庁内キーは、変換ツールの入力までで消える）
+ *
+ * ★ この層は**分野に依存しない**。特定の行政分野の語彙（制度名・資格区分など）は
+ *   `domains/` 配下の分野パックか、自治体ごとのテナント拡張にだけ置く。
  */
 
 /** 箱の種別 */
@@ -49,7 +52,9 @@ export interface GeneralizationLevel {
   /** 段の名前（画面に出す） */
   label: string;
   /** 前段の値 → この段の値。載っていない値は不正として拒否 */
-  map: Record<string, string>;
+  map?: Record<string, string>;
+  /** 値の語彙が自治体ごとに違う属性で、この段では全部まとめる場合（map の代わり） */
+  collapseTo?: string;
 }
 
 /** 粗化のはしご。level 0 は辞書の codes そのもの。最後まで上げても満たさなければ削除（行を抑制） */
@@ -76,9 +81,33 @@ export interface AttributeDefinition {
   timeGranularity: TimeGranularity;
   /** 既定は false。共通辞書で明示的に true にしたものだけ Coe に持ち込める */
   cloudAllowed: boolean;
-  /** 標準EUC・KDB の項目名との対応候補（変換ツールのマッピング初期値） */
+  /** 業務システムの出力項目名との対応候補（変換ツールのマッピング初期値） */
   sourceHints?: string[];
+  /**
+   * 空＝どの分野でも使える（コア辞書）。値あり＝その計画種別のときだけ出る（分野パック）。
+   * 分野を固定しないための鍵。コア辞書は必ず空にする
+   */
   planTypes?: string[];
+  /**
+   * true のとき、値の語彙（codes）は自治体ごとに違うので、テナントが登録して初めて使える。
+   * 例: 地区の区分。コアは「何の情報か」だけを決め、値は決めない
+   */
+  localCodes?: boolean;
+  /** この行の出どころ（画面の表示用。DB から解決したときに入る） */
+  origin?: "core" | "domain" | "tenant";
+}
+
+/** キー種別の定義（`key_type_definitions`）。分野・自治体ごとに登録する */
+export interface KeyTypeDefinition {
+  /** sid の導出に入るので、登録後は変えられない */
+  code: string;
+  label: string;
+  description: string;
+  normalization: import("./keyTypes").KeyNormalization;
+  /** NULL 相当＝共通、値あり＝その自治体だけ */
+  municipalityId?: string | null;
+  /** 箱をまたぐ突合の軸にする主キーか（自治体につき1つを推奨） */
+  isPrimary?: boolean;
 }
 
 /** 五つ組（§3）。値は型に応じて1つだけ入る */

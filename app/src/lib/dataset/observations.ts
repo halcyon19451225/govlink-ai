@@ -26,7 +26,10 @@ export function validateValue(def: AttributeDefinition, raw: unknown): ValidateR
       if (def.codes && Object.keys(def.codes).length > 0 && !(s in def.codes)) {
         // 粗化後のコード（はしごの写像先）も許す
         const derived = new Set<string>();
-        for (const lv of def.generalization?.levels ?? []) for (const v of Object.values(lv.map)) derived.add(v);
+        for (const lv of def.generalization?.levels ?? []) {
+          if (lv.collapseTo !== undefined) derived.add(lv.collapseTo);
+          for (const v of Object.values(lv.map ?? {})) derived.add(v);
+        }
         if (!derived.has(s)) return { ok: false, reason: "invalid_code" };
       }
       if (s === "") return { ok: false, reason: "invalid_code" };

@@ -60,11 +60,14 @@ const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { re
 const q = (s, p) => pool.query(s, p).then((r) => r.rows);
 const MUNI = "00000000-0000-4000-8000-00000000d2d2";
 const PROJECT = "00000000-0000-4000-8000-00000000d2d3";
+const PROJECT_NEUTRAL = "00000000-0000-4000-8000-00000000d2d4";
 
 try {
   const svc = await import(pathToFileURL(bundle).href);
   await q(`INSERT INTO municipalities (id, name, slug, prefecture) VALUES ($1, 'check-datasetsvc', 'check-datasetsvc', '-') ON CONFLICT (id) DO NOTHING`, [MUNI]);
-  await q(`INSERT INTO projects (id, municipality_id, title) VALUES ($1, $2, 'check-datasetsvc') ON CONFLICT (id) DO NOTHING`, [PROJECT, MUNI]);
+  // 分野パックの解決を検査するため、計画種別を明示する（既定は custom＝分野指定なし）
+  await q(`INSERT INTO projects (id, municipality_id, title, plan_type) VALUES ($1, $2, 'check-datasetsvc', 'kaigo_hoken') ON CONFLICT (id) DO UPDATE SET plan_type = 'kaigo_hoken'`, [PROJECT, MUNI]);
+  await q(`INSERT INTO projects (id, municipality_id, title, plan_type) VALUES ($1, $2, 'check-datasetsvc-neutral', 'custom') ON CONFLICT (id) DO NOTHING`, [PROJECT_NEUTRAL, MUNI]);
   const actor = { userRoleId: null, municipalityId: MUNI, via: "ui" };
 
   const tpl = (await svc.listTemplates("kaigo_hoken")).find((t) => t.id === "care_insurance_report");
@@ -75,6 +78,46 @@ try {
   try { await svc.createDataset(actor, PROJECT, { kind: "individual", name: "x", attrKeys: ["id.address_code"] }); check("庁内限定の属性は個票の箱に入れられない", false); } catch (e) { check("庁内限定の属性は個票の箱に入れられない", e.status === 400); }
   const ind = await svc.createDataset(actor, PROJECT, { kind: "individual", name: "個票", attrKeys: ["care.level", "demo.sex"] });
   check("個票の箱はできる（版は D5）", ind.kind === "individual");
+
+  // ── 辞書の3層（分野を固定しないこと）─────────────────────
+  const dictCare = await svc.resolveDictionary(PROJECT, MUNI);
+  const dictNeutral = await svc.resolveDictionary(PROJECT_NEUTRAL, MUNI);
+  check("コアの属性はどちらの計画でも出る", ["demo.age_band5", "demo.sex", "prog.participated"].every((k) => dictCare.some((d) => d.key === k) && dictNeutral.some((d) => d.key === k)));
+  check("分野パックの属性はその分野の計画にだけ出る",
+    dictCare.some((d) => d.key === "care.level" && d.origin === "domain") && !dictNeutral.some((d) => d.key === "care.level"));
+  check("分野が未設定の計画でもコアの属性で個票の箱は作れる",
+    (await svc.createDataset(actor, PROJECT_NEUTRAL, { kind: "individual", name: "分野なし個票", attrKeys: ["demo.sex", "prog.participated"] })).kind === "individual");
+  try {
+    await svc.createDataset(actor, PROJECT_NEUTRAL, { kind: "individual", name: "x", attrKeys: ["care.level"] });
+    check("他分野の属性は選べない", false);
+  } catch (e) { check("他分野の属性は選べない", e.status === 400); }
+  check("値の語彙が未設定の属性（地区）はまだ選べない", !dictCare.some((d) => d.key === "demo.area" && Object.keys(d.codes ?? {}).length > 0));
+  try { await svc.createDataset(actor, PROJECT, { kind: "individual", name: "x", attrKeys: ["demo.area"] }); check("語彙未設定の属性は拒否", false); } catch (e) { check("語彙未設定の属性は拒否", e.status === 400); }
+  await svc.upsertTenantAttribute(actor, PROJECT, {
+    key: "demo.area", label: "地区", description: "自団体の区分", valueType: "code",
+    codes: { a1: "中央", a2: "東部" }, role: "quasi_identifier", timeGranularity: "fiscal_year",
+  });
+  const dict2 = await svc.resolveDictionary(PROJECT, MUNI);
+  const areaDef = dict2.find((d) => d.key === "demo.area");
+  check("テナント拡張で値の語彙を登録すると使えるようになる", areaDef.origin === "tenant" && areaDef.codes.a1 === "中央");
+  check("拡張後は個票の箱に選べる",
+    (await svc.createDataset(actor, PROJECT, { kind: "individual", name: "地区つき個票", attrKeys: ["demo.area"] })).kind === "individual");
+  const newAttr = await svc.upsertTenantAttribute(actor, PROJECT, {
+    key: "local.support_group", label: "支援区分", description: "自団体だけの区分", valueType: "code",
+    codes: { g1: "A", g2: "B" }, role: "quasi_identifier", timeGranularity: "fiscal_year",
+  });
+  check("自団体だけの新しい属性も登録できる（準識別子のはしごは自動）",
+    newAttr.origin === "tenant" && newAttr.generalization && newAttr.generalization.levels.length === 1);
+  try { await svc.upsertTenantAttribute(actor, PROJECT, { key: "bad key", label: "x", valueType: "bool", role: "neutral", timeGranularity: "static" }); check("キーの形式を弾く", false); } catch (e) { check("キーの形式を弾く", e.status === 400); }
+
+  // ── キー種別（庁内キーの語彙）─────────────────────────────
+  const kt0 = await svc.listKeyTypes(MUNI);
+  check("共通のキー種別は宛名番号だけ", kt0.filter((k) => !k.municipalityId).length === 1 && kt0[0].code === "atena" && kt0[0].isPrimary === true);
+  const kt = await svc.createKeyType(actor, PROJECT, { code: "shikaku01", label: "○○業務システムの整理番号", normalization: { style: "digits", zeroPad: 10 } });
+  check("自団体のキー種別を登録できる", kt.code === "shikaku01" && kt.normalization.zeroPad === 10);
+  try { await svc.createKeyType(actor, PROJECT, { code: "shikaku01", label: "重複", normalization: { style: "digits" } }); check("同じコードは拒否（sid の導出に入るため）", false); } catch (e) { check("同じコードは拒否（sid の導出に入るため）", e.status === 409); }
+  try { await svc.createKeyType(actor, PROJECT, { code: "Bad-Code", label: "x", normalization: { style: "digits" } }); check("コードの形式を弾く", false); } catch (e) { check("コードの形式を弾く", e.status === 400); }
+  check("キー種別の一覧に自団体分が入る", (await svc.listKeyTypes(MUNI)).some((k) => k.code === "shikaku01" && k.municipalityId === MUNI));
 
   const csv = "﻿年度,月,第1号被保険者数,認定者数,認定率,受給者数,受給率,給付費\n令和7年度,,5100,1020,20.0%,900,17.6,\"1,234,567\"\n2026,4,5200,1050,20.2,910,17.5,1300000\n";
   const r1 = await svc.addAggregateVersion(actor, PROJECT, box.id, { asOf: "2026-03-31", fileName: "report.csv", bytes: new TextEncoder().encode(csv) });

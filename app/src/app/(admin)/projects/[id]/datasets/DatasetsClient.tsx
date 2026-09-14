@@ -10,15 +10,21 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ColumnSpec, DatasetKind } from "@/lib/dataset/types";
+import type { AttributeDefinition, ColumnSpec, DatasetKind, KeyTypeDefinition } from "@/lib/dataset/types";
+import type { KeyNormalization, NormalizationStyle } from "@/lib/dataset/keyTypes";
 import type { DatasetListItem, DatasetRow, DatasetVersionRow, TemplateRow } from "@/lib/dataset/service";
 
-export interface DictionaryEntry {
-  key: string;
+export interface DomainInfo {
+  planType: string;
+  label: string;
+  reviewed: boolean;
+}
+export interface StyleInfo {
+  style: NormalizationStyle;
   label: string;
   description: string;
-  role: string;
-  valueType: string;
+  allowsZeroPad: boolean;
+  example: string;
 }
 
 interface ProjectRow {
@@ -46,6 +52,19 @@ const STATUS_COLOR: Record<DatasetVersionRow["status"], string> = { pending: "#f
 const VIA_LABEL: Record<string, string> = {
   ui: "画面", bulk: "一括", gap_analysis: "ギャップ分析", dialogue: "AI対話（担当者が承認）", evaluation: "評価", auto_tasks: "自動集計", migration: "移行",
 };
+const ROLE_DESC: Record<string, { label: string; hint: string }> = {
+  quasi_identifier: { label: "準識別子", hint: "組合せで個人が絞られる属性。k 検定の対象で、必要に応じて自動で粗くなります" },
+  sensitive: { label: "機微", hint: "セル内で値が偏ると露見するため、偏ったセルでは伏せられます" },
+  exposure: { label: "曝露", hint: "施策・事業を受けたかどうか" },
+  outcome: { label: "アウトカム", hint: "施策の結果として見たい値" },
+  neutral: { label: "その他", hint: "識別にも結果にも使わない補助的な情報" },
+};
+const ORIGIN_LABEL: Record<string, string> = { core: "共通", domain: "分野", tenant: "自団体" };
+const VALUE_TYPE_LABEL: Record<string, string> = {
+  code: "区分", band: "帯", int: "整数", numeric: "数値", bool: "有無", month: "年月", fiscal_year: "年度",
+};
+const GRAN_LABEL: Record<string, string> = { day: "日", month: "月", fiscal_year: "年度", static: "変わらない" };
+
 const REASON_LABEL: Record<string, string> = {
   missing: "値が空", invalid_number: "数値でない", invalid_time: "時点として読めない", invalid_code: "許容値に無い", looks_like_my_number: "個人番号の形式",
 };
@@ -61,6 +80,12 @@ function fmtDateTime(s: string | null | undefined): string {
 }
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+/** 値の語彙が未設定（自治体が地区の区分などを登録していない）なら、まだ選べない */
+function isUsable(d: AttributeDefinition): boolean {
+  if (!d.cloudAllowed) return false;
+  if ((d.valueType === "code" || d.valueType === "band") && Object.keys(d.codes ?? {}).length === 0) return false;
+  return true;
 }
 
 // ── 説明ブロック（迷わせないための掲載。文言は manual と同趣旨） ──
@@ -85,21 +110,43 @@ export default function DatasetsClient({
   initialDatasets,
   templates,
   dictionary,
+  domain,
+  keyTypes,
+  normalizationStyles,
 }: {
   project: ProjectRow;
   initialDatasets: DatasetListItem[];
   templates: TemplateRow[];
-  dictionary: DictionaryEntry[];
+  dictionary: AttributeDefinition[];
+  domain: DomainInfo | null;
+  keyTypes: KeyTypeDefinition[];
+  normalizationStyles: StyleInfo[];
 }) {
   const [datasets, setDatasets] = useState<DatasetListItem[]>(initialDatasets);
+  const [dict, setDict] = useState<AttributeDefinition[]>(dictionary);
+  const [keys, setKeys] = useState<KeyTypeDefinition[]>(keyTypes);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showDict, setShowDict] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
   const base = `/api/admin/projects/${project.id}/datasets`;
 
   const reloadList = useCallback(async () => {
     const res = await fetch(base);
     const json = (await res.json()) as Api<{ datasets: DatasetListItem[] }>;
     if (json.data) setDatasets(json.data.datasets);
+  }, [base]);
+
+  const reloadDict = useCallback(async () => {
+    const res = await fetch(`${base}/dictionary`);
+    const json = (await res.json()) as Api<{ attributes: AttributeDefinition[] }>;
+    if (json.data) setDict(json.data.attributes);
+  }, [base]);
+
+  const reloadKeys = useCallback(async () => {
+    const res = await fetch(`${base}/key-types`);
+    const json = (await res.json()) as Api<{ keyTypes: KeyTypeDefinition[] }>;
+    if (json.data) setKeys(json.data.keyTypes);
   }, [base]);
 
   const selected = datasets.find((d) => d.id === selectedId) ?? null;
@@ -111,9 +158,11 @@ export default function DatasetsClient({
           <h1 className="text-2xl font-bold text-slate-100">{project.title}</h1>
           <p className="text-sm text-slate-500 mt-1">データセット管理 — 箱と版</p>
         </div>
-        {!selected && (
-          <button className={btnPrimary} onClick={() => setShowCreate(true)}>＋ 箱を作る</button>
-        )}
+        <div className="flex gap-2 flex-shrink-0">
+          <button className={btnGhost} style={{ borderColor: "var(--border)" }} onClick={() => setShowDict(true)}>属性辞書</button>
+          <button className={btnGhost} style={{ borderColor: "var(--border)" }} onClick={() => setShowKeys(true)}>庁内キーの語彙</button>
+          {!selected && <button className={btnPrimary} onClick={() => setShowCreate(true)}>＋ 箱を作る</button>}
+        </div>
       </div>
 
       {!selected && <Intro />}
@@ -124,7 +173,7 @@ export default function DatasetsClient({
         <BoxDetail
           base={base}
           item={selected}
-          dictionary={dictionary}
+          dictionary={dict}
           onBack={() => { setSelectedId(null); void reloadList(); }}
           onChanged={reloadList}
         />
@@ -134,10 +183,18 @@ export default function DatasetsClient({
         <CreateBoxModal
           base={base}
           templates={templates}
-          dictionary={dictionary}
+          dictionary={dict}
+          domain={domain}
           onClose={() => setShowCreate(false)}
           onCreated={async (created) => { setShowCreate(false); await reloadList(); setSelectedId(created.id); }}
+          onOpenDictionary={() => { setShowCreate(false); setShowDict(true); }}
         />
+      )}
+      {showDict && (
+        <DictionaryModal base={base} dictionary={dict} domain={domain} onClose={() => setShowDict(false)} onChanged={reloadDict} />
+      )}
+      {showKeys && (
+        <KeyTypesModal base={base} keyTypes={keys} styles={normalizationStyles} onClose={() => setShowKeys(false)} onChanged={reloadKeys} />
       )}
     </div>
   );
@@ -202,7 +259,7 @@ function BoxDetail({
 }: {
   base: string;
   item: DatasetListItem;
-  dictionary: DictionaryEntry[];
+  dictionary: AttributeDefinition[];
   onBack: () => void;
   onChanged: () => Promise<void>;
 }) {
@@ -378,13 +435,15 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose: () 
 
 // ── 箱を作る ──────────────────────────────────────────────
 function CreateBoxModal({
-  base, templates, dictionary, onClose, onCreated,
+  base, templates, dictionary, domain, onClose, onCreated, onOpenDictionary,
 }: {
   base: string;
   templates: TemplateRow[];
-  dictionary: DictionaryEntry[];
+  dictionary: AttributeDefinition[];
+  domain: DomainInfo | null;
   onClose: () => void;
   onCreated: (d: DatasetRow) => Promise<void>;
+  onOpenDictionary: () => void;
 }) {
   const [kind, setKind] = useState<DatasetKind>("aggregate");
   const [templateId, setTemplateId] = useState<string>("");
@@ -456,7 +515,7 @@ function CreateBoxModal({
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <div className="text-xs text-slate-500 mb-1">名称 *</div>
-            <input className={inputClass} style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 介護保険事業状況報告" />
+            <input className={inputClass} style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 事業状況報告（年度別）" />
           </div>
           <div>
             <div className="text-xs text-slate-500 mb-1">時点の粒度</div>
@@ -500,15 +559,28 @@ function CreateBoxModal({
           </div>
         ) : (
           <div>
-            <div className="text-xs text-slate-500 mb-1">この箱に入る属性 *（属性辞書から選ぶ。自由記述の項目はありません）</div>
-            <div className="grid md:grid-cols-2 gap-1.5 max-h-64 overflow-y-auto pr-1">
-              {dictionary.map((d) => (
-                <label key={d.key} className="flex items-start gap-2 text-xs text-slate-300 rounded-lg border p-2" style={{ borderColor: "var(--border)" }} title={d.description}>
-                  <input type="checkbox" className="mt-0.5" checked={attrKeys.includes(d.key)} onChange={(e) => setAttrKeys(e.target.checked ? [...attrKeys, d.key] : attrKeys.filter((k) => k !== d.key))} />
-                  <span><span className="text-slate-100">{d.label}</span> <span className="text-slate-500">{d.key}</span><br /><span className="text-slate-500">{d.description}</span></span>
-                </label>
-              ))}
+            <div className="text-xs text-slate-500 mb-1">
+              この箱に入る属性 *（属性辞書から選ぶ。自由記述の項目はありません）
+              {domain ? <>　この計画の分野: <span className="text-slate-300">{domain.label}</span>{!domain.reviewed && "（初期セット）"}</> : "　この計画には分野が設定されていないため、共通の属性と自団体で登録した属性が出ます"}
             </div>
+            <div className="grid md:grid-cols-2 gap-1.5 max-h-64 overflow-y-auto pr-1">
+              {dictionary.filter((d) => d.cloudAllowed).map((d) => {
+                const usable = isUsable(d);
+                return (
+                  <label key={d.key} className={`flex items-start gap-2 text-xs rounded-lg border p-2 ${usable ? "text-slate-300" : "text-slate-500"}`} style={{ borderColor: "var(--border)", opacity: usable ? 1 : 0.6 }} title={d.description}>
+                    <input type="checkbox" className="mt-0.5" disabled={!usable} checked={attrKeys.includes(d.key)} onChange={(e) => setAttrKeys(e.target.checked ? [...attrKeys, d.key] : attrKeys.filter((k) => k !== d.key))} />
+                    <span>
+                      <span className={usable ? "text-slate-100" : ""}>{d.label}</span>{" "}
+                      <span className="text-slate-500">{d.key}</span>{" "}
+                      <span className="px-1 rounded" style={{ background: "var(--bg-input)" }}>{ORIGIN_LABEL[d.origin ?? "core"]}</span>
+                      <br />
+                      <span className="text-slate-500">{usable ? d.description : "値の区分が未登録です。属性辞書で自団体の区分を登録すると選べます"}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <button className="mt-2 text-xs text-indigo-400" onClick={onOpenDictionary}>属性辞書を開く（自団体の属性を足す）→</button>
           </div>
         )}
 
@@ -624,7 +696,7 @@ function AcquisitionModal({ base, dataset, onClose, onSaved }: { base: string; d
     <Modal title="取得方法を記録する" onClose={onClose}>
       <div className="space-y-3">
         <p className="text-xs text-slate-400">次に同じデータを出す人が迷わないための記録です。どのシステムのどの帳票を、どんな条件で出したかを残します。</p>
-        {([["system", "システム", "例: 介護保険システム（標準準拠）"], ["report_name", "帳票・EUC の名称", "例: 事業状況報告 月報"], ["euc_condition", "抽出条件", "例: 対象年度＝当年度、全被保険者"], ["owner", "担当", "例: 介護保険係 ○○"], ["note", "備考", ""]] as const).map(([k, label, ph]) => (
+        {([["system", "システム", "例: ○○業務システム（標準準拠）"], ["report_name", "帳票・EUC の名称", "例: 事業状況報告 月報"], ["euc_condition", "抽出条件", "例: 対象年度＝当年度、対象者全員"], ["owner", "担当", "例: ○○係 ○○"], ["note", "備考", ""]] as const).map(([k, label, ph]) => (
           <div key={k}>
             <div className="text-xs text-slate-500 mb-1">{label}</div>
             {k === "euc_condition" || k === "note" ? (
@@ -715,6 +787,333 @@ function VersionDetailModal({ base, datasetId, versionId, columns, onClose }: { 
           </div>
         </div>
       )}
+    </Modal>
+  );
+}
+
+// ── 属性辞書 ──────────────────────────────────────────────
+// 3層（共通／分野／自団体）をそのまま見せる。分野パックが無い計画でも、
+// 共通の属性＋自団体で登録した属性で個票を扱えるようにするための画面。
+function DictionaryModal({
+  base, dictionary, domain, onClose, onChanged,
+}: {
+  base: string;
+  dictionary: AttributeDefinition[];
+  domain: DomainInfo | null;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const groups: Array<[string, AttributeDefinition[]]> = [
+    ["core", dictionary.filter((d) => (d.origin ?? "core") === "core")],
+    ["domain", dictionary.filter((d) => d.origin === "domain")],
+    ["tenant", dictionary.filter((d) => d.origin === "tenant")],
+  ];
+
+  return (
+    <Modal title="属性辞書" onClose={onClose} wide>
+      <div className="space-y-4 text-sm">
+        <p className="text-xs text-slate-400 leading-relaxed">
+          個票データで扱える「何の情報か」の語彙です。ここに無い情報は取り込めません（自由記述の項目はありません）。
+          辞書は3層でできています。<span className="text-slate-200">共通</span>はどの分野の計画でも使える属性、
+          <span className="text-slate-200">分野</span>はこの計画の分野（{domain ? domain.label : "未設定"}）でだけ出る属性、
+          <span className="text-slate-200">自団体</span>はこの自治体で登録した属性です。
+          地区の区分のように値の語彙が自治体ごとに違うものは、自団体で登録して初めて使えます。
+        </p>
+        {groups.map(([origin, items]) => (
+          <div key={origin}>
+            <div className="text-xs text-slate-500 mb-1">
+              {ORIGIN_LABEL[origin]}（{items.length}）
+              {origin === "domain" && domain && !domain.reviewed && <span className="ml-2 text-amber-400">初期セット・要精査</span>}
+            </div>
+            {items.length === 0 ? (
+              <div className="text-xs text-slate-600">なし</div>
+            ) : (
+              <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                <table className="w-full text-xs">
+                  <thead><tr style={{ background: "var(--bg-input)" }}>
+                    <th className="px-2 py-1 text-left text-slate-400">属性</th>
+                    <th className="px-2 py-1 text-left text-slate-400">型</th>
+                    <th className="px-2 py-1 text-left text-slate-400">役割</th>
+                    <th className="px-2 py-1 text-left text-slate-400">時点</th>
+                    <th className="px-2 py-1 text-left text-slate-400">値</th>
+                  </tr></thead>
+                  <tbody>
+                    {items.map((d) => (
+                      <tr key={d.key} className="border-t" style={{ borderColor: "var(--border)" }}>
+                        <td className="px-2 py-1">
+                          <span className="text-slate-100">{d.label}</span> <span className="text-slate-500">{d.key}</span>
+                          {!d.cloudAllowed && <span className="ml-1 text-amber-400">庁内限定</span>}
+                          <div className="text-slate-500">{d.description}</div>
+                        </td>
+                        <td className="px-2 py-1 text-slate-300">{VALUE_TYPE_LABEL[d.valueType] ?? d.valueType}</td>
+                        <td className="px-2 py-1 text-slate-300" title={ROLE_DESC[d.role]?.hint}>{ROLE_DESC[d.role]?.label ?? d.role}</td>
+                        <td className="px-2 py-1 text-slate-300">{GRAN_LABEL[d.timeGranularity] ?? d.timeGranularity}</td>
+                        <td className="px-2 py-1 text-slate-400">
+                          {Object.keys(d.codes ?? {}).length > 0
+                            ? Object.values(d.codes ?? {}).slice(0, 6).join("／") + (Object.keys(d.codes ?? {}).length > 6 ? " …" : "")
+                            : d.localCodes ? <span className="text-amber-400">自団体で登録が必要</span> : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ))}
+        <div className="flex justify-end gap-2">
+          <button className={btnGhost} style={{ borderColor: "var(--border)" }} onClick={onClose}>閉じる</button>
+          <button className={btnPrimary} onClick={() => setAdding(true)}>＋ 自団体の属性を登録</button>
+        </div>
+      </div>
+      {adding && (
+        <AddAttributeModal base={base} dictionary={dictionary} onClose={() => setAdding(false)} onSaved={async () => { setAdding(false); await onChanged(); }} />
+      )}
+    </Modal>
+  );
+}
+
+function AddAttributeModal({
+  base, dictionary, onClose, onSaved,
+}: {
+  base: string;
+  dictionary: AttributeDefinition[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const localNeeded = dictionary.filter((d) => d.localCodes && Object.keys(d.codes ?? {}).length === 0);
+  const [key, setKey] = useState(localNeeded[0]?.key ?? "");
+  const [label, setLabel] = useState(localNeeded[0]?.label ?? "");
+  const [description, setDescription] = useState("");
+  const [valueType, setValueType] = useState<AttributeDefinition["valueType"]>("code");
+  const [role, setRole] = useState<AttributeDefinition["role"]>("quasi_identifier");
+  const [gran, setGran] = useState<AttributeDefinition["timeGranularity"]>("fiscal_year");
+  const [codesText, setCodesText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const existing = dictionary.find((d) => d.key === key.trim());
+  const needsCodes = valueType === "code" || valueType === "band";
+
+  const applyExisting = (k: string) => {
+    const d = dictionary.find((x) => x.key === k);
+    setKey(k);
+    if (d) {
+      setLabel(d.label);
+      setValueType(d.valueType);
+      setRole(d.role);
+      setGran(d.timeGranularity);
+    }
+  };
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    const codes: Record<string, string> = {};
+    for (const line of codesText.split("\n")) {
+      const t = line.trim();
+      if (!t) continue;
+      const [c, ...rest] = t.split(/[,\t=]/);
+      if (!c) continue;
+      codes[c.trim()] = (rest.join(",").trim() || c.trim());
+    }
+    const res = await fetch(`${base}/dictionary`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: key.trim(), label, description, valueType, role, timeGranularity: gran, ...(needsCodes ? { codes } : {}) }),
+    });
+    const json = (await res.json()) as Api<AttributeDefinition>;
+    setBusy(false);
+    if (!res.ok || !json.data) { setError(json.error ?? "登録に失敗しました"); return; }
+    await onSaved();
+  };
+
+  return (
+    <Modal title="自団体の属性を登録" onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs text-slate-400 leading-relaxed">
+          共通・分野の辞書に無い情報を扱うとき、または地区のように値の区分が自治体ごとに違うときに登録します。
+          既にあるキーと同じキーにすると、<span className="text-slate-200">値の区分だけを自団体のものに置き換え</span>ます。
+        </p>
+        {localNeeded.length > 0 && (
+          <div className="rounded-lg border p-2 text-xs" style={{ borderColor: "var(--border)", background: "var(--bg-input)" }}>
+            <div className="text-amber-400 mb-1">値の区分の登録を待っている属性があります</div>
+            {localNeeded.map((d) => (
+              <button key={d.key} className="text-indigo-400 mr-3" onClick={() => applyExisting(d.key)}>{d.label}（{d.key}）を登録</button>
+            ))}
+          </div>
+        )}
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <div className="text-xs text-slate-500 mb-1">キー *（分類.名前）</div>
+            <input className={inputClass} style={inputStyle} value={key} onChange={(e) => setKey(e.target.value)} placeholder="例: demo.area / local.support_group" />
+            {existing && <div className="text-xs text-amber-400 mt-1">既存の「{existing.label}」を自団体の定義で上書きします</div>}
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 mb-1">表示名 *</div>
+            <input className={inputClass} style={inputStyle} value={label} onChange={(e) => setLabel(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-slate-500 mb-1">説明</div>
+          <input className={inputClass} style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </div>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div>
+            <div className="text-xs text-slate-500 mb-1">型</div>
+            <select className={inputClass} style={inputStyle} value={valueType} onChange={(e) => setValueType(e.target.value as AttributeDefinition["valueType"])}>
+              {Object.entries(VALUE_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 mb-1">役割</div>
+            <select className={inputClass} style={inputStyle} value={role} onChange={(e) => setRole(e.target.value as AttributeDefinition["role"])}>
+              {Object.entries(ROLE_DESC).map(([v, d]) => <option key={v} value={v}>{d.label}</option>)}
+            </select>
+            <div className="text-xs text-slate-500 mt-1">{ROLE_DESC[role]?.hint}</div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 mb-1">時点の粒度</div>
+            <select className={inputClass} style={inputStyle} value={gran} onChange={(e) => setGran(e.target.value as AttributeDefinition["timeGranularity"])}>
+              {Object.entries(GRAN_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+        </div>
+        {needsCodes && (
+          <div>
+            <div className="text-xs text-slate-500 mb-1">取りうる値 *（1行に「コード,表示名」。コードは英数字）</div>
+            <textarea className={inputClass} style={inputStyle} rows={5} value={codesText} onChange={(e) => setCodesText(e.target.value)}
+              placeholder={"area01,中央地区\narea02,東部地区\narea03,西部地区"} />
+          </div>
+        )}
+        {error && <div className="text-sm text-red-400">{error}</div>}
+        <div className="flex justify-end gap-2">
+          <button className={btnGhost} style={{ borderColor: "var(--border)" }} onClick={onClose}>キャンセル</button>
+          <button className={btnPrimary} disabled={busy} onClick={() => void save()}>{busy ? "登録中…" : "登録"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── 庁内キーの語彙 ────────────────────────────────────────
+// どの業務システムのどの番号を仮名化の入力にするかは分野・自治体で違うので、
+// Coe は正規化の「型」だけを持ち、種別は自治体が登録する。
+function KeyTypesModal({
+  base, keyTypes, styles, onClose, onChanged,
+}: {
+  base: string;
+  keyTypes: KeyTypeDefinition[];
+  styles: StyleInfo[];
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [code, setCode] = useState("");
+  const [label, setLabel] = useState("");
+  const [description, setDescription] = useState("");
+  const [style, setStyle] = useState<NormalizationStyle>("digits");
+  const [zeroPad, setZeroPad] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const styleInfo = styles.find((s) => s.style === style);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    const normalization: KeyNormalization = { style, ...(zeroPad ? { zeroPad: Number(zeroPad) } : {}) };
+    const res = await fetch(`${base}/key-types`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, label, description, normalization }),
+    });
+    const json = (await res.json()) as Api<KeyTypeDefinition>;
+    setBusy(false);
+    if (!res.ok || !json.data) { setError(json.error ?? "登録に失敗しました"); return; }
+    setAdding(false);
+    setCode(""); setLabel(""); setDescription(""); setZeroPad("");
+    await onChanged();
+  };
+
+  return (
+    <Modal title="庁内キーの語彙" onClose={onClose} wide>
+      <div className="space-y-4 text-sm">
+        <p className="text-xs text-slate-400 leading-relaxed">
+          個票データの仮名 ID を作るときの入力になる「庁内の番号」の一覧です。どの業務システムのどの番号を使うかは
+          自治体と分野によって違うので、Coe が決め打ちせず、ここに登録します。
+          <span className="text-slate-200">宛名番号</span>のように業務をまたいで同じ人を指す番号を主キーにすると、箱をまたいだ突合が確実になります。
+          出力できない帳票は、その業務の番号を登録して橋渡しします。
+          <span className="text-amber-400">個人番号（マイナンバー）は登録できません</span>（値としても機械的に拒否します）。
+          コードは仮名 ID の計算に入るため、<span className="text-slate-200">登録後は変えられません</span>。
+        </p>
+        <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+          <table className="w-full text-xs">
+            <thead><tr style={{ background: "var(--bg-input)" }}>
+              <th className="px-2 py-1 text-left text-slate-400">コード</th>
+              <th className="px-2 py-1 text-left text-slate-400">名称</th>
+              <th className="px-2 py-1 text-left text-slate-400">正規化</th>
+              <th className="px-2 py-1 text-left text-slate-400">出どころ</th>
+            </tr></thead>
+            <tbody>
+              {keyTypes.map((k) => (
+                <tr key={k.code} className="border-t" style={{ borderColor: "var(--border)" }}>
+                  <td className="px-2 py-1 text-slate-300">{k.code}{k.isPrimary && <span className="ml-1 text-emerald-400">主</span>}</td>
+                  <td className="px-2 py-1"><span className="text-slate-100">{k.label}</span><div className="text-slate-500">{k.description}</div></td>
+                  <td className="px-2 py-1 text-slate-300">
+                    {styles.find((s) => s.style === k.normalization.style)?.label ?? k.normalization.style}
+                    {k.normalization.zeroPad ? `・${k.normalization.zeroPad}桁` : ""}
+                  </td>
+                  <td className="px-2 py-1 text-slate-400">{k.municipalityId ? "自団体" : "共通"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {adding ? (
+          <div className="rounded-lg border p-3 space-y-3" style={{ borderColor: "var(--border)" }}>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 mb-1">コード *（英小文字。あとで変えられません）</div>
+                <input className={inputClass} style={inputStyle} value={code} onChange={(e) => setCode(e.target.value)} placeholder="例: shikaku01" />
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 mb-1">名称 *</div>
+                <input className={inputClass} style={inputStyle} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例: ○○業務システムの整理番号" />
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 mb-1">説明（どの業務システムのどの番号か）</div>
+              <input className={inputClass} style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} />
+            </div>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-slate-500 mb-1">正規化の型</div>
+                <select className={inputClass} style={inputStyle} value={style} onChange={(e) => setStyle(e.target.value as NormalizationStyle)}>
+                  {styles.map((s) => <option key={s.style} value={s.style}>{s.label}</option>)}
+                </select>
+                <div className="text-xs text-slate-500 mt-1">{styleInfo?.description}（{styleInfo?.example}）</div>
+              </div>
+              {styleInfo?.allowsZeroPad && (
+                <div>
+                  <div className="text-xs text-slate-500 mb-1">桁数をそろえる（任意）</div>
+                  <input className={inputClass} style={inputStyle} value={zeroPad} onChange={(e) => setZeroPad(e.target.value.replace(/[^0-9]/g, ""))} placeholder="例: 10" />
+                  <div className="text-xs text-slate-500 mt-1">帳票によって先頭ゼロの有無が違う番号は、ここで桁をそろえると同じ人として扱えます</div>
+                </div>
+              )}
+            </div>
+            {error && <div className="text-sm text-red-400">{error}</div>}
+            <div className="flex justify-end gap-2">
+              <button className={btnGhost} style={{ borderColor: "var(--border)" }} onClick={() => setAdding(false)}>やめる</button>
+              <button className={btnPrimary} disabled={busy} onClick={() => void save()}>{busy ? "登録中…" : "登録"}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end gap-2">
+            <button className={btnGhost} style={{ borderColor: "var(--border)" }} onClick={onClose}>閉じる</button>
+            <button className={btnPrimary} onClick={() => setAdding(true)}>＋ キー種別を登録</button>
+          </div>
+        )}
+      </div>
     </Modal>
   );
 }

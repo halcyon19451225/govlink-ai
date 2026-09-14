@@ -37,7 +37,7 @@ const EVALUATION_TIER_OPTIONS = [
 ];
 
 const QC_STEP_OPTIONS = [
-  { value: "insurer_will", label: "保険者の意思" },
+  { value: "insurer_will", label: "実施主体の意思" },
   { value: "status_check", label: "現状把握" },
   { value: "task_selection", label: "課題選定" },
   { value: "factor_analysis", label: "要因分析" },

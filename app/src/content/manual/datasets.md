@@ -2,11 +2,11 @@
 module: datasets
 title: データセット管理
 menu_path: /projects/[id]/datasets
-tables: [datasets, dataset_versions, dataset_rows, attribute_definitions, observations, subjects, sid_aliases, cohorts, activity_log, dataset_definitions]
-apis: [/api/admin/projects/[id]/datasets, /api/admin/projects/[id]/datasets/[datasetId], /api/admin/projects/[id]/datasets/[datasetId]/versions, /api/admin/projects/[id]/datasets/[datasetId]/versions/[versionId], /api/admin/projects/[id]/datasets/[datasetId]/versions/[versionId]/download]
+tables: [datasets, dataset_versions, dataset_rows, attribute_definitions, attribute_keys, key_type_definitions, observations, subjects, sid_aliases, cohorts, activity_log, dataset_definitions]
+apis: [/api/admin/projects/[id]/datasets, /api/admin/projects/[id]/datasets/dictionary, /api/admin/projects/[id]/datasets/key-types, /api/admin/projects/[id]/datasets/[datasetId], /api/admin/projects/[id]/datasets/[datasetId]/versions, /api/admin/projects/[id]/datasets/[datasetId]/versions/[versionId], /api/admin/projects/[id]/datasets/[datasetId]/versions/[versionId]/download]
 ai_tasks: []
 checks: [check:vocab, check:dataset, check:datasetsvc]
-migrations: [010s, 066, 067]
+migrations: [010s, 066, 067, 068]
 upstream: []
 downstream: [gap-analysis, asis-analysis, service-volume, measure-design, work-evaluation, measure-evaluation]
 updated: 2026-09-14
@@ -101,7 +101,15 @@ flowchart TD
 - **箱（dataset）** … 何のデータかの定義。種別（集計／個票）・列定義・取得方法を持つ
 - **版（dataset_version）** … 箱に上げた1回分。基準日・検証結果・出所（鍵 ID・辞書の版）を持つ
 - **五つ組（observation）** … 個票の最小単位「誰（sid）／何（属性キー）／いつ（観測時点）／値／出所（版）」
-- **属性辞書（attribute_definitions）** … 「何の情報か」の語彙。自由記述型は無い。準識別子には粗化のはしごがある
+- **属性辞書（attribute_definitions）** … 「何の情報か」の語彙。自由記述型は無い。準識別子には粗化のはしごがある。
+  辞書は3層でできている:
+  - **共通** … どの分野の計画でも意味が変わらない属性（年齢階級・性別・地区・世帯人数・所得の帯・参加・利用・費用額・状態）
+  - **分野パック** … その計画の分野でだけ出る属性。分野パックが無い分野でも、共通＋自団体の属性で個票は扱える
+  - **自団体（テナント拡張）** … この自治体で登録した属性。地区の区分のように**値の語彙が自治体ごとに違うもの**は、
+    ここで登録して初めて使える（「属性辞書」→「＋ 自団体の属性を登録」）
+- **キー種別（key_type_definitions）** … 仮名 ID を作るときの入力になる庁内の番号。どの業務システムのどの番号を使うかは
+  自治体と分野で違うので、Coe は決め打ちせず、正規化の型（数字のみ／英数字／英数字＋区切り）だけを用意する。
+  共通は宛名番号1件で、あとは「庁内キーの語彙」から登録する。**コードは仮名 ID の計算に入るので登録後は変えられない**
 - **準識別子** … 組合せで個人が絞られる属性（年齢階級・性別・圏域・要介護度・世帯類型）。k 検定の対象
 - **k 検定** … 準識別子の同じ組合せが k 人（既定 10）以上あることの確認。満たさない行は抑制される
 - **鍵 ID** … 庁内の鍵のダイジェスト先頭8桁。鍵そのものではない
@@ -111,14 +119,16 @@ flowchart TD
 
 - テーブル: datasets / dataset_versions / dataset_rows（集計の行）/ attribute_definitions（辞書）/
   observations（五つ組）/ subjects / sid_aliases（仮名の別名）/ cohorts / cohort_members / activity_log
-- 純関数: `src/lib/dataset/`（キー種別・sid 導出・個人番号ガード・辞書・粗化・k 検定・五つ組展開）。
-  庁内の変換ツールと Coe の取込口が同じコードを使う
+- 純関数: `src/lib/dataset/`（正規化・sid 導出・個人番号ガード・コア辞書・粗化・k 検定・五つ組展開）。
+  庁内の変換ツールと Coe の取込口が同じコードを使う。**分野に固有の語彙は `src/lib/dataset/domains/` にだけ置く**
+  （`check:generic` がコアへの混入を止める）
 - 旧 project_datasets は 066 で箱＋版へ移行し、067 で廃止した（ギャップ分析・リネージ・成果物記録は「箱ごとの最新の有効な版」を読む）
 - サービス層 `src/lib/dataset/service.ts` — 画面（API）も AI も同じ関数を通り、`activity_log` に同じ形で残る。集計データの版は同期取込（5 MB・50,000 行まで）。1行でも検証に失敗した版は「無効」として記録し、行は取り込まない
 - 設計書: `claude/coe-dataset-model.md`（第Ⅰ部）。法的整理: `claude/coe-cohort-etl-plan.md`
 
 ## ⑧ 更新履歴
 
+- 2026-09-14 v4 — D2.5: 属性辞書をコア／分野パック／自団体の3層にし、キー種別を登録制にした（migration 068）。分野を固定する要素の排除
 - 2026-09-14 v3 — D2: 箱・版の画面と API、集計データの同期取込（列定義検証・個人番号ガード・Shift_JIS）、project_datasets の廃止（067）
 - 2026-09-14 v2 — D1: 箱・版・個票（五つ組）・属性辞書・鍵方式（migration 066・lib/dataset・check:dataset）
 - 2026-08-26 v1 — M3 初版

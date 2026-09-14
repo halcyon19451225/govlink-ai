@@ -8,7 +8,8 @@ import type { AttributeDefinition } from "./types";
 /** 年齢（整数）→ 5歳階級コード */
 export function ageToBand5(age: number): string | null {
   if (!Number.isFinite(age) || age < 0 || age > 130) return null;
-  if (age < 40) return "u40";
+  // 下限は 20 歳。どの分野の計画でも使えるよう、特定の年齢層に寄せた区切りにしない
+  if (age < 20) return "u20";
   if (age >= 100) return "100+";
   const lo = Math.floor(age / 5) * 5;
   return `${lo}-${lo + 4}`;
@@ -34,7 +35,12 @@ export function generalizeCode(def: AttributeDefinition, code: string, level: nu
   for (let i = 0; i < level; i++) {
     const lv = levels[i];
     if (!lv) return "*";
-    const next = lv.map[v];
+    // 値の語彙が自治体ごとに違う属性は、この段で全部まとめる（写像を持てない）
+    if (lv.collapseTo !== undefined) {
+      v = lv.collapseTo;
+      continue;
+    }
+    const next = lv.map?.[v];
     if (next === undefined) return v === "*" ? "*" : null;
     v = next;
   }
