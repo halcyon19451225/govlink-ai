@@ -225,6 +225,32 @@ try {
   check("画面が「同じ基準日でも上書きしない」ことを説明する", /上書き|消えません/.test(client));
   check("画面が不足からデータセット管理へ導く", /datasets/.test(client));
   check("メニューに指標管理がある", read(join(SRC, "components", "ProjectSidebar.tsx")).includes('path: "indicators"'));
+
+  // ── D6: 経年比較型・クロス集計型の設定画面 ──────────────
+  //   この2つは「どの属性が・どの値のとき」を並べないと設定できない。
+  //   **値を手で打たせない。** 綴りが1文字違ってもエラーにならず、黙って 0 件になり、
+  //   指標が狂ったまま履歴に積まれる（気づくのは何か月も後）。辞書から選ばせる。
+  console.log("11. 経年比較型・クロス集計型の設定（D6）");
+  check("値の語彙を辞書から渡している（画面で打たせない）",
+    /attributes: AttributeChoice\[\]/.test(client));
+  check("辞書は DB から解決する（コード上の定数を読まない）",
+    /resolveDictionary\(/.test(read(join(SRC, "app", "(admin)", "projects", "[id]", "indicators", "page.tsx"))));
+  check("絞り込み・条件を複数行で編集できる", /function FilterRows/.test(client));
+  check("条件は値を選ばせる（自由入力ではない）", /valuesFor\(/.test(client) && /toggleValue/.test(client));
+  check("値の語彙が無い属性はその旨を出す", /値の語彙が登録されていません/.test(client));
+  check("経年比較型: 値の並びを順序として編集できる", /setOrder\(/.test(client) && /order\.length - 1/.test(client));
+  check("経年比較型: 並びが2つ未満なら促す", /2つ以上選んでください/.test(client));
+  check("経年比較型: 「維持・改善」の向きを選べる（既定に固定しない）",
+    /setImprovedWhen\(/.test(client) && /same_or_later/.test(client));
+  check("経年比較型: 向きの意味を具体例で見せる", /へ動いた人/.test(client));
+  check("経年比較型: 分母の絞り込みを設定できる", /longFilters/.test(client));
+  check("クロス集計型: 条件を複数（AND）にできる",
+    /setRows=\{setConditions\}/.test(client) && /すべて満たす人を数えます/.test(client));
+  check("クロス集計型: 件数と割合を選べる", /setCrossMethod\(/.test(client));
+  check("クロス集計型: 割合のときだけ分母の条件を出す", /crossMethod === "rate"/.test(client));
+  check("クロス集計型: 小セル抑制を画面でも伝える", /5人を下回る/.test(client));
+  check("設定は spec の検証（validateSpec）にそのまま渡る形で組む",
+    /cleanFilters\(/.test(client) && /improvedWhen,/.test(client));
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

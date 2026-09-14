@@ -11,7 +11,9 @@
 // 短期→中間の寄与連鎖・スコアボード・整合検査がそのまま効く。
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import AiThinkingIndicator from "@/components/AiThinkingIndicator";
+import { proposalBlockers, type ProposalRow } from "@/lib/dialogue/types";
 import {
   isAcceptedTurn,
   requestTurnStep,
@@ -56,6 +58,12 @@ interface DialogueListItem {
   turn_error?: string | null;
   committed_at: string | null;
   hypothesis_title: string | null;
+  /** D6: 承認した箱にデータが上がるのを待っているか（待機はブロックではない） */
+  data_state?: "none" | "waiting_for_data" | null;
+  /** D6: 未決の提案の件数（一覧のバッジ用） */
+  pending_proposals?: number | null;
+  /** D6: 提案（承認カード）。単体 GET のときだけ入る */
+  proposals?: ProposalRow[];
 }
 
 interface HypOption {
@@ -242,6 +250,137 @@ function ApproachCard({
   );
 }
 
+/**
+ * D6: 提案カード（設計 §10-3）。
+ * **承認するまで何も作られない。**何が作られて何が作られないかを、押す前に書く。
+ */
+function ProposalCard({
+  projectId,
+  p,
+  busy,
+  onApprove,
+  onDecline,
+}: {
+  projectId: string;
+  p: ProposalRow;
+  busy: boolean;
+  onApprove: () => void;
+  onDecline: () => void;
+}) {
+  const payload = p.payload;
+  const isDataset = payload.kind === "dataset";
+  const name = payload.kind === "dataset" ? payload.name : payload.label;
+  const blockers = proposalBlockers(payload);
+  const decided = p.status !== "pending";
+
+  return (
+    <div
+      className="rounded-xl border px-3 py-2.5"
+      style={
+        p.status === "pending"
+          ? { borderColor: "#818cf860", background: "#6366f110" }
+          : { borderColor: "var(--border)", background: "var(--bg-primary)" }
+      }
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-slate-200">
+            <span className="text-[10px] px-1.5 py-0.5 rounded mr-1.5" style={{ background: "#6366f125", color: "#c7d2fe" }}>
+              {isDataset ? "データセット" : "指標"}
+            </span>
+            {name}
+          </p>
+          {payload.why && (
+            <p className="text-[11px] text-slate-400 leading-snug mt-1">{payload.why}</p>
+          )}
+        </div>
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0"
+          style={
+            p.status === "approved"
+              ? { background: "#10b98120", color: "#10b981" }
+              : p.status === "declined"
+                ? { background: "#64748b25", color: "#94a3b8" }
+                : { background: "#f59e0b20", color: "#f59e0b" }
+          }
+        >
+          {p.status === "approved" ? "承認済み" : p.status === "declined" ? "見送り" : "承認待ち"}
+        </span>
+      </div>
+
+      {/* 承認すると何が起きるか。押す前に書く（設計 §6 の画面上の掲載） */}
+      {p.status === "pending" && (
+        <div className="mt-2 rounded-lg border px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
+          <p className="text-[10px] text-slate-400 leading-snug">
+            {payload.kind === "dataset" ? (
+              <>
+                承認すると<strong className="text-slate-300">空の箱（データセット）</strong>が作られます。
+                データはまだ入りません — 作られた箱に
+                {payload.asOfNeeded ? `${payload.asOfNeeded} 時点の` : ""}
+                ファイルを上げると、指標が計算できるようになります。
+                <br />
+                列: {payload.columns.map((c) => `${c.name}(${c.role})`).join("・")}
+              </>
+            ) : (
+              <>
+                承認すると<strong className="text-slate-300">指標の定義</strong>が登録されます。
+                値はまだ入りません — 元になるデータが揃うと計算されます。
+                {payload.dependsOn && <>（{payload.dependsOn} のデータセットを使います）</>}
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      {blockers.length > 0 && p.status === "pending" && (
+        <p className="text-[10px] mt-1.5 leading-snug" style={{ color: "#fbbf24" }}>
+          ⚠ このままでは登録できません: {blockers.join("・")}（AIに直してもらってください）
+        </p>
+      )}
+
+      {p.status === "approved" && isDataset && p.awaiting_upload && (
+        <p className="text-[10px] mt-1.5 leading-snug" style={{ color: "#f59e0b" }}>
+          ⏳ データのアップロード待ちです。
+          <Link href={`/projects/${projectId}/datasets`} className="ml-1 underline" style={{ color: "#818cf8" }}>
+            データセット管理で上げる →
+          </Link>
+          <br />
+          上げると、この対話に結果が届きます（対話はそのまま続けられます）。
+        </p>
+      )}
+      {p.status === "approved" && !p.awaiting_upload && p.latest_as_of && (
+        <p className="text-[10px] text-slate-500 mt-1.5">最新の版: {p.latest_as_of} 時点</p>
+      )}
+      {p.status === "declined" && p.decline_reason && (
+        <p className="text-[10px] text-slate-500 mt-1.5">見送りの理由: {p.decline_reason}</p>
+      )}
+
+      {!decided && (
+        <div className="flex gap-2 mt-2">
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={busy || blockers.length > 0}
+            className="text-[11px] px-3 py-1.5 rounded-lg font-medium disabled:opacity-40"
+            style={{ background: "#10b98118", color: "#10b981", border: "1px solid #10b98140" }}
+          >
+            承認して登録
+          </button>
+          <button
+            type="button"
+            onClick={onDecline}
+            disabled={busy}
+            className="text-[11px] px-3 py-1.5 rounded-lg text-slate-400 disabled:opacity-40"
+            style={{ border: "1px solid var(--border)" }}
+          >
+            見送る
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitted }: Props) {
   const [list, setList] = useState<DialogueListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -252,6 +391,7 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
   const [input, setInput] = useState("");
   const [newHypId, setNewHypId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const selected = list.find((d) => d.id === selectedId) ?? null;
@@ -277,6 +417,53 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [selected?.messages.length, sending]);
+
+  // D6: 選んだ対話の提案（承認カード）を読む。一覧の GET は件数しか返さない
+  useEffect(() => {
+    if (!selectedId) return;
+    void reloadSelected(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  /**
+   * D6: その対話だけを読み直す（提案カードと待機の状態を最新にする）。
+   * 単体 GET は proposals も返すので、承認の直後にこれを呼べばカードが更新される。
+   */
+  const reloadSelected = async (dialogueId: string) => {
+    const res = await fetch(`/api/admin/projects/${projectId}/measure-dialogue/${dialogueId}`);
+    const json = (await res.json()) as { data: DialogueListItem | null; error: string | null };
+    if (res.ok && json.data) {
+      const rec = json.data;
+      setList((prev) => prev.map((d) => (d.id === rec.id ? { ...d, ...rec } : d)));
+    }
+  };
+
+  /** D6: 提案を承認する／見送る。**決めるのは担当者** — AI は決められない */
+  const decide = async (proposalId: string, action: "approve" | "decline") => {
+    if (!selected || decidingId) return;
+    setDecidingId(proposalId);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/projects/${projectId}/measure-dialogue/${selected.id}/proposals/${proposalId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        },
+      );
+      const json = (await res.json()) as { data: unknown; error: string | null };
+      if (!res.ok || json.error) {
+        setError(json.error ?? (action === "approve" ? "登録に失敗しました" : "見送りに失敗しました"));
+        return;
+      }
+      await reloadSelected(selected.id);
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setDecidingId(null);
+    }
+  };
 
   const create = async () => {
     setCreating(true);
@@ -589,6 +776,17 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
                     {d.committed_at && (
                       <span className="text-[10px] text-slate-500">書き出し済み</span>
                     )}
+                    {/* D6: 未決の提案・データ待ち。開かなくても気づけるように */}
+                    {(d.pending_proposals ?? 0) > 0 && (
+                      <span className="block text-[10px]" style={{ color: "#818cf8" }}>
+                        📋 承認待ちの提案 {d.pending_proposals}件
+                      </span>
+                    )}
+                    {d.data_state === "waiting_for_data" && (
+                      <span className="block text-[10px]" style={{ color: "#f59e0b" }}>
+                        ⏳ データのアップロード待ち
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -648,27 +846,44 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
             ) : (
               <div className="rounded-xl border flex flex-col" style={{ ...cardStyle, height: 620 }}>
                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {selected.messages.map((m, i) => (
-                    <div
-                      key={i}
-                      className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className="max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap leading-relaxed"
-                        style={
-                          m.role === "user"
-                            ? { background: "#6366f1", color: "#fff" }
-                            : {
-                                background: "var(--bg-primary)",
-                                color: "var(--text-primary)",
-                                border: "1px solid var(--border)",
-                              }
-                        }
-                      >
-                        {m.content}
+                  {selected.messages.map((m, i) =>
+                    // D6: サーバが差し込んだデータ行。**担当者の発言ではない**ので、
+                    // 吹き出しではなく記録として描く（誰が言ったのかを曖昧にしない）
+                    m.kind === "data" ? (
+                      <div key={i} className="flex justify-center">
+                        <div
+                          className="max-w-[92%] rounded-lg px-3 py-2 text-xs whitespace-pre-wrap leading-relaxed"
+                          style={{
+                            background: "#0ea5e910",
+                            color: "#7dd3fc",
+                            border: "1px dashed #0ea5e950",
+                          }}
+                        >
+                          {m.content}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ) : (
+                      <div
+                        key={i}
+                        className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className="max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap leading-relaxed"
+                          style={
+                            m.role === "user"
+                              ? { background: "#6366f1", color: "#fff" }
+                              : {
+                                  background: "var(--bg-primary)",
+                                  color: "var(--text-primary)",
+                                  border: "1px solid var(--border)",
+                                }
+                          }
+                        >
+                          {m.content}
+                        </div>
+                      </div>
+                    ),
+                  )}
                   {sending && (
                     <div className="flex justify-start">
                       <AiThinkingIndicator
@@ -680,6 +895,43 @@ export default function MeasureDialoguePanel({ projectId, hypotheses, onCommitte
                 </div>
 
                 <div className="border-t p-3 space-y-2" style={{ borderColor: "var(--border)" }}>
+                  {/* D6: 提案カード（設計 §10-3）。承認するまで何も作られない */}
+                  {(selected.proposals ?? []).length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-semibold" style={{ color: "#818cf8" }}>
+                        📋 AIからの提案 — 承認すると登録されます（承認するまで何も作られません）
+                      </p>
+                      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                        {(selected.proposals ?? []).map((p) => (
+                          <ProposalCard
+                            key={p.id}
+                            projectId={projectId}
+                            p={p}
+                            busy={decidingId !== null}
+                            onApprove={() => void decide(p.id, "approve")}
+                            onDecline={() => void decide(p.id, "decline")}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selected.data_state === "waiting_for_data" && (
+                    <div
+                      className="rounded-lg border px-3 py-2"
+                      style={{ borderColor: "#f59e0b40", background: "#f59e0b10" }}
+                    >
+                      <p className="text-[11px] font-semibold" style={{ color: "#f59e0b" }}>
+                        ⏳ データのアップロードを待っています
+                      </p>
+                      <p className="text-[10px] text-slate-400 leading-snug mt-0.5">
+                        上げると計算して、この対話に結果が届きます。
+                        <strong className="text-slate-300">待っている間も対話は続けられます。</strong>
+                        上げたことを伝えてもらっても構いません（どちらでも同じ結果になります）。
+                      </p>
+                    </div>
+                  )}
+
                   {done && (
                     <div
                       className="rounded-lg px-3 py-2 text-xs leading-relaxed"

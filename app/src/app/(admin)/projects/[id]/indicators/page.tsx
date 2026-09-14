@@ -12,6 +12,7 @@ import { query, queryOne } from "@/lib/db";
 import { authOptions } from "@/lib/auth";
 import { assertProjectPage } from "@/lib/tenant-page";
 import { listIndicators } from "@/lib/indicator/service";
+import { resolveDictionary } from "@/lib/dataset/service";
 import IndicatorsClient from "./IndicatorsClient";
 
 interface ProjectRow {
@@ -19,6 +20,17 @@ interface ProjectRow {
   title: string;
   plan_start_date: string | null;
   plan_end_date: string | null;
+}
+
+/**
+ * 属性の値の語彙（D6）。経年比較型・クロス集計型の設定は「値」を並べる必要がある。
+ * 手で打たせると綴り違いで黙って 0 件になるので、**選ばせる**。
+ */
+export interface AttributeChoice {
+  key: string;
+  label: string;
+  valueType: string;
+  codes: string[];
 }
 
 export interface DatasetChoice {
@@ -34,7 +46,7 @@ export interface DatasetChoice {
 export default async function IndicatorsPage({ params }: { params: { id: string } }) {
   // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする（claude/coe-tenant-isolation.md A-3）
   await assertProjectPage(params.id);
-  await getServerSession(authOptions);
+  const session = await getServerSession(authOptions);
 
   const project = await queryOne<ProjectRow>(
     "SELECT id, title, plan_start_date::text, plan_end_date::text FROM projects WHERE id = $1",
@@ -55,5 +67,27 @@ export default async function IndicatorsPage({ params }: { params: { id: string 
     ),
   ]);
 
-  return <IndicatorsClient project={project} initialIndicators={indicators} datasets={datasets} />;
+  // 辞書は DB から解決する（コア＋その計画種別の分野パック＋この自治体の拡張）。
+  // コード上の定数を直接読まない（分野を固定しないため。check:generic）
+  let attributes: AttributeChoice[] = [];
+  try {
+    const dict = await resolveDictionary(project.id, session?.user?.municipalityId ?? "");
+    attributes = dict.map((a) => ({
+      key: a.key,
+      label: a.label,
+      valueType: a.valueType,
+      codes: a.codes ? Object.keys(a.codes) : [],
+    }));
+  } catch {
+    attributes = [];
+  }
+
+  return (
+    <IndicatorsClient
+      project={project}
+      initialIndicators={indicators}
+      datasets={datasets}
+      attributes={attributes}
+    />
+  );
 }

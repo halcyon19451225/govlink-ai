@@ -2,14 +2,14 @@
 module: measure-design
 title: 施策構築（EBPM）
 menu_path: /projects/[id]/measure-design
-tables: [measure_designs, measure_dialogues, experiment_results, kpis, corpus_measures, corpus_evidence]
-apis: [/api/admin/projects/[id]/measure-design, /api/admin/projects/[id]/measure-design/[measureId], /api/admin/projects/[id]/measure-design/[measureId]/experiment-results, /api/admin/projects/[id]/measure-dialogue]
+tables: [measure_designs, measure_dialogues, experiment_results, indicators, dialogue_proposals, corpus_measures, corpus_evidence]
+apis: [/api/admin/projects/[id]/measure-design, /api/admin/projects/[id]/measure-design/[measureId], /api/admin/projects/[id]/measure-design/[measureId]/experiment-results, /api/admin/projects/[id]/measure-dialogue, /api/admin/projects/[id]/measure-dialogue/[dialogueId]/proposals, /api/admin/projects/[id]/measure-dialogue/[dialogueId]/proposals/[proposalId]]
 ai_tasks: [dialogue.measure]
-checks: [check:measure, check:expresults, check:asyncturn]
-migrations: [036, 037, 039, 055]
+checks: [check:measure, check:expresults, check:asyncturn, check:proposal]
+migrations: [036, 037, 039, 055, 070]
 upstream: [issue-hypothesis, evidences]
 downstream: [logic-model, schedule, program-evaluation, report-requests]
-updated: 2026-08-29
+updated: 2026-09-14
 ---
 
 # 施策構築（EBPM）
@@ -71,6 +71,43 @@ stateDiagram-v2
 
 > **AIの応答待ちについて** — AIの応答には数十秒〜数分かかることがあります。送信した発言は即座に保存され、画面は「AIが考えています」の表示のまま結果を待ちます（画面を再読み込みしても待ち受けは再開されます）。「AI処理に失敗しました」と出た場合は「🔁 AI処理を再試行」で、発言を再入力せずにやり直せます。
 
+## ⑤-2 データが足りないとき — 提案 → 承認 → 待機 → 再開（D6）
+
+対話のAIは、登録済みの指標とその最新値を**毎ターン見ています**。
+必要な値が無いときは推測で話を進めず、次のどちらかをします。
+
+| AIがすること | 何が起きるか |
+|---|---|
+| 登録済みの指標の値を求める | サーバがターンの後に計算し、**次の返答の冒頭に値が届きます**（このターンでは返りません） |
+| 足りないデータセット・指標を**提案する** | 対話の下に**承認カード**が出ます |
+
+```mermaid
+flowchart LR
+  AI{{AI: これが要る}} --> C[承認カード]
+  C --> H{担当者が決める}
+  H -->|承認して登録| R[(箱と指標を登録<br/>作成者=承認した担当者)]
+  H -->|見送る| X[記録が残る]
+  R --> W(アップロード待ち)
+  W --> U[データセット管理で上げる]
+  U --> V[指標を計算 → 次の返答で結果が届く]
+```
+
+**承認するまで何も作られません。** カードには「承認すると何が作られ、何が作られないか」が
+書いてあります（箱を作っても、データはまだ入りません）。
+
+- **見送った提案も消えません。** 何を提案され、なぜ採らなかったかが残ります
+- **待機はブロックではありません。** データを待っている間も対話は続けられます
+- 再開は2つの経路があり、**どちらでも同じ結果になります**
+  （担当者が「上げました」と伝える／データセット管理で版が有効になる）。
+  どちらも同じ処理を通るので、伝え忘れても上げた時点で再開します
+- 承認して作られた箱と指標は、**画面から作ったものと同じ**です。
+  あとから指標管理・データセット管理で編集も削除もできます。
+  違いは操作履歴の経路が「AI対話（担当者が承認）」になることだけです
+- 個票データの箱は対話からは提案できません（庁内の変換ツールと鍵の運用が要るため）
+
+対話の中に点線で囲まれた青い行が出ることがあります。これは**担当者の発言ではなく**、
+サーバが差し込んだ記録（計算結果・不足の案内・承認や取込の記録）です。
+
 ## ⑥ 用語と判定基準
 
 - **エビデンスレベル**: Lv4=RCT明記 / Lv3=対照群あり / Lv2=前後比較 / Lv1=事例（正直判定）
@@ -89,3 +126,5 @@ stateDiagram-v2
 
 - 2026-08-26 v1 — M2 初版
 - 2026-08-29 v1.1 — 対話AIターンの非同期化（通信エラー対策・再試行ボタン）
+- 2026-09-14 v1.2 — D6（指標の文脈注入・提案 → 承認 → 登録 → アップロード待ち → 再開。
+  承認するまで何も作らない。承認した箱と指標は画面から作ったものと同じ）

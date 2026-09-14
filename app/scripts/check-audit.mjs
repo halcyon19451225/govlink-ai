@@ -56,13 +56,15 @@ check("logActivity はトランザクションの中でも書ける", /if \(clie
 console.log("2. AI の経路");
 const AI_COMMITS = [
   "app/api/admin/projects/[id]/measure-dialogue/[dialogueId]/commit/route.ts",
+  // D6: 提案の承認。**ここだけが対話から実体を作る**（chat route は作らない）
+  "app/api/admin/projects/[id]/measure-dialogue/[dialogueId]/proposals/[proposalId]/route.ts",
 ];
 for (const rel of AI_COMMITS) {
   const src = read(join(SRC, rel));
   check(`${rel} がある`, src.length > 0);
   check(
     `${rel} がサービス層を通る（生の INSERT を書かない）`,
-    /createIndicatorTx|recordValueTx|setTargetTx/.test(src),
+    /createIndicatorTx|recordValueTx|setTargetTx|approveProposal/.test(src),
   );
   check(`${rel} が via='dialogue' で記録する`, /"dialogue"/.test(src));
   check(

@@ -176,6 +176,40 @@ const INDICATORS_GUIDE = `【フェーズ4: 指標の設定（indicators）】
 - indicators フィールドに approach_id 単位で記録する。
 - 全アプローチに短期アウトカムKPIが1件以上付いたら cost へ進む。`;
 
+/**
+ * D6: 指標が足りないときの振る舞い（設計 §10-2・§10-3）。
+ * どのフェーズでも効く（指標が要ると気づくのは indicators フェーズとは限らない）。
+ */
+const DATA_GUIDE = `【データが足りないとき — 提案して、承認を待つ】
+【この計画の指標】に必要な値が無いときは、**勝手に推測で話を進めない**でください。
+やることは2つです。
+
+(1) **値が要るだけなら indicator_requests に書く。**
+    登録済みの指標の値が知りたいときは、indicator_requests に
+    { indicator_id もしくは label, as_of } を書きます。
+    サーバがこのターンの後に計算し、**次のターンの冒頭にデータ行として届きます**。
+    このターンの中では値は返りません。担当者には「次の返答で値をお伝えします」と伝えてください。
+
+(2) **そもそも登録されていないなら proposals に書く。**
+    - データが無い → { kind:"dataset", ref, name, why, as_of_needed, columns, time_granularity }
+      columns は列定義です。**time 役の列と measure 役の列が最低1つずつ要ります**
+      （行を機械的に取り込めないと、指標が計算できません）。
+      提案できるのは**集計データの箱だけ**です。個票データは庁内の変換ツールと鍵の運用が
+      必要なので、対話からは提案できません。
+    - 指標が無い → { kind:"indicator", ref, label, unit, why, calc_type, spec, depends_on }
+      depends_on には、同じターンで提案した箱の ref を書きます。
+      **spec に datasetId は書かないでください**（箱はまだ存在しません。承認時にサーバが埋めます）。
+
+**提案は、担当者が承認するまで何も作りません。**
+承認カードが対話の下に出て、担当者が［承認して登録］か［見送る］を選びます。
+だから提案では「承認するとこうなります」まで説明してください（何が作られ、何が作られないか）。
+承認されたら、その結果は次のターンの冒頭にデータ行として届きます。
+**勝手に「登録しました」と言わないでください。**決めるのは担当者です。
+
+データ行（「（システムからのデータ行 …）」で始まる発言）は**担当者の発言ではありません**。
+サーバが差し込んだ事実です。これに対して担当者へ質問を返さないでください
+（値が届いたなら、その値を使って話を進める）。`;
+
 const COST_GUIDE = `【フェーズ5: コストの整理（cost）】
 アプローチごとに、効率性評価（第5階層）に必要なコスト情報を整えます。
 
@@ -310,6 +344,62 @@ export interface ExistingKpiSummary {
   indicator_type: string | null;
 }
 
+/** 登録済みの指標と、その最新値（D6・設計 §10-2 の文脈注入） */
+export interface IndicatorContextItem {
+  id: string;
+  label: string;
+  unit: string | null;
+  calc_type: string;
+  latest_value: string | number | null;
+  latest_as_of: string | null;
+}
+
+/** いま出ている提案の状況（承認待ち・承認済み・見送り） */
+export interface ProposalContextItem {
+  ref: string;
+  kind: "dataset" | "indicator";
+  name: string;
+  status: "pending" | "approved" | "declined";
+  awaiting_upload?: boolean;
+}
+
+/**
+ * 登録済みの指標のブロック（**可変部**）。
+ * 値は毎ターン変わりうるので、キャッシュの区切りより後ろに置く
+ * （前に置くと、毎ターン中身が変わって読み出しが一度も当たらない）。
+ */
+function indicatorBlock(items: IndicatorContextItem[]): string {
+  if (items.length === 0) {
+    return `【この計画の指標】（まだ登録がありません）
+必要な指標は proposals で提案してください（担当者が承認すると登録されます）。`;
+  }
+  const lines = items.map((i) => {
+    const v =
+      i.latest_value != null && i.latest_as_of
+        ? `最新値 ${i.latest_value}（${i.latest_as_of} 時点）`
+        : "値はまだありません";
+    return `- ${i.id} 「${i.label}」${i.unit ? `（${i.unit}）` : ""} [${i.calc_type}] ${v}`;
+  });
+  return `【この計画の指標（最新値つき）】
+${lines.join("\n")}
+※ 値が無いもの・ここに無いものは、indicator_requests か proposals で求めてください（設計どおり、結果は次のターンで返ります）。`;
+}
+
+/** 提案の状況（可変部） */
+function proposalBlock(items: ProposalContextItem[]): string {
+  if (items.length === 0) return "";
+  const label = { pending: "承認待ち", approved: "承認済み", declined: "見送り" } as const;
+  const lines = items.map(
+    (p) =>
+      `- ${p.ref}（${p.kind === "dataset" ? "データセット" : "指標"}）「${p.name}」… ${label[p.status]}` +
+      (p.awaiting_upload ? "・**アップロード待ち**" : ""),
+  );
+  return `\n\n【これまでの提案】
+${lines.join("\n")}
+※ 承認待ちのものを催促しないでください。決めるのは担当者です。
+※ 見送られたものを言い換えて再提案しないでください（別の手段を考えてください）。`;
+}
+
 export function buildMeasureSystemPrompt(opts: {
   projectTitle: string;
   /** 課題仮説・ギャップ分析など上流の要約（logicmodel/generationContext を再利用） */
@@ -327,7 +417,13 @@ export function buildMeasureSystemPrompt(opts: {
     evidence?: string | null;
     cost?: string | null;
   };
-}): string {
+  /** D6: 登録済みの指標と最新値（設計 §10-2 の文脈注入） */
+  indicatorContext?: IndicatorContextItem[];
+  /** D6: いま出ている提案の状況 */
+  proposalContext?: ProposalContextItem[];
+  /** D6: 承認した箱のデータが上がるのを待っているか */
+  waitingForData?: boolean;
+}): { stable: string; volatile: string } {
   const {
     projectTitle,
     upstreamContext,
@@ -337,6 +433,9 @@ export function buildMeasureSystemPrompt(opts: {
     existingKpis,
     ownEvidence,
     corpusBlocks,
+    indicatorContext,
+    proposalContext,
+    waitingForData,
   } = opts;
 
   const kpiListBlock =
@@ -381,7 +480,27 @@ export function buildMeasureSystemPrompt(opts: {
   const indicatorsReady = experimentsReady && allIndicatorsSet(data);
   const costsReady = indicatorsReady && allCostsSet(data);
 
-  return `あなたは日本の地方自治体の政策アナリストです。
+  // ── 可変部 ────────────────────────────────────────────────
+  // 毎ターン変わるもの（フェーズ・整理済みの内容・指標の最新値・提案の状況）。
+  // **キャッシュの区切りより後ろに置く。** 前に置くと、毎ターン中身が変わるので
+  // 読み出しが一度も当たらず、書き込みの割増だけを払うことになる（dialogueTurn.ts の注記）。
+  const volatile = `現在のフェーズ: ${currentStep}（${MEASURE_STEP_LABEL[currentStep]}）
+${evidenceReady ? "※ 全アプローチのエビデンス評価が完了しています。" : ""}
+${experimentsReady ? "※ 実験設計が必要な全アプローチに設計が付いています。" : ""}
+${indicatorsReady ? "※ 全アプローチに指標が付いています。" : ""}
+${costsReady ? "※ 全アプローチのコストが揃っています。phase=done にできます。" : ""}
+${
+  waitingForData
+    ? "※ **承認済みのデータセットにデータが上がるのを待っています。**担当者が上げたら、結果は次のターンの冒頭にデータ行として届きます。待っている間も対話は続けられます（催促を繰り返さないでください）。"
+    : ""
+}
+
+${indicatorBlock(indicatorContext ?? [])}${proposalBlock(proposalContext ?? [])}
+
+【これまでに整理済みの内容】
+${dataSummary(data)}`;
+
+  const stable = `あなたは日本の地方自治体の政策アナリストです。
 担当者と対話しながら「施策構築（EBPM）」を進めるファシリテーターを務めます。
 対象プロジェクト: ${projectTitle}${upstreamBlock}
 
@@ -393,11 +512,7 @@ export function buildMeasureSystemPrompt(opts: {
 
 工程は次の順で進みます:
 approach（アプローチの導出）→ evidence（エビデンス探索）→ experiment（実験設計）→ indicators（指標）→ cost（コスト）→ done
-現在のフェーズ: ${currentStep}（${MEASURE_STEP_LABEL[currentStep]}）
-${evidenceReady ? "※ 全アプローチのエビデンス評価が完了しています。" : ""}
-${experimentsReady ? "※ 実験設計が必要な全アプローチに設計が付いています。" : ""}
-${indicatorsReady ? "※ 全アプローチに指標が付いています。" : ""}
-${costsReady ? "※ 全アプローチのコストが揃っています。phase=done にできます。" : ""}
+（いま何フェーズか・何が揃っているかは、この後ろの可変部に書いてあります）
 
 ${APPROACH_GUIDE}
 
@@ -407,7 +522,9 @@ ${EXPERIMENT_GUIDE}
 
 ${INDICATORS_GUIDE}
 
-${COST_GUIDE}${kpiListBlock}
+${COST_GUIDE}
+
+${DATA_GUIDE}${kpiListBlock}
 
 【進め方の原則】
 - 1ターンにつき簡潔な質問を1つだけ投げかけてください（質問攻めは避ける）。
@@ -426,14 +543,13 @@ ${COST_GUIDE}${kpiListBlock}
   文末に（出典: ナレッジ名）等を付す。無い場合のみ web_search で補完する。
 
 【エビデンスレベルの凡例】
-${LEVELS_LEGEND}
-
-【これまでに整理済みの内容】
-${dataSummary(data)}${ownEvidenceBlock}${corpusBlock}
+${LEVELS_LEGEND}${ownEvidenceBlock}${corpusBlock}
 ${knowledgeBlock}
 応答の最後は必ず record_measure_turn ツールで締めくくってください（web_search を
 使った場合も、最終的な応答は必ず record_measure_turn で返します）。reply には
 担当者へのメッセージ（次の質問または締めくくり）を入れてください。`;
+
+  return { stable, volatile };
 }
 
 // ─── 対話開始時の最初のメッセージ ────────────────────
@@ -677,6 +793,85 @@ const COST_ENTRY_SCHEMA = {
   required: ["approach_id", "cost_per_outcome_note"],
 };
 
+/**
+ * D6: 提案（設計 §10-3）。**承認されるまで何も作らない。**
+ * 箱は集計データだけ（個票は庁内の変換ツールと鍵の運用が要る）。
+ */
+const PROPOSAL_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    kind: {
+      type: "string",
+      enum: ["dataset", "indicator"],
+      description: "dataset=データを入れる箱 / indicator=指標",
+    },
+    ref: {
+      type: "string",
+      description:
+        "この対話の中での通し名（英数字・ハイフン・アンダースコア、60文字以内）。指標の depends_on から指す",
+    },
+    why: { type: "string", description: "なぜ必要か（担当者が承認を判断するための説明）" },
+    name: { type: "string", description: "kind=dataset のとき: 箱の名称" },
+    as_of_needed: { type: "string", description: "kind=dataset のとき: いつ時点のデータが要るか YYYY-MM-DD" },
+    time_granularity: {
+      type: "string",
+      enum: ["day", "month", "fiscal_year"],
+      description: "kind=dataset のとき: 時点の粒度",
+    },
+    template_id: { type: "string", description: "kind=dataset のとき: 既存テンプレートの id（あれば）" },
+    columns: {
+      type: "array",
+      description:
+        "kind=dataset のとき: 列定義。**role='time' と role='measure' が最低1つずつ必要**（行を機械的に取り込めないと指標が計算できない）",
+      items: {
+        type: "object" as const,
+        properties: {
+          name: { type: "string", description: "列名（CSV のヘッダと一致させる）" },
+          role: {
+            type: "string",
+            enum: ["dimension", "time", "measure"],
+            description: "dimension=区分 / time=時点 / measure=数値",
+          },
+          type: {
+            type: "string",
+            enum: ["text", "int", "numeric", "fiscal_year", "year", "month", "date"],
+            description: "measure は int か numeric、time は date/month/year/fiscal_year",
+          },
+        },
+        required: ["name", "role", "type"],
+      },
+    },
+    label: { type: "string", description: "kind=indicator のとき: 指標名" },
+    unit: { type: "string", description: "kind=indicator のとき: 単位" },
+    calc_type: {
+      type: "string",
+      enum: ["aggregate", "longitudinal", "cross", "formula", "manual"],
+      description:
+        "kind=indicator のとき: 算出方法。longitudinal と cross は個票が要るので、対話からは提案できない（aggregate か formula か manual にする）",
+    },
+    spec: {
+      type: "object",
+      description:
+        "kind=indicator のとき: 算出の設定。**datasetId は書かない**（箱はまだ無い。承認時にサーバが depends_on から埋める）。集計型なら { type:'aggregate', measure, method, denominator?, filters? }",
+    },
+    depends_on: {
+      type: "string",
+      description: "kind=indicator のとき: この指標が使う箱の提案の ref",
+    },
+  },
+  required: ["kind", "ref", "why"],
+};
+
+/** D6: 値の要求（設計 §10-2）。結果は次のターンの冒頭に返る */
+const INDICATOR_REQUEST_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    indicator_id: { type: "string", description: "【この計画の指標】に出ている id" },
+    label: { type: "string", description: "id が分からないときの指標名（完全一致で探す）" },
+    as_of: { type: "string", description: "いつ時点の値が欲しいか YYYY-MM-DD（省略時は今日）" },
+  },
+};
+
 export const RECORD_MEASURE_TURN_TOOL: Anthropic.Tool = {
   name: "record_measure_turn",
   description:
@@ -742,6 +937,18 @@ export const RECORD_MEASURE_TURN_TOOL: Anthropic.Tool = {
         description:
           "担当者への回答ヒント2〜4件。具体的な仮説を提示する疑問形。ナレッジ/上流分析→Web検索の順で根拠を取り、出典があれば文末に付す",
         items: { type: "string" },
+      },
+      proposals: {
+        type: "array",
+        description:
+          "データセット・指標の提案（D6）。**承認されるまで何も作られない。**担当者に承認カードとして出る。最大6件",
+        items: PROPOSAL_SCHEMA,
+      },
+      indicator_requests: {
+        type: "array",
+        description:
+          "登録済みの指標の値を求める（D6）。**このターンでは返らない。**サーバがターン確定後に計算し、次のターンの冒頭にデータ行として差し込む。最大6件",
+        items: INDICATOR_REQUEST_SCHEMA,
       },
     },
     required: ["reply", "phase"],

@@ -9,6 +9,7 @@
  * （庁内の変換ツールの出力 zip を非同期で取り込む）。ここでは箱の作成までを受け付ける。
  */
 import { randomUUID, createHash } from "node:crypto";
+import type { PoolClient } from "pg";
 import { query, queryOne, transaction } from "@/lib/db";
 import { uploadToStorage, downloadFromStorage } from "@/lib/storage";
 import type { AttributeDefinition, ColumnSpec, DatasetKind, KeyTypeDefinition } from "./types";
@@ -24,6 +25,7 @@ import { KEY_TYPE_CODE_RE, validateNormalization, type KeyNormalization } from "
 export { logActivity, actorFromSession, systemActor } from "@/lib/activity";
 export type { Actor, ActivityVia } from "@/lib/activity";
 import { logActivity, type Actor } from "@/lib/activity";
+import { notifyDatasetVersionValidated } from "@/lib/dialogue/dataReady";
 
 export class DatasetError extends Error {
   constructor(
@@ -194,6 +196,22 @@ export interface CreateDatasetInput {
 }
 
 export async function createDataset(actor: Actor, projectId: string, input: CreateDatasetInput): Promise<DatasetRow> {
+  return createDatasetTx(null, actor, projectId, input);
+}
+
+/**
+ * 既に走っているトランザクションの中から箱を作る（client を渡す）。
+ *
+ * 対話からの提案を承認するとき、箱と指標を**同じトランザクションで**作る。
+ * 別のコネクションを取ると同じトランザクションにならず、途中で失敗したときに
+ * 箱だけ残る（指標サービスの `*Tx` と同じ理由。lib/indicator/service.ts の `inTx` 参照）。
+ */
+export async function createDatasetTx(
+  client: PoolClient | null,
+  actor: Actor,
+  projectId: string,
+  input: CreateDatasetInput,
+): Promise<DatasetRow> {
   const name = (input.name ?? "").trim();
   if (!name) throw new DatasetError("箱の名称が必要です");
   if (name.length > 120) throw new DatasetError("箱の名称は120文字以内にしてください");
@@ -235,7 +253,7 @@ export async function createDataset(actor: Actor, projectId: string, input: Crea
     if (t.kind !== input.kind) throw new DatasetError("テンプレートの種別と箱の種別が一致しません");
   }
 
-  const row = await transaction(async (client) => {
+  const run = async (client: PoolClient): Promise<DatasetRow> => {
     const r = await client.query<DatasetRow>(
       `INSERT INTO datasets (project_id, kind, name, description, template_id, schema, acquisition, time_granularity, created_by, created_via)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
@@ -258,8 +276,8 @@ export async function createDataset(actor: Actor, projectId: string, input: Crea
       summary: { kind: input.kind, name, template_id: templateId },
     });
     return created;
-  });
-  return row;
+  };
+  return client ? run(client) : transaction(run);
 }
 
 export async function updateDataset(
@@ -425,6 +443,14 @@ export async function addAggregateVersion(
     });
     return r.rows[0]!;
   });
+
+  // 待っている対話に知らせる（設計 §10-3 の再開 (b)）。
+  // **取込のサービス関数の中で呼ぶ。** 画面のルートに置くと、別の経路で版を足したときに
+  // 待機が解けない — 「AI が操作しても人が操作しても同じ」を経路の数だけ壊すことになる。
+  // 待機の解除に失敗しても取込は成功のまま（担当者が対話に発言すれば (a) で同じ処理が走る）。
+  if (!rejected) {
+    await notifyDatasetVersionValidated(actor, projectId, datasetId);
+  }
 
   return { version, accepted: rejected ? 0 : rows.length, errors, encoding: parsed.encoding };
 }

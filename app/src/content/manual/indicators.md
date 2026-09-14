@@ -5,8 +5,8 @@ menu_path: /projects/[id]/indicators
 tables: [indicators, indicator_targets, indicator_values, datasets, dataset_versions]
 apis: [/api/admin/projects/[id]/indicators, /api/admin/projects/[id]/indicators/[indicatorId], /api/admin/projects/[id]/indicators/[indicatorId]/compute, /api/admin/projects/[id]/indicators/compute]
 ai_tasks: []
-checks: [check:indicator, check:audit, check:generic]
-migrations: [069]
+checks: [check:indicator, check:audit, check:generic, check:proposal]
+migrations: [069, 070]
 upstream: [datasets]
 downstream: [gap-analysis, measure-design, kpi-summary, program-evaluation]
 updated: 2026-09-14
@@ -61,6 +61,33 @@ flowchart TD
 > のどちらも「同じ人」を追えることが前提です。これが個票を五つ組
 > （誰・何・いつ・値・出所）で持つ理由そのものです。
 
+## ④-2 経年比較型・クロス集計型の設定（D6）
+
+この2つは「**どの属性が・どの値のとき**」を並べないと設定できません。
+画面では値を手で打たせず、**属性辞書に登録された値から選びます**。
+綴りが1文字違ってもエラーにはならず、黙って 0 件になるためです
+（そのまま履歴に積まれ、気づくのは何か月も後になります）。
+
+**経年比較型**
+
+1. 個票データの箱を選ぶ
+2. 比べる属性を選ぶ
+3. 何か月前と比べるかを入れる（年度で見るなら 12）
+4. **値の並びを、軽い → 重い の順に並べる**（辞書の値から選び、↑↓ で入れ替える）
+5. 「維持・改善」とみなす向きを選ぶ。画面が
+   「『◯◯』から『△△』へ動いた人は維持・改善に数えます」と具体例で見せます。
+   **向きを間違えると、改善と悪化が入れ替わったまま値が出ます**（エラーにはなりません）
+6. 必要なら分母の絞り込みを足す（基準時点でその条件を満たす人だけを分母にする）
+
+分母は**両方の時点に観測がある人**だけです。片方の時点にしか居ない人は数えません。
+
+**クロス集計型**
+
+1. 個票データの箱を選ぶ
+2. 条件を足す（属性 → 当てはまりとみなす値）。条件を複数足すと **AND** になります
+3. 「人数を数える」か「割合を出す」かを選ぶ
+4. 割合のときは分母の条件を足せる（指定しなければ、その時点に観測がある人すべて）
+
 ## ⑤ 操作手順
 
 1. 「＋ 指標を追加」→ 名前・単位・目標値を入れる
@@ -97,3 +124,5 @@ flowchart TD
 ## ⑧ 更新履歴
 
 - 2026-09-14 v1 — D4 初版（指標エンジン・一覧・設定・履歴・一括取得・ギャップ分析との接続）
+- 2026-09-14 v2 — D6（経年比較型・クロス集計型の設定画面。値は属性辞書から選ぶ。
+  AI の対話から提案された指標も、承認されるとこの一覧に並ぶ〔origin=対話〕）

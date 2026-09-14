@@ -83,6 +83,12 @@ const CORE_PATHS = [
   "lib/indicator/http.ts",
   "app/api/admin/projects/[id]/indicators",
   "app/(admin)/projects/[id]/indicators",
+  // D6: 対話からの提案（提案 → 承認 → 登録 → 待機 → 再開）。
+  // どの分野の計画でも同じ仕組みなので、ここにも分野の語彙を置かない
+  "lib/dialogue/types.ts",
+  "lib/dialogue/service.ts",
+  "lib/dialogue/dataReady.ts",
+  "app/api/admin/projects/[id]/measure-dialogue/[dialogueId]/proposals",
 ];
 
 function filesUnder(rel) {

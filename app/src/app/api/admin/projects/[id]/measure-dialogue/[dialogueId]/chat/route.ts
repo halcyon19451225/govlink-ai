@@ -27,6 +27,14 @@ import {
   turnDoneSql,
 } from "@/lib/ai/asyncTurn";
 import { buildGenerationContext } from "@/lib/logicmodel/generationContext";
+import { actorFromSession, type Actor } from "@/lib/activity";
+import {
+  refreshDataWaits,
+  resolveIndicatorRequests,
+  takePendingInputs,
+} from "@/lib/dialogue/dataReady";
+import { listProposals, recordProposals } from "@/lib/dialogue/service";
+import { renderPendingInputs, sanitizeIndicatorRequests, sanitizeProposals } from "@/lib/dialogue/types";
 import {
   isEffectDirection,
   resultToEvidenceItem,
@@ -36,6 +44,7 @@ import {
   buildMeasureSystemPrompt,
   RECORD_MEASURE_TURN_TOOL,
   type ExistingKpiSummary,
+  type IndicatorContextItem,
 } from "@/lib/measure/prompt";
 import {
   applyApproachRetirements,
@@ -78,8 +87,8 @@ const TURN_TABLE = "measure_dialogues" as const;
 const ROW_SQL = `SELECT d.id, d.issue_hypothesis_id, d.status, d.current_step,
             d.messages, d.approaches, d.evidence, d.experiments,
             d.indicators, d.costs,
-            d.turn_status, d.turn_error,
-            p.title AS project_title
+            d.turn_status, d.turn_error, d.data_state, d.turn_actor,
+            p.title AS project_title, p.municipality_id
      FROM measure_dialogues d
      JOIN projects p ON p.id = d.project_id
      WHERE d.id = $1 AND d.project_id = $2`;
@@ -98,6 +107,15 @@ interface DialogueRow {
   indicators: ApproachIndicators[];
   costs: ApproachCost[];
   project_title: string;
+  /** D6: 承認した箱のデータ待ちか（設計 §10-3） */
+  data_state: "none" | "waiting_for_data";
+  /**
+   * D6: このターンを回している担当者（user_roles.id）。
+   * AI 処理の実体はトークン認証の自己呼び出しなのでセッションが無い。
+   * **そこで書くものの actor も、AI ではなくこの担当者**（設計 §10-5）。
+   */
+  turn_actor: string | null;
+  municipality_id: string;
 }
 
 function str(v: unknown, max = 400): string {
@@ -225,6 +243,27 @@ export async function POST(req: NextRequest, { params }: Params) {
     ? null
     : { role: "user", content: trimmedMessage, step: row.current_step };
 
+  // D6: このターンを回す担当者を控える。AI 処理の実体（step）はセッションを持たないので、
+  // そこで指標の値を記録するときの actor がここで決まる（AI を actor にしない。設計 §10-5）
+  const turnActor = actorFromSession(session!, "dialogue", {
+    dialogue_kind: "measure",
+    dialogue_id: params.dialogueId,
+  });
+  await query(
+    `UPDATE measure_dialogues SET turn_actor = $1 WHERE id = $2 AND project_id = $3`,
+    [turnActor.userRoleId, params.dialogueId, params.id],
+  );
+
+  // D6 再開 (a): 担当者が発言したら、承認済みの箱に版が上がっていないか見る。
+  // 「上げました」という**言い方では判定しない**（言い方は人それぞれで、外すと再開できない）。
+  // 上がっていれば依存する指標を計算し、結果は次のターンの冒頭にデータ行として入る。
+  // 再開 (b)（取込のイベント）と同じ関数を通る。
+  try {
+    await refreshDataWaits(turnActor, params.id, "measure", params.dialogueId);
+  } catch (e) {
+    console.error("[measure-dialogue/chat] 待機の確認に失敗", e instanceof Error ? e.message : e);
+  }
+
   const begun = await beginTurn<MeasureMessage>(TURN_TABLE, params.dialogueId, params.id, userMessage);
   if (!begun.ok) {
     const error =
@@ -247,8 +286,35 @@ export async function POST(req: NextRequest, { params }: Params) {
  * 例外は呼び出し側で failTurn に変換される。
  */
 async function runTurn(params: Params["params"], token: string): Promise<void> {
-  const row = await queryOne<DialogueRow>(ROW_SQL, [params.dialogueId, params.id]);
+  let row = await queryOne<DialogueRow>(ROW_SQL, [params.dialogueId, params.id]);
   if (!row) throw new Error("対話が見つかりません");
+
+  // D6: このターンで書くものの actor。AI 自身ではなく、この対話を進めている担当者
+  // （step は自己呼び出しでセッションが無いので、発言時に控えた turn_actor を使う。設計 §10-5）
+  const actor: Actor = {
+    userRoleId: row.turn_actor,
+    municipalityId: row.municipality_id,
+    via: "dialogue",
+    dialogueRef: { dialogue_kind: "measure", dialogue_id: params.dialogueId },
+  };
+
+  // D6: 前のターンの後に用意されたデータ行（指標の計算結果・不足・承認や取込の記録）を
+  // **このターンの冒頭に差し込む**（設計 §10-2）。担当者にも記録として見える形で履歴に残す。
+  const pending = await takePendingInputs("measure", params.dialogueId, params.id);
+  if (pending.length > 0) {
+    const dataMessage: MeasureMessage = {
+      role: "user",
+      content: renderPendingInputs(pending),
+      step: row.current_step,
+      kind: "data",
+    };
+    await query(
+      `UPDATE measure_dialogues SET messages = messages || $1::jsonb, updated_at = now()
+        WHERE id = $2 AND project_id = $3`,
+      [JSON.stringify([dataMessage]), params.dialogueId, params.id],
+    );
+    row = (await queryOne<DialogueRow>(ROW_SQL, [params.dialogueId, params.id]))!;
+  }
 
   // beginTurn で利用者の発言は保存済み
   const history = row.messages;
@@ -371,6 +437,50 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
     costs: row.costs,
   };
 
+  // D6: 登録済みの指標と最新値（設計 §10-2 の文脈注入）。
+  // 多くの場合これで足りる（AI は値を知った上で質問・提案できる）。
+  let indicatorContext: IndicatorContextItem[] = [];
+  try {
+    indicatorContext = await query<IndicatorContextItem>(
+      `SELECT i.id, i.label, i.unit, i.calc_type,
+              lv.value AS latest_value, lv.as_of::text AS latest_as_of
+         FROM indicators i
+         LEFT JOIN LATERAL (
+           SELECT v.value, v.as_of FROM indicator_values v
+            WHERE v.indicator_id = i.id AND v.scope = 'plan'
+              AND v.cohort_id IS NULL AND v.arm IS NULL
+            ORDER BY v.as_of DESC, v.computed_at DESC LIMIT 1
+         ) lv ON true
+        WHERE i.project_id = $1
+        ORDER BY i.created_at
+        LIMIT 80`,
+      [params.id],
+    );
+  } catch {
+    indicatorContext = [];
+  }
+
+  // D6: 提案の状況（承認待ちを催促させない・見送られたものを再提案させない）
+  let proposalContext: {
+    ref: string;
+    kind: "dataset" | "indicator";
+    name: string;
+    status: "pending" | "approved" | "declined";
+    awaiting_upload?: boolean;
+  }[] = [];
+  try {
+    const rows = await listProposals(params.id, "measure", params.dialogueId);
+    proposalContext = rows.map((p) => ({
+      ref: p.ref,
+      kind: p.kind,
+      name: p.payload.kind === "dataset" ? p.payload.name : p.payload.label,
+      status: p.status,
+      ...(p.awaiting_upload ? { awaiting_upload: true } : {}),
+    }));
+  } catch {
+    proposalContext = [];
+  }
+
   const systemText = buildMeasureSystemPrompt({
     projectTitle: row.project_title,
     upstreamContext,
@@ -380,6 +490,9 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
     existingKpis,
     ownEvidence,
     corpusBlocks,
+    indicatorContext,
+    proposalContext,
+    waitingForData: row.data_state === "waiting_for_data",
   });
 
   const aiCtx = { taskType: "dialogue.measure", projectId: params.id } as const;
@@ -455,6 +568,9 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
     nextData,
   );
   let suggestions = sanitizeStringArray(input.suggestions, { maxItems: 4, maxLength: 200 });
+  // D6: 提案と値の要求。**ここでは検証して控えるだけで、何も作らない**（設計 §10-3）
+  let proposals = sanitizeProposals(input.proposals);
+  let indicatorRequests = sanitizeIndicatorRequests(input.indicator_requests);
 
   // ── 進行ガードの追いターン ────────────────────────
   // 先のフェーズへ進もうとしたのに前提が欠けている場合、
@@ -522,6 +638,11 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
         nextData = retried;
         reply = str(rInput.reply, 4000) || reply;
         suggestions = sanitizeStringArray(rInput.suggestions, { maxItems: 4, maxLength: 200 });
+        // 追いターンで出し直された提案・要求を採る（出さなければ前のものを残す）
+        const rProposals = sanitizeProposals(rInput.proposals);
+        if (rProposals.length > 0) proposals = rProposals;
+        const rRequests = sanitizeIndicatorRequests(rInput.indicator_requests);
+        if (rRequests.length > 0) indicatorRequests = rRequests;
         phase = guardMeasurePhase(
           parseMeasurePhase(rInput.phase, row.current_step),
           row.current_step,
@@ -566,5 +687,33 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   );
   if (!saved) {
     console.warn("[measure-dialogue/chat] 古いステップの結果を破棄しました", params.dialogueId);
+    return;
+  }
+
+  // ── D6: 提案を控える（何も作らない）────────────────────
+  // 承認カードとして画面に出る。担当者が承認して初めて、箱と指標が作られる（設計 §10-3）。
+  if (proposals.length > 0) {
+    try {
+      await recordProposals(actor, params.id, "measure", params.dialogueId, messages.length, proposals);
+    } catch (e) {
+      console.error("[measure-dialogue/chat] 提案の記録に失敗", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // ── D6: 値の要求に答える（結果は次のターンの冒頭へ）──────
+  // 同期のツール往復は組まない（Amplify の 30 秒制限・設計 §10-2）。
+  if (indicatorRequests.length > 0) {
+    try {
+      await resolveIndicatorRequests(
+        actor,
+        params.id,
+        "measure",
+        params.dialogueId,
+        indicatorRequests,
+        new Date().toISOString().slice(0, 10),
+      );
+    } catch (e) {
+      console.error("[measure-dialogue/chat] 指標の取得に失敗", e instanceof Error ? e.message : e);
+    }
   }
 }

@@ -19,6 +19,7 @@ import { query } from "@/lib/db";
 import { actorFromSession } from "@/lib/activity";
 import { indicatorErrorResponse } from "@/lib/indicator/http";
 import { createIndicator, listIndicators, type CreateIndicatorInput } from "@/lib/indicator/service";
+import { resolveDictionary } from "@/lib/dataset/service";
 import { validateSpec } from "@/lib/indicator/spec";
 
 type Params = { params: { id: string } };
@@ -44,7 +45,24 @@ export async function GET(_req: NextRequest, { params }: Params) {
       [params.id],
     ),
   ]);
-  return NextResponse.json({ data: { indicators, datasets }, error: null });
+
+  // D6: 属性の値の語彙（辞書）。経年比較型・クロス集計型の設定は「値」を並べる必要があり、
+  // 担当者に手で打たせると綴り違いで黙って 0 件になる。**選ばせる。**
+  // 辞書は DB から解決する（コア＋その計画種別の分野パック＋この自治体の拡張）
+  let attributes: { key: string; label: string; valueType: string; codes: string[] }[] = [];
+  try {
+    const dict = await resolveDictionary(params.id, session.user?.municipalityId ?? "");
+    attributes = dict.map((a) => ({
+      key: a.key,
+      label: a.label,
+      valueType: a.valueType,
+      codes: a.codes ? Object.keys(a.codes) : [],
+    }));
+  } catch {
+    attributes = [];
+  }
+
+  return NextResponse.json({ data: { indicators, datasets, attributes }, error: null });
 }
 
 export async function POST(req: NextRequest, { params }: Params) {

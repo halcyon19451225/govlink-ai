@@ -13,7 +13,7 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import type { IndicatorListItem, IndicatorRow, IndicatorTargetRow, IndicatorValueRow } from "@/lib/indicator/service";
-import type { DatasetChoice } from "./page";
+import type { AttributeChoice, DatasetChoice } from "./page";
 
 type Api<T> = { data: T | null; error: string | null };
 
@@ -96,10 +96,13 @@ export default function IndicatorsClient({
   project,
   initialIndicators,
   datasets,
+  attributes,
 }: {
   project: ProjectRow;
   initialIndicators: IndicatorListItem[];
   datasets: DatasetChoice[];
+  /** 属性の値の語彙（D6）。経年比較型・クロス集計型の設定で値を選ばせる */
+  attributes: AttributeChoice[];
 }) {
   const [indicators, setIndicators] = useState<IndicatorListItem[]>(initialIndicators);
   const [q, setQ] = useState("");
@@ -243,6 +246,7 @@ export default function IndicatorsClient({
         <CreateIndicatorModal
           projectId={project.id}
           datasets={datasets}
+          attributes={attributes}
           indicators={indicators}
           onClose={() => setShowCreate(false)}
           onCreated={async () => { setShowCreate(false); await reload(); }}
@@ -420,17 +424,134 @@ function IndicatorRowView({
   );
 }
 
+
+// ── 絞り込み・条件の編集（D6）────────────────────────────
+//
+// 経年比較型・クロス集計型は「どの属性が・どの値のとき」を並べる必要がある。
+// **値を手で打たせない。** 綴りが1文字違うと、エラーにならないまま 0 件になり、
+// 指標が黙って狂う（気づくのは何か月も後になる）。辞書に登録された値から選ばせる。
+
+export interface FilterDraft {
+  key: string;
+  in: string[];
+}
+
+/** 空の行と、値が無い行は spec に入れない */
+function cleanFilters(drafts: FilterDraft[]): { key: string; in: string[] }[] {
+  return drafts
+    .filter((f) => f.key.trim() !== "" && f.in.length > 0)
+    .map((f) => ({ key: f.key, in: f.in }));
+}
+
+function FilterRows({
+  label,
+  hint,
+  rows,
+  setRows,
+  keyChoices,
+  valuesFor,
+  allowEmpty = true,
+}: {
+  label: string;
+  hint?: string;
+  rows: FilterDraft[];
+  setRows: (rows: FilterDraft[]) => void;
+  keyChoices: { key: string; label: string }[];
+  valuesFor: (key: string) => string[];
+  allowEmpty?: boolean;
+}) {
+  const update = (i: number, patch: Partial<FilterDraft>) =>
+    setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const toggleValue = (i: number, v: string) => {
+    const cur = rows[i]?.in ?? [];
+    update(i, { in: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] });
+  };
+
+  return (
+    <div className="col-span-2">
+      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      {hint && <p className="text-[11px] text-slate-500 mb-1.5">{hint}</p>}
+      <div className="space-y-2">
+        {rows.map((row, i) => {
+          const values = row.key ? valuesFor(row.key) : [];
+          return (
+            <div key={i} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: "var(--border)" }}>
+              <div className="flex gap-2">
+                <select
+                  className={inputClass}
+                  style={inputStyle}
+                  value={row.key}
+                  onChange={(e) => update(i, { key: e.target.value, in: [] })}
+                >
+                  <option value="">属性を選んでください</option>
+                  {keyChoices.map((k) => (
+                    <option key={k.key} value={k.key}>{k.label}</option>
+                  ))}
+                </select>
+                {(allowEmpty || rows.length > 1) && (
+                  <button
+                    type="button"
+                    className="shrink-0 px-2 rounded-lg border text-xs text-slate-400"
+                    style={{ borderColor: "var(--border)" }}
+                    onClick={() => setRows(rows.filter((_, j) => j !== i))}
+                  >
+                    削除
+                  </button>
+                )}
+              </div>
+              {row.key && values.length === 0 && (
+                <p className="text-[11px] text-amber-300">
+                  この属性は値の語彙が登録されていません。データセット管理の属性辞書で登録してください。
+                </p>
+              )}
+              {values.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap">
+                  {values.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => toggleValue(i, v)}
+                      className={`px-2 py-1 rounded text-[11px] border ${
+                        row.in.includes(v) ? "text-white bg-indigo-600 border-indigo-500" : "text-slate-300"
+                      }`}
+                      style={row.in.includes(v) ? {} : { borderColor: "var(--border)" }}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {row.key && values.length > 0 && row.in.length === 0 && (
+                <p className="text-[11px] text-slate-500">値を1つ以上選んでください（選ぶまでこの行は使われません）</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        className="mt-2 text-xs text-indigo-400 hover:text-indigo-300"
+        onClick={() => setRows([...rows, { key: "", in: [] }])}
+      >
+        ＋ 条件を追加
+      </button>
+    </div>
+  );
+}
+
 // ── 登録 ────────────────────────────────────────────────
 
 function CreateIndicatorModal({
   projectId,
   datasets,
+  attributes,
   indicators,
   onClose,
   onCreated,
 }: {
   projectId: string;
   datasets: DatasetChoice[];
+  attributes: AttributeChoice[];
   indicators: IndicatorListItem[];
   onClose: () => void;
   onCreated: () => Promise<void>;
@@ -445,7 +566,12 @@ function CreateIndicatorModal({
   const [denominator, setDenominator] = useState("");
   const [attrKey, setAttrKey] = useState("");
   const [monthsBack, setMonthsBack] = useState(12);
-  const [order, setOrder] = useState("");
+  const [order, setOrder] = useState<string[]>([]);
+  const [improvedWhen, setImprovedWhen] = useState<"same_or_earlier" | "same_or_later">("same_or_earlier");
+  const [longFilters, setLongFilters] = useState<FilterDraft[]>([]);
+  const [conditions, setConditions] = useState<FilterDraft[]>([{ key: "", in: [] }]);
+  const [crossMethod, setCrossMethod] = useState<"count" | "rate">("count");
+  const [denomConditions, setDenomConditions] = useState<FilterDraft[]>([]);
   const [expression, setExpression] = useState("");
   const [targetValue, setTargetValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -462,6 +588,34 @@ function CreateIndicatorModal({
   }, [dataset]);
   const measureColumns = columns.filter((c) => c.role === "measure" || c.role === "attr");
 
+  // D6: 値の語彙。個票なら属性辞書から、集計データなら列定義の codes から採る。
+  // **担当者に値を打たせない**（綴り違いは黙って 0 件になる）
+  const attrByKey = useMemo(() => new Map(attributes.map((a) => [a.key, a])), [attributes]);
+  const attrLabel = useCallback(
+    (key: string) => {
+      const a = attrByKey.get(key);
+      return a ? `${a.label}（${key}）` : key;
+    },
+    [attrByKey],
+  );
+  const valuesFor = useCallback(
+    (key: string): string[] => {
+      const a = attrByKey.get(key);
+      if (a && a.codes.length > 0) return a.codes;
+      if (Array.isArray(dataset?.schema)) {
+        const col = (dataset.schema as { name: string; codes?: string[] }[]).find((c) => c.name === key);
+        if (col?.codes) return col.codes;
+      }
+      return [];
+    },
+    [attrByKey, dataset],
+  );
+  const keyChoices = useMemo(
+    () => columns.map((c) => ({ key: c.name, label: attrLabel(c.name) })),
+    [columns, attrLabel],
+  );
+  const attrValues = attrKey ? valuesFor(attrKey) : [];
+
   const help = CALC_HELP[calcType]!;
   const needsIndividual = calcType === "longitudinal" || calcType === "cross";
   const individualChosenWrong = needsIndividual && dataset != null && dataset.kind !== "individual";
@@ -476,11 +630,19 @@ function CreateIndicatorModal({
       case "longitudinal":
         return {
           type: "longitudinal", datasetId, attrKey, monthsBack,
-          order: order.split(/[,\s]+/).filter(Boolean),
-          improvedWhen: "same_or_earlier",
+          order,
+          improvedWhen,
+          ...(cleanFilters(longFilters).length > 0 ? { filters: cleanFilters(longFilters) } : {}),
         };
       case "cross":
-        return { type: "cross", datasetId, conditions: [{ key: attrKey, in: order.split(/[,\s]+/).filter(Boolean) }], method: "count" };
+        return {
+          type: "cross", datasetId,
+          conditions: cleanFilters(conditions),
+          method: crossMethod,
+          ...(crossMethod === "rate" && cleanFilters(denomConditions).length > 0
+            ? { denominatorConditions: cleanFilters(denomConditions) }
+            : {}),
+        };
       case "formula":
         return { type: "formula", expression };
       default:
@@ -608,35 +770,188 @@ function CreateIndicatorModal({
               </div>
             )}
 
-            {(calcType === "longitudinal" || calcType === "cross") && (
+            {calcType === "longitudinal" && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">見る属性</label>
-                  <select className={inputClass} style={inputStyle} value={attrKey} onChange={(e) => setAttrKey(e.target.value)}>
+                  <label className="block text-xs text-slate-400 mb-1">比べる属性</label>
+                  <select
+                    className={inputClass}
+                    style={inputStyle}
+                    value={attrKey}
+                    onChange={(e) => { setAttrKey(e.target.value); setOrder([]); }}
+                  >
                     <option value="">選んでください</option>
-                    {columns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    {columns.map((c) => (
+                      <option key={c.name} value={c.name}>{attrLabel(c.name)}</option>
+                    ))}
                   </select>
                 </div>
-                {calcType === "longitudinal" && (
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">何か月前と比べるか</label>
-                    <input
-                      className={inputClass} style={inputStyle} type="number" min={1} max={120}
-                      value={monthsBack} onChange={(e) => setMonthsBack(Number(e.target.value))}
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">何か月前と比べるか</label>
+                  <input
+                    className={inputClass} style={inputStyle} type="number" min={1} max={120}
+                    value={monthsBack} onChange={(e) => setMonthsBack(Number(e.target.value))}
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    基準日と、その何か月前を比べます（年度で見るなら 12）。
+                  </p>
+                </div>
+
                 <div className="col-span-2">
-                  <label className="block text-xs text-slate-400 mb-1">
-                    {calcType === "longitudinal" ? "値の並び（軽い→重い の順に、カンマ区切り）" : "当てはまりとみなす値（カンマ区切り）"}
-                  </label>
-                  <input className={inputClass} style={inputStyle} value={order} onChange={(e) => setOrder(e.target.value)} placeholder="A, B, C" />
-                  {calcType === "longitudinal" && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      この並びの上で「同じか手前」なら維持・改善として数えます。両方の時点に観測がある人だけが分母です。
+                  <label className="block text-xs text-slate-400 mb-1">値の並び（軽い → 重い の順に）</label>
+                  {attrValues.length === 0 ? (
+                    <p className="text-[11px] text-amber-300">
+                      属性を選ぶと、辞書に登録された値が並びます。値が出ないときは、
+                      データセット管理の属性辞書で語彙を登録してください。
                     </p>
+                  ) : (
+                    <>
+                      <div className="flex gap-1.5 flex-wrap mb-2">
+                        {attrValues.filter((v) => !order.includes(v)).map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            className="px-2 py-1 rounded text-[11px] border text-slate-300"
+                            style={{ borderColor: "var(--border)" }}
+                            onClick={() => setOrder([...order, v])}
+                          >
+                            ＋ {v}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="space-y-1">
+                        {order.map((v, i) => (
+                          <div key={v} className="flex items-center gap-2 text-xs text-slate-200">
+                            <span className="w-5 text-slate-500">{i + 1}.</span>
+                            <span className="flex-1">{v}</span>
+                            <button
+                              type="button" disabled={i === 0}
+                              className="px-1.5 rounded border text-slate-400 disabled:opacity-30"
+                              style={{ borderColor: "var(--border)" }}
+                              onClick={() => {
+                                const next = [...order];
+                                [next[i - 1], next[i]] = [next[i]!, next[i - 1]!];
+                                setOrder(next);
+                              }}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button" disabled={i === order.length - 1}
+                              className="px-1.5 rounded border text-slate-400 disabled:opacity-30"
+                              style={{ borderColor: "var(--border)" }}
+                              onClick={() => {
+                                const next = [...order];
+                                [next[i], next[i + 1]] = [next[i + 1]!, next[i]!];
+                                setOrder(next);
+                              }}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              className="px-1.5 rounded border text-slate-400"
+                              style={{ borderColor: "var(--border)" }}
+                              onClick={() => setOrder(order.filter((x) => x !== v))}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      {order.length < 2 && (
+                        <p className="text-[11px] text-amber-300 mt-1">2つ以上選んでください。</p>
+                      )}
+                    </>
                   )}
                 </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">「維持・改善」とみなす向き</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {([
+                      ["same_or_earlier", "並びの上で同じか手前なら維持・改善"],
+                      ["same_or_later", "並びの上で同じか後ろなら維持・改善"],
+                    ] as const).map(([k, lbl]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className={`px-3 py-1.5 rounded-lg text-xs border ${improvedWhen === k ? "text-white bg-indigo-600 border-indigo-500" : "text-slate-300"}`}
+                        style={improvedWhen === k ? {} : { borderColor: "var(--border)" }}
+                        onClick={() => setImprovedWhen(k)}
+                      >
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    向きを間違えると、改善と悪化が入れ替わったまま値が出ます（エラーにはなりません）。
+                    {order.length >= 2 && (
+                      <>
+                        {" "}いまの設定では、
+                        <strong className="text-slate-300">
+                          「{order[order.length - 1]}」から「{order[0]}」へ動いた人
+                        </strong>
+                        は{improvedWhen === "same_or_earlier" ? "維持・改善" : "悪化"}に数えます。
+                      </>
+                    )}
+                  </p>
+                </div>
+
+                <FilterRows
+                  label="分母に入れる人の絞り込み（任意）"
+                  hint="基準時点でこの条件を満たす人だけを分母にします。両方の時点に観測がある人だけが数えられます。"
+                  rows={longFilters}
+                  setRows={setLongFilters}
+                  keyChoices={keyChoices}
+                  valuesFor={valuesFor}
+                />
+              </div>
+            )}
+
+            {calcType === "cross" && (
+              <div className="grid grid-cols-2 gap-3">
+                <FilterRows
+                  label="条件（すべて満たす人を数えます）"
+                  hint="属性を選び、当てはまりとみなす値を選びます。条件を足すと AND になります。"
+                  rows={conditions}
+                  setRows={setConditions}
+                  keyChoices={keyChoices}
+                  valuesFor={valuesFor}
+                  allowEmpty={false}
+                />
+                <div className="col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">集計方法</label>
+                  <div className="flex gap-2">
+                    {([
+                      ["count", "人数を数える"],
+                      ["rate", "割合を出す（条件に当てはまる人 ÷ 分母）"],
+                    ] as const).map(([k, lbl]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className={`px-3 py-1.5 rounded-lg text-xs border ${crossMethod === k ? "text-white bg-indigo-600 border-indigo-500" : "text-slate-300"}`}
+                        style={crossMethod === k ? {} : { borderColor: "var(--border)" }}
+                        onClick={() => setCrossMethod(k)}
+                      >
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {crossMethod === "rate" && (
+                  <FilterRows
+                    label="分母の条件（任意）"
+                    hint="指定しないと、その時点に観測がある人すべてが分母になります。"
+                    rows={denomConditions}
+                    setRows={setDenomConditions}
+                    keyChoices={keyChoices}
+                    valuesFor={valuesFor}
+                  />
+                )}
+                <p className="col-span-2 text-[11px] text-slate-500">
+                  個人が特定されうるため、分母が5人を下回る時点では値を出しません。
+                </p>
               </div>
             )}
           </div>

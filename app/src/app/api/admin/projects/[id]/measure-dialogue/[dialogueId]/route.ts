@@ -7,6 +7,7 @@ import { requireProjectAccess } from "@/lib/tenant";
 import { queryOne } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { turnStateOf, type TurnColumns } from "@/lib/ai/asyncTurn";
+import { listProposals } from "@/lib/dialogue/service";
 
 type Params = { params: { id: string; dialogueId: string } };
 
@@ -23,6 +24,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     `SELECT d.id, d.issue_hypothesis_id, d.title, d.status, d.current_step,
             d.messages, d.approaches, d.evidence, d.experiments, d.indicators, d.costs,
             d.turn_status, d.turn_error, d.turn_started_at::text AS turn_started_at,
+            d.data_state,
             d.committed_at::text, d.created_at::text, d.updated_at::text,
             h.title AS hypothesis_title
      FROM measure_dialogues d
@@ -34,5 +36,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!row) {
     return NextResponse.json({ data: null, error: "対話が見つかりません" }, { status: 404 });
   }
-  return NextResponse.json({ data: { ...row, ...turnStateOf(row) }, error: null });
+  // D6: 提案（承認カード）も一緒に返す。ポーリングの度に別の往復をしないため
+  const proposals = await listProposals(params.id, "measure", params.dialogueId);
+  return NextResponse.json({ data: { ...row, ...turnStateOf(row), proposals }, error: null });
 }

@@ -803,6 +803,12 @@ export interface MeasureMessage {
   content: string;
   step?: MeasureStep;
   suggestions?: string[];
+  /**
+   * D6: サーバが差し込んだデータ行（指標の計算結果・不足の案内・承認や取込の記録）。
+   * **担当者の発言ではない。** 画面はこれを吹き出しではなく記録として描く。
+   * AI から見ると user ロールの発言なので、履歴には残り、次のターンでも参照できる。
+   */
+  kind?: "data";
 }
 
 export interface MeasureDialogueData {

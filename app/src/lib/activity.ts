@@ -37,7 +37,9 @@ export type ActivityEntity =
   | "key_type"
   | "indicator"
   | "indicator_target"
-  | "indicator_value";
+  | "indicator_value"
+  /** 対話からの提案（承認されるまで何も作らない。設計 §10-3） */
+  | "proposal";
 
 export type ActivityAction =
   | "create"
