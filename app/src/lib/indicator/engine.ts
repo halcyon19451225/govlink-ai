@@ -147,7 +147,12 @@ async function computeAggregateOnRows(
   spec: AggregateSpec,
   ds: DatasetRow,
   versionId: string,
+  group?: GroupScope,
 ): Promise<ComputeResult> {
+  // 集計済みの行は「誰の行か」を持たない。群で分けられるふりをしない
+  if (group) {
+    return { ok: false, missing: [{ reason: "group_not_supported", datasetId: ds.id, datasetName: ds.name, kind: ds.kind, arm: group.arm }] };
+  }
   const cols = Array.isArray(ds.schema) ? (ds.schema as { name: string; role: string }[]) : [];
   const has = (name: string) => cols.some((c) => c.name === name);
   const missing: Missing[] = [];
@@ -208,14 +213,49 @@ const LATEST_OBS = `
    WHERE o.project_id = $PROJ AND o.attr_key = $ATTR
      AND o.dataset_version_id = ANY($VERS::uuid[])
      AND o.observed_at <= $AT::date
+     $EXTRA
    ORDER BY o.sid, o.observed_at DESC`;
 
-function obsCte(alias: string, projIdx: number, attrIdx: number, versIdx: number, atIdx: number): string {
+function obsCte(
+  alias: string,
+  projIdx: number,
+  attrIdx: number,
+  versIdx: number,
+  atIdx: number,
+  extra = "",
+): string {
   return `${alias} AS (${LATEST_OBS
     .replace("$PROJ", `$${projIdx}`)
     .replace("$ATTR", `$${attrIdx}`)
     .replace("$VERS", `$${versIdx}`)
-    .replace("$AT", `$${atIdx}`)})`;
+    .replace("$AT", `$${atIdx}`)
+    .replace("$EXTRA", extra)})`;
+}
+
+// ── 群別（介入群・対照群）────────────────────────────────
+//
+// 評価では「群ごとに同じ指標を出して、差は評価側で取る」（設計 §10-4）。
+// **群で分けられるのは個票から計算する指標だけ。** 集計データは「どの行が誰か」を
+// 持たないので、後から人で分けることはできない（分けられるふりをすると、
+// 全体の値を群の値として並べてしまう — 一番まずい間違え方）。
+
+/** どの対象群の、どの群か */
+export interface GroupScope {
+  cohortId: string;
+  arm: string;
+}
+
+/**
+ * 観測を、その群に割り付けられた人だけに絞る条件を作る。
+ * 割付は `experiment_assignments`（凍結済み）から引く。
+ */
+function groupSql(group: GroupScope | undefined, params: unknown[]): string {
+  if (!group) return "";
+  params.push(group.cohortId);
+  const cohortIdx = params.length;
+  params.push(group.arm);
+  return ` AND o.sid IN (SELECT a.sid FROM experiment_assignments a
+                          WHERE a.cohort_id = $${cohortIdx}::uuid AND a.arm = $${params.length})`;
 }
 
 /** 集計型（個票の箱）。属性の観測を人単位で集める */
@@ -225,10 +265,12 @@ async function computeAggregateOnObservations(
   ds: DatasetRow,
   versionId: string,
   asOf: string,
+  group?: GroupScope,
 ): Promise<ComputeResult> {
   const params: unknown[] = [projectId, spec.measure, [versionId], asOf];
+  const extra = groupSql(group, params);
   const rows = await query<{ n: number; s: string | null; a: string | null }>(
-    `WITH ${obsCte("latest", 1, 2, 3, 4)}
+    `WITH ${obsCte("latest", 1, 2, 3, 4, extra)}
      SELECT COUNT(*)::int AS n, SUM(value_num) AS s, AVG(value_num) AS a FROM latest`,
     params,
   );
@@ -262,6 +304,7 @@ async function computeLongitudinal(
   spec: LongitudinalSpec,
   ds: DatasetRow,
   asOf: string,
+  group?: GroupScope,
 ): Promise<ComputeResult> {
   if (ds.kind !== "individual") {
     return { ok: false, missing: [{ reason: "attr_missing", datasetId: ds.id, datasetName: ds.name, kind: ds.kind, attrKey: spec.attrKey }] };
@@ -290,13 +333,15 @@ async function computeLongitudinal(
     projectId, spec.attrKey, [nowV.versionId], asOf, [pastV.versionId], pastAsOf,
     JSON.stringify(orderRows),
   ];
+  // 2時点とも同じ群に絞る（片方だけ絞ると分母と分子が食い違う）
+  const extra = groupSql(group, params);
   const rows = await query<{ denom: number; numer: number }>(
     `WITH ord AS (
         SELECT (e ->> 'code') AS code, (e ->> 'pos')::int AS pos
           FROM jsonb_array_elements($7::jsonb) AS e
      ),
-     ${obsCte("now_obs", 1, 2, 3, 4)},
-     ${obsCte("past_obs", 1, 2, 5, 6)}
+     ${obsCte("now_obs", 1, 2, 3, 4, extra)},
+     ${obsCte("past_obs", 1, 2, 5, 6, extra)}
      SELECT COUNT(*)::int AS denom,
             COUNT(*) FILTER (WHERE ${spec.improvedWhen === "same_or_earlier" ? "n_ord.pos <= p_ord.pos" : "n_ord.pos >= p_ord.pos"})::int AS numer
        FROM past_obs p
@@ -334,12 +379,14 @@ async function computeCross(
   ds: DatasetRow,
   versionId: string,
   asOf: string,
+  group?: GroupScope,
 ): Promise<ComputeResult> {
   if (ds.kind !== "individual") {
     return { ok: false, missing: [{ reason: "attr_missing", datasetId: ds.id, datasetName: ds.name, kind: ds.kind, attrKey: spec.conditions[0]?.key ?? "" }] };
   }
   const countMatching = async (conds: Filter[]): Promise<number> => {
     const params: unknown[] = [projectId, [versionId], asOf];
+    const extra = groupSql(group, params);
     const ctes: string[] = [];
     const joins: string[] = [];
     conds.forEach((c, i) => {
@@ -349,7 +396,8 @@ async function computeCross(
       const inIdx = params.length;
       ctes.push(`c${i} AS (${LATEST_OBS
         .replace("$PROJ", "$1").replace("$ATTR", `$${attrIdx}`)
-        .replace("$VERS", "$2").replace("$AT", "$3")})`);
+        .replace("$VERS", "$2").replace("$AT", "$3")
+        .replace("$EXTRA", extra)})`);
       joins.push(i === 0
         ? `FROM c0 WHERE c0.value_code = ANY($${inIdx}::text[])`
         : `AND EXISTS (SELECT 1 FROM c${i} WHERE c${i}.sid = c0.sid AND c${i}.value_code = ANY($${inIdx}::text[]))`);
@@ -367,11 +415,16 @@ async function computeCross(
   }
   const denom = spec.denominatorConditions && spec.denominatorConditions.length > 0
     ? await countMatching(spec.denominatorConditions)
-    : (await query<{ n: number }>(
-        `SELECT COUNT(DISTINCT sid)::int AS n FROM observations
-          WHERE project_id = $1 AND dataset_version_id = $2 AND observed_at <= $3::date`,
-        [projectId, versionId, asOf],
-      ))[0]?.n ?? 0;
+    : await (async () => {
+        const p: unknown[] = [projectId, versionId, asOf];
+        const ex = groupSql(group, p).replace(/\bo\.sid\b/g, "sid");
+        const rows = await query<{ n: number }>(
+          `SELECT COUNT(DISTINCT sid)::int AS n FROM observations o
+            WHERE project_id = $1 AND dataset_version_id = $2 AND observed_at <= $3::date${ex}`,
+          p,
+        );
+        return rows[0]?.n ?? 0;
+      })();
   if (denom === 0) {
     return { ok: false, missing: [{ reason: "attr_missing", datasetId: ds.id, datasetName: ds.name, kind: ds.kind, attrKey: spec.conditions[0]?.key ?? "" }] };
   }
@@ -386,6 +439,7 @@ async function computeFormula(
   projectId: string,
   expression: string,
   asOf: string,
+  group?: GroupScope,
 ): Promise<ComputeResult> {
   const parsed = parseFormula(expression);
   if (!parsed.ok) return { ok: false, missing: [{ reason: "dependency_missing", neededAsOf: asOf }] };
@@ -394,13 +448,21 @@ async function computeFormula(
   const used: { indicatorId: string; valueId: string; value: number }[] = [];
   const missing: Missing[] = [];
   for (const id of Array.from(new Set(parsed.refs))) {
+    // 群別に出すときは、参照先も**同じ群の値**を見る。
+    // 全体の値を混ぜると、群の比較のつもりで全体との比較になる
     const rows = await query<{ id: string; value: string | null; label: string }>(
-      `SELECT v.id, v.value, i.label
-         FROM indicator_values v JOIN indicators i ON i.id = v.indicator_id
-        WHERE v.indicator_id = $1 AND i.project_id = $2 AND v.scope = 'plan'
-          AND v.as_of = $3::date AND v.cohort_id IS NULL AND v.arm IS NULL
-        ORDER BY v.computed_at DESC LIMIT 1`,
-      [id, projectId, asOf],
+      group
+        ? `SELECT v.id, v.value, i.label
+             FROM indicator_values v JOIN indicators i ON i.id = v.indicator_id
+            WHERE v.indicator_id = $1 AND i.project_id = $2
+              AND v.as_of = $3::date AND v.cohort_id = $4::uuid AND v.arm = $5
+            ORDER BY v.computed_at DESC LIMIT 1`
+        : `SELECT v.id, v.value, i.label
+             FROM indicator_values v JOIN indicators i ON i.id = v.indicator_id
+            WHERE v.indicator_id = $1 AND i.project_id = $2 AND v.scope = 'plan'
+              AND v.as_of = $3::date AND v.cohort_id IS NULL AND v.arm IS NULL
+            ORDER BY v.computed_at DESC LIMIT 1`,
+      group ? [id, projectId, asOf, group.cohortId, group.arm] : [id, projectId, asOf],
     );
     const r = rows[0];
     if (!r || r.value === null) {
@@ -433,12 +495,14 @@ export async function computeIndicator(
   projectId: string,
   spec: IndicatorSpec,
   asOf: string,
+  /** 群別に出すとき（評価の介入群・対照群）。省略すると全体（設計 §10-4） */
+  group?: GroupScope,
 ): Promise<ComputeResult> {
-  if (spec.type === "formula") return computeFormula(projectId, spec.expression, asOf);
+  if (spec.type === "formula") return computeFormula(projectId, spec.expression, asOf, group);
   if (spec.type === "longitudinal") {
     const ds = await loadDataset(projectId, spec.datasetId);
     if (!ds) return { ok: false, missing: [{ reason: "no_version_before_as_of", datasetId: spec.datasetId, neededAsOf: asOf, latestAvailableAsOf: null }] };
-    return computeLongitudinal(projectId, spec, ds, asOf);
+    return computeLongitudinal(projectId, spec, ds, asOf, group);
   }
 
   const resolved = await resolveInputs(projectId, spec, asOf);
@@ -447,10 +511,10 @@ export async function computeIndicator(
   const version = resolved.versions[0]!;
 
   const result = spec.type === "cross"
-    ? await computeCross(projectId, spec, ds, version.datasetVersionId, asOf)
+    ? await computeCross(projectId, spec, ds, version.datasetVersionId, asOf, group)
     : ds.kind === "individual"
-      ? await computeAggregateOnObservations(projectId, spec, ds, version.datasetVersionId, asOf)
-      : await computeAggregateOnRows(spec, ds, version.datasetVersionId);
+      ? await computeAggregateOnObservations(projectId, spec, ds, version.datasetVersionId, asOf, group)
+      : await computeAggregateOnRows(spec, ds, version.datasetVersionId, group);
 
   // 使った版は、どのタイプでも同じ形で残す
   if (result.ok && result.inputs.versions.length === 0) result.inputs.versions = resolved.versions;

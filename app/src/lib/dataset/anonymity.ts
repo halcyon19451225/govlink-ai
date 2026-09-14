@@ -39,7 +39,7 @@ function cellKey(row: WideRow, qi: AttributeDefinition[], levels: Record<string,
       const v = generalizeCode(d, String(raw), levels[d.key] ?? 0);
       return v ?? "?";
     })
-    .join("");
+    .join("\u001f");
 }
 
 function groupBy(rows: WideRow[], qi: AttributeDefinition[], levels: Record<string, number>) {

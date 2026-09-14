@@ -217,6 +217,37 @@ try {
     /EXISTS \(SELECT 1 FROM cohorts WHERE id = OLD\.cohort_id\)/.test(migs));
   check("種の指紋を残す（種そのものではない）",
     /seed_digest/.test(migs) && /種そのものは持たない/.test(migs));
+
+  // ── 9. 群別の算出（D7-b2）───────────────────────────
+  //   評価は「群ごとに同じ指標を出して、差は評価側で取る」（設計 §10-4）。
+  //   **集計データを群で分けられるふりをしない**のが一番大事な線。
+  //   全体の値を群の値として並べると、効果があるように見えてしまう。
+  console.log("9. 群別の算出");
+  const engine = read(join(SRC, "lib", "indicator", "engine.ts"));
+  const isvc = read(join(SRC, "lib", "indicator", "service.ts"));
+  const spec = read(join(SRC, "lib", "indicator", "spec.ts"));
+  check("エンジンが群を受け取る", /group\?: GroupScope/.test(engine));
+  check("群の絞り込みは割付から引く（凍結済みの表）",
+    /FROM experiment_assignments a/.test(engine) && /a\.arm = \$/.test(engine));
+  check("集計データは群別に出せないと断る",
+    /reason: "group_not_supported"/.test(engine));
+  check("断る理由が「どの行が誰か分からない」と説明している",
+    /どの行が誰のものか分からない/.test(spec));
+  check("不足の理由に group_not_supported がある", /group_not_supported/.test(spec));
+  check("経年比較型は2時点とも同じ群に絞る",
+    /2時点とも同じ群に絞る/.test(engine) &&
+    /obsCte\("now_obs", 1, 2, 3, 4, extra\)/.test(engine) &&
+    /obsCte\("past_obs", 1, 2, 5, 6, extra\)/.test(engine));
+  check("計算式型は参照先も同じ群の値を見る",
+    /v\.cohort_id = \$4::uuid AND v\.arm = \$5/.test(engine));
+  check("群ごとに算出する関数がある", /export async function computeByArm/.test(isvc));
+  check("群は割付から取る（画面が並べた群ではない）",
+    /SELECT DISTINCT a\.arm[\s\S]{0,200}experiment_assignments/.test(isvc));
+  check("割付が無ければ算出しない", /この対象群にはまだ割付がありません/.test(isvc));
+  check("記録はサービス層の1本を通る（群別も同じ）",
+    /computeAndRecord\(actor, projectId, indicatorId, asOf, \{[\s\S]{0,120}group: \{ cohortId, arm \}/.test(isvc));
+  check("差（効果）をここで丸めない", /差（介入効果）はここでは取らない/.test(isvc));
+  check("群別の値を並べて読む関数がある", /export async function listArmValues/.test(isvc));
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

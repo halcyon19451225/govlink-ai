@@ -17,7 +17,7 @@
 import type { PoolClient } from "pg";
 import { query, queryOne, transaction } from "@/lib/db";
 import { logActivity, type Actor } from "@/lib/activity";
-import { computeIndicator } from "./engine";
+import { computeIndicator, type GroupScope } from "./engine";
 import { validateSpec, type IndicatorSpec, type Missing } from "./spec";
 
 /**
@@ -608,7 +608,13 @@ export async function computeAndRecord(
   projectId: string,
   indicatorId: string,
   asOf: string,
-  opts: { scope?: TargetScope; measureDesignId?: string | null; measureWorkId?: string | null } = {},
+  opts: {
+    scope?: TargetScope;
+    measureDesignId?: string | null;
+    measureWorkId?: string | null;
+    /** 群別に出すとき（評価の介入群・対照群。設計 §10-4） */
+    group?: GroupScope;
+  } = {},
 ): Promise<ComputeAndRecordResult> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) throw new IndicatorError("基準日は YYYY-MM-DD で指定してください");
   const ind = await getIndicator(projectId, indicatorId);
@@ -619,7 +625,7 @@ export async function computeAndRecord(
   const errs = validateSpec(ind.spec);
   if (errs.length > 0) throw new IndicatorError(`指標の設定が未完成です: ${errs[0]}`, 400);
 
-  const result = await computeIndicator(projectId, ind.spec as unknown as IndicatorSpec, asOf);
+  const result = await computeIndicator(projectId, ind.spec as unknown as IndicatorSpec, asOf, opts.group);
   if (!result.ok) {
     return { ok: false, indicatorId, label: ind.label, missing: result.missing };
   }
@@ -628,6 +634,7 @@ export async function computeAndRecord(
     ...(opts.scope ? { scope: opts.scope } : {}),
     ...(opts.measureDesignId !== undefined ? { measureDesignId: opts.measureDesignId } : {}),
     ...(opts.measureWorkId !== undefined ? { measureWorkId: opts.measureWorkId } : {}),
+    ...(opts.group ? { cohortId: opts.group.cohortId, arm: opts.group.arm } : {}),
     value: result.value,
     numerator: result.numerator,
     denominator: result.denominator,
@@ -666,4 +673,75 @@ export async function computeMany(
     }
   }
   return out;
+}
+
+
+// ── 群別の算出（評価・D7）─────────────────────────────────
+
+export interface ArmResult {
+  arm: string;
+  result: ComputeAndRecordResult;
+}
+
+/**
+ * 評価時点で、**群ごとに同じ指標を出す**（設計 §10-4）。
+ *
+ * 差（介入効果）はここでは取らない。取るのは評価側で、
+ * ここがするのは「同じ測り方で、群ごとの値を、同じ形で履歴に積む」ことだけ。
+ * 差を先に丸めてしまうと、あとから分母や人数を確かめられなくなる。
+ *
+ * 群は割付（`experiment_assignments`）から取る。割付は凍結されているので、
+ * **評価のたびに群が変わることはない**。
+ */
+export async function computeByArm(
+  actor: Actor,
+  projectId: string,
+  indicatorId: string,
+  asOf: string,
+  cohortId: string,
+  opts: { scope?: TargetScope; measureDesignId?: string | null; measureWorkId?: string | null } = {},
+): Promise<ArmResult[]> {
+  const arms = await query<{ arm: string }>(
+    `SELECT DISTINCT a.arm
+       FROM experiment_assignments a
+       JOIN cohorts c ON c.id = a.cohort_id
+      WHERE a.cohort_id = $1 AND c.project_id = $2
+      ORDER BY a.arm`,
+    [cohortId, projectId],
+  );
+  if (arms.length === 0) {
+    throw new IndicatorError("この対象群にはまだ割付がありません（先に割付を作ってください）", 404);
+  }
+  const out: ArmResult[] = [];
+  for (const { arm } of arms) {
+    out.push({
+      arm,
+      result: await computeAndRecord(actor, projectId, indicatorId, asOf, {
+        ...opts,
+        group: { cohortId, arm },
+      }),
+    });
+  }
+  return out;
+}
+
+/** その評価時点で、群別に記録済みの値を並べる（画面と報告書が読む） */
+export async function listArmValues(
+  projectId: string,
+  indicatorId: string,
+  cohortId: string,
+  asOf: string,
+): Promise<IndicatorValueRow[]> {
+  return query<IndicatorValueRow>(
+    `SELECT DISTINCT ON (v.arm)
+            v.id, v.indicator_id, v.as_of::text AS as_of, v.scope, v.measure_design_id, v.measure_work_id,
+            v.cohort_id, v.arm, v.value, v.value_text, v.numerator, v.denominator, v.n, v.inputs, v.note,
+            v.computed_at::text AS computed_at, v.actor, v.via
+       FROM indicator_values v
+       JOIN indicators i ON i.id = v.indicator_id
+      WHERE v.indicator_id = $1 AND i.project_id = $2
+        AND v.cohort_id = $3::uuid AND v.as_of = $4::date AND v.arm IS NOT NULL
+      ORDER BY v.arm, v.computed_at DESC`,
+    [indicatorId, projectId, cohortId, asOf],
+  );
 }

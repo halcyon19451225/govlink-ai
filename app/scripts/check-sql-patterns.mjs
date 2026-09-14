@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * SQL の書き方の静的検査（横断）
+ * ソースの書き方の静的検査（横断）— SQL の形と、生の制御文字
  *
  * この検査を作った理由:
  *   同じ不正SQLで2度事故を起こしたため。
@@ -108,6 +108,24 @@ for (const [rel, guard] of fixedRoutes) {
 // （①の検査が広すぎて集約まで潰していないことの確認）
 const aggFilterFiles = files.filter((f) => /json_agg\([\s\S]{0,400}?\)\s*FILTER \(WHERE /.test(readFileSync(f, "utf8")));
 check("集約への FILTER（json_agg）は温存されている", aggFilterFiles.length > 0);
+
+// ── ④ ソースに生の制御文字を置かない ───────────────────────
+//   区切りに使う制御文字（NUL・US など）を**実バイトのまま**書いたソースが3つあった。
+//   意味どおりに動いてはいたが、
+//     ・画面でも grep でも見えない（何で区切っているのか読めない）
+//     ・git と多くの道具がそのファイルを「バイナリ」として扱い、差分が出ない
+//     ・編集の途中で欠けても気づけない
+//   書くなら \u0000 のようにエスケープで書く。
+const ctrlOffenders = [];
+for (const f of files) {
+  const text = readFileSync(f, "utf8");
+  // 改行・タブ・復帰は当然あってよい
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text)) {
+    ctrlOffenders.push(relative(APP_ROOT, f));
+  }
+}
+for (const f of ctrlOffenders) console.error(`  \u2717 ${f}: 生の制御文字がソースに入っている`);
+check("ソースに生の制御文字が入っていない", ctrlOffenders.length === 0);
 
 console.log(`check-sql-patterns: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
