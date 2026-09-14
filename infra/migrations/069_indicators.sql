@@ -174,6 +174,24 @@ BEGIN
   END IF;
 END $$;
 
+-- 4-2b. 旧列を落とす（**4-3 より前に**）
+--   目標と値の正本は indicator_targets / indicator_values になった。旧列を残すと
+--   「どちらが正しいのか」が生まれ、二重入力の問題が形を変えて戻る。**落とす。**
+--   （previous_value / previous_target は「前期計画の値」という別の概念なので残す）
+--
+--   ⚠ **落とす位置が 4-3 より後ろだと、このマイグレーションは実データで失敗する。**
+--      indicators.target は NOT NULL・既定値なし（旧 kpis.target）。列が残ったまま
+--      4-3 ② が指標を起こすと
+--        null value in column "target" of relation "indicators" violates not-null constraint
+--      で全体がロールバックする。kpi_id を持たない measure_indicators が1行でもあれば起きる。
+--      （2026-09-14 に実データで発生。スクラッチ DB には該当行が無く、すり抜けていた）
+ALTER TABLE indicators DROP COLUMN IF EXISTS target;
+ALTER TABLE indicators DROP COLUMN IF EXISTS current;
+ALTER TABLE indicators DROP COLUMN IF EXISTS achievement_condition;
+ALTER TABLE indicators DROP COLUMN IF EXISTS target_deadline;
+ALTER TABLE indicators DROP COLUMN IF EXISTS baseline_value;
+ALTER TABLE indicators DROP COLUMN IF EXISTS baseline_year;
+
 -- 4-3. measure_indicators を割当表にする
 ALTER TABLE measure_indicators ADD COLUMN IF NOT EXISTS indicator_id UUID REFERENCES indicators(id) ON DELETE CASCADE;
 
@@ -182,19 +200,24 @@ UPDATE measure_indicators SET indicator_id = kpi_id
  WHERE indicator_id IS NULL AND kpi_id IS NOT NULL;
 
 --   ② 持たない行は、そのラベル・単位から指標を1つ起こして紐づける（origin='measure'）
-WITH created AS (
-  INSERT INTO indicators (project_id, label, unit, description, data_source, frequency, base_day,
-                          origin, indicator_type)
-  SELECT mi.project_id, mi.label, COALESCE(mi.unit, ''), mi.definition, mi.data_source, mi.frequency, mi.base_day,
-         'measure', 'process'
-  FROM measure_indicators mi
-  WHERE mi.indicator_id IS NULL
-  RETURNING id, project_id, label
-)
+--   ⚠ ラベルで突き合わせない。同じ計画に同じラベルの行が2つあると、どちらにどの指標が
+--      付くかが決まらず、指標が孤立する。measure_indicators.id を鍵にして1対1で結ぶ。
+CREATE TEMP TABLE _mi_new_indicators ON COMMIT DROP AS
+  SELECT mi.id AS mi_id, gen_random_uuid() AS indicator_id, mi.project_id, mi.label,
+         COALESCE(mi.unit, '') AS unit, mi.definition, mi.data_source, mi.frequency, mi.base_day
+    FROM measure_indicators mi
+   WHERE mi.indicator_id IS NULL;
+
+INSERT INTO indicators (id, project_id, label, unit, description, data_source, frequency, base_day,
+                        origin, indicator_type)
+SELECT n.indicator_id, n.project_id, n.label, n.unit, n.definition, n.data_source, n.frequency, n.base_day,
+       'measure', 'process'
+  FROM _mi_new_indicators n;
+
 UPDATE measure_indicators mi
-   SET indicator_id = c.id
-  FROM created c
- WHERE mi.indicator_id IS NULL AND c.project_id = mi.project_id AND c.label = mi.label;
+   SET indicator_id = n.indicator_id
+  FROM _mi_new_indicators n
+ WHERE mi.id = n.mi_id;
 
 --   ③ 施策・取組の目標を indicator_targets へ
 INSERT INTO indicator_targets (indicator_id, scope, measure_design_id, measure_work_id,
@@ -224,16 +247,7 @@ JOIN measure_indicators mi ON mi.id = r.measure_indicator_id
 WHERE mi.indicator_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM indicator_values v WHERE v.legacy_result_id = r.id);
 
--- 4-5. 旧列を落とす
---   目標と値の正本は indicator_targets / indicator_values になった。旧列を残すと
---   「どちらが正しいのか」が生まれ、二重入力の問題が形を変えて戻る。**落とす。**
---   （previous_value / previous_target は「前期計画の値」という別の概念なので残す）
-ALTER TABLE indicators DROP COLUMN IF EXISTS target;
-ALTER TABLE indicators DROP COLUMN IF EXISTS current;
-ALTER TABLE indicators DROP COLUMN IF EXISTS achievement_condition;
-ALTER TABLE indicators DROP COLUMN IF EXISTS target_deadline;
-ALTER TABLE indicators DROP COLUMN IF EXISTS baseline_value;
-ALTER TABLE indicators DROP COLUMN IF EXISTS baseline_year;
+-- 4-5. 旧列の削除は 4-2b（4-3 より前）へ移した。理由はそちらに書いてある。
 
 -- ────────────────────────────────────────────────────────────────
 -- 5. 互換ビュー kpis（読み取り専用）

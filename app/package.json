@@ -28,6 +28,7 @@
     "check:libera": "node scripts/check-libera.mjs",
     "check:asyncturn": "node scripts/check-async-turn.mjs",
     "migrate": "node scripts/run-migration.mjs",
+    "rehearse": "node scripts/rehearse-migration.mjs",
     "check:drift": "node scripts/check-schema-drift.mjs",
     "check:issue": "node scripts/check-issue-integrity.mjs",
     "check:copy": "node scripts/check-copy-transcript.mjs",
