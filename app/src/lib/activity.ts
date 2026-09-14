@@ -39,7 +39,11 @@ export type ActivityEntity =
   | "indicator_target"
   | "indicator_value"
   /** 対話からの提案（承認されるまで何も作らない。設計 §10-3） */
-  | "proposal";
+  | "proposal"
+  /** 対象群 */
+  | "cohort"
+  /** 実験の割付（生成したら動かせない。設計 §5-3） */
+  | "experiment_assignment";
 
 export type ActivityAction =
   | "create"

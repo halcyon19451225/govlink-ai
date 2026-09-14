@@ -9,7 +9,7 @@
     "lint": "next lint",
     "check:vocab": "node scripts/check-status-vocab.mjs",
     "check:logicmodel": "node scripts/check-logicmodel-elements.mjs",
-    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest && npm run check:clone && npm run check:plandoc && npm run check:schedule && npm run check:report && npm run check:manual && npm run check:libera && npm run check:asyncturn && npm run check:issue && npm run check:measureint && npm run check:measureind && npm run check:copy && npm run check:evalresults && npm run check:evalflow && npm run check:sqlpat && npm run check:evalreport && npm run check:evaljudgment && npm run check:register && npm run check:identity && npm run check:tenant && npm run check:ordoadmin && npm run check:ratelimit && npm run check:provisioning && npm run check:dataset && npm run check:generic && npm run check:indicator && npm run check:audit && npm run check:proposal",
+    "check": "npm run check:vocab && npm run check:logicmodel && npm run check:consistency && npm run check:diff && npm run check:revise && npm run check:invoice && npm run check:measure && npm run check:aigateway && npm run check:expresults && npm run check:corpus && npm run check:corpusmatch && npm run check:harvest && npm run check:clone && npm run check:plandoc && npm run check:schedule && npm run check:report && npm run check:manual && npm run check:libera && npm run check:asyncturn && npm run check:issue && npm run check:measureint && npm run check:measureind && npm run check:copy && npm run check:evalresults && npm run check:evalflow && npm run check:sqlpat && npm run check:evalreport && npm run check:evaljudgment && npm run check:register && npm run check:identity && npm run check:tenant && npm run check:ordoadmin && npm run check:ratelimit && npm run check:provisioning && npm run check:dataset && npm run check:generic && npm run check:indicator && npm run check:audit && npm run check:proposal && npm run check:assign",
     "check:consistency": "node scripts/check-logicmodel-consistency.mjs",
     "check:diff": "node scripts/check-logicmodel-diff.mjs",
     "check:revise": "node scripts/check-logicmodel-revise.mjs",
@@ -53,6 +53,7 @@
     "check:indicator": "node scripts/check-indicator.mjs",
     "check:audit": "node scripts/check-audit.mjs",
     "check:proposal": "node scripts/check-proposal.mjs",
+    "check:assign": "node scripts/check-experiment-assign.mjs",
     "check:indicatorsvc": "node scripts/check-indicator-service.mjs"
   },
   "dependencies": {
