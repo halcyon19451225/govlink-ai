@@ -7,6 +7,8 @@ import { authOptions } from "@/lib/auth";
 import { transaction, isPgError, PgErrorCode } from "@/lib/db";
 import { checkLimit } from "@/lib/plan-limits";
 import { instantiateTemplate } from "@/lib/templates";
+import { createIndicatorTx } from "@/lib/indicator/service";
+import { actorFromSession } from "@/lib/activity";
 
 const kpiSchema = z.object({
   label: z.string().min(1, "KPI ラベルは必須です"),
@@ -117,6 +119,7 @@ export async function POST(req: NextRequest) {
       // 所属自治体はセッションのものに固定する（上でチェック済み）。
       // ⚠ ここに「名前で探して無ければ作る」を戻さないこと。テナント境界が壊れる
       const municipalityId = sessionMunId;
+      const actor = actorFromSession(session, "ui");
 
       const projectResult = await client.query<{ id: string }>(
         `INSERT INTO projects
@@ -159,20 +162,23 @@ export async function POST(req: NextRequest) {
           kpi.goal_index != null && goalIdMap[kpi.goal_index] != null
             ? goalIdMap[kpi.goal_index]
             : null;
-        await client.query(
-          `INSERT INTO kpis
-             (project_id, label, target, unit, goal_id,
-              indicator_type, previous_value, previous_target,
-              achievement_condition, target_deadline)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [
-            newProjectId, kpi.label, kpi.target, kpi.unit,
-            goalId, kpi.indicator_type,
-            kpi.previous_value ?? null, kpi.previous_target ?? null,
-            kpi.achievement_condition ?? null,
-            kpi.target_deadline ?? null,
-          ],
-        );
+        // 069 以降、指標の作成は指標管理のサービス層を通す（画面も AI も同じ経路・
+        //  activity_log に同じ形で残る。設計 §9-1・§10-5）。目標は indicator_targets へ
+        await createIndicatorTx(client, actor, newProjectId, {
+          label: kpi.label,
+          unit: kpi.unit,
+          indicatorType: kpi.indicator_type,
+          origin: "plan",
+          goalId: goalId ?? null,
+          previousValue: kpi.previous_value ?? null,
+          previousTarget: kpi.previous_target ?? null,
+          target: {
+            scope: "plan",
+            targetValue: kpi.target,
+            achievementCondition: kpi.achievement_condition ?? "gte",
+            targetDeadline: kpi.target_deadline ?? null,
+          },
+        });
       }
 
       return newProjectId;

@@ -9,6 +9,8 @@ import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
 import { query, transaction } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
+import { actorFromSession } from "@/lib/activity";
+import { listTargets, setTargetTx, updateIndicatorTx } from "@/lib/indicator/service";
 import { reviseLogicModel } from "@/lib/logicmodel/revise";
 import { LM_ELEMENT_SECTIONS } from "@/lib/plan/clone";
 import { sanitizeIntakeProposals, type IntakeProposal } from "@/lib/plan/handoverIntake";
@@ -41,6 +43,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, MODULE, "edit");
   if (deny) return deny;
+  if (!session) return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
 
   let raw: unknown;
   try {
@@ -73,6 +76,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
+    const actor = actorFromSession(session, "ui");
     const result = await transaction(async (client) => {
       const handover = await client.query<{ id: string; title: string; status: string }>(
         `SELECT id, title, status FROM plan_handovers
@@ -160,15 +164,23 @@ export async function POST(req: NextRequest, { params }: Params) {
       // ── KPI: 目標値・期限の見直し（数値提案があるときだけフラグを下ろす）──
       for (const p of proposals) {
         if (p.type !== "kpi_target") continue;
-        await client.query(
-          `UPDATE kpis SET
-             target = COALESCE($1::numeric, target),
-             target_deadline = COALESCE($2::date, target_deadline),
-             target_needs_review = CASE WHEN $1::numeric IS NOT NULL THEN false ELSE target_needs_review END,
-             updated_at = now()
-           WHERE id = $3 AND project_id = $4`,
-          [p.proposed_target, p.proposed_deadline, p.kpi_id, params.id],
-        );
+        // 069 以降、目標は indicator_targets にある。指標管理のサービス層を通す
+        // （提案のうち埋まっている項目だけを置き換え、残りは今の目標のまま）
+        const cur = (await listTargets(p.kpi_id)).find((t) => t.scope === "plan");
+        await setTargetTx(client, actor, params.id, p.kpi_id, {
+          scope: "plan",
+          targetValue:
+            p.proposed_target ?? (cur?.target_value != null ? Number(cur.target_value) : null),
+          targetDeadline: p.proposed_deadline ?? cur?.target_deadline ?? null,
+          baselineValue: cur?.baseline_value != null ? Number(cur.baseline_value) : null,
+          baselineAsOf: cur?.baseline_as_of ?? null,
+          achievementCondition: cur?.achievement_condition ?? "gte",
+          note: cur?.note ?? null,
+        });
+        // 数値の提案があったときだけ「要見直し」を下ろす
+        if (p.proposed_target != null) {
+          await updateIndicatorTx(client, actor, params.id, p.kpi_id, { targetNeedsReview: false });
+        }
         counts.kpi_targets++;
       }
 

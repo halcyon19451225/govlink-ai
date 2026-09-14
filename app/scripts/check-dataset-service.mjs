@@ -56,7 +56,14 @@ execFileSync("npx", ["--no-install", "esbuild", join(APP_ROOT, "src", "lib", "da
   { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT });
 
 const pg = require("pg");
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 60_000 });
+// ローカルの検証用 PostgreSQL は SSL を持たないことがある。
+// Aurora（本番・dev）に向けるときは SSL で繋ぐので、接続文字列で切り替える
+const useSsl = !/sslmode=disable/.test(process.env.DATABASE_URL) && !/host=\//.test(process.env.DATABASE_URL);
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+  connectionTimeoutMillis: 60_000,
+});
 const q = (s, p) => pool.query(s, p).then((r) => r.rows);
 const MUNI = "00000000-0000-4000-8000-00000000d2d2";
 const PROJECT = "00000000-0000-4000-8000-00000000d2d3";

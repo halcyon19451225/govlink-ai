@@ -7,6 +7,8 @@ import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
 import { inferTierFromHorizon } from "@/lib/outcome/tiers";
+import { actorFromSession } from "@/lib/activity";
+import { IndicatorError, createIndicator } from "@/lib/indicator/service";
 
 const achievementConditionEnum = z.enum(["lte", "lt", "gte", "gt", "eq"]);
 
@@ -91,24 +93,34 @@ export async function POST(
       "outcome_initial";
   }
 
-  const rows = await query<{ id: string }>(
-    `INSERT INTO kpis
-       (project_id, label, target, unit, goal_id, indicator_type,
-        previous_value, achievement_condition, target_deadline,
-        baseline_value, baseline_year, contributes_to_kpi_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-    [
-      params.id, label, target, unit,
-      goal_id ?? null, indicator_type,
-      previous_value ?? null,
-      achievement_condition ?? null,
-      target_deadline ?? null,
-      // baseline 未指定時は現在値を起点にする（到達度0%＝策定時から不変）
-      baseline_value ?? null,
-      baseline_year ?? null,
-      contributes_to_kpi_id ?? null,
-    ]
-  );
-
-  return NextResponse.json({ data: { id: rows[0]?.id }, error: null }, { status: 201 });
+  // 069 以降、指標の作成は指標管理のサービス層を通す。ここで INSERT を書かないこと
+  // （画面も AI も同じ経路 → activity_log に同じ形で残る。設計 §9-1・§10-5）
+  try {
+    const created = await createIndicator(actorFromSession(session, "ui"), params.id, {
+      label,
+      unit,
+      indicatorType: indicator_type,
+      origin: "plan",
+      goalId: goal_id ?? null,
+      contributesToId: contributes_to_kpi_id ?? null,
+      previousValue: previous_value ?? null,
+      target: {
+        scope: "plan",
+        targetValue: target,
+        achievementCondition: achievement_condition ?? "gte",
+        targetDeadline: target_deadline ?? null,
+        // 基準値が未指定なら、到達度の起点は目標を置いた時点では空のまま
+        // （最初の実績が入ったときに、その値が起点になる）
+        baselineValue: baseline_value ?? null,
+        baselineAsOf: baseline_year != null ? `${String(baseline_year).padStart(4, "0")}-04-01` : null,
+      },
+    });
+    return NextResponse.json({ data: { id: created.id }, error: null }, { status: 201 });
+  } catch (e) {
+    if (e instanceof IndicatorError) {
+      return NextResponse.json({ data: null, error: e.message }, { status: e.status });
+    }
+    console.error("POST kpis:", e);
+    return NextResponse.json({ data: null, error: "指標の登録に失敗しました" }, { status: 500 });
+  }
 }

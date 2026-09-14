@@ -8,9 +8,14 @@ function getPool(): Pool {
   if (!connectionString) {
     throw new Error('DATABASE_URL が設定されていません')
   }
+  // Aurora へは TLS で繋ぐ（既定）。**`sslmode=disable` を明示したときだけ**素で繋ぐ。
+  // 検証用のローカル PostgreSQL は TLS を持たないことがあり、
+  // 検査スクリプト（check:datasetsvc 等）が実サービス層をそのまま叩けるようにするため。
+  // 本番の接続文字列に sslmode=disable は書かないこと
+  const sslDisabled = /[?&]sslmode=disable\b/.test(connectionString)
   pool = new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: false },
+    ...(sslDisabled ? {} : { ssl: { rejectUnauthorized: false } }),
     max: 10,
     idleTimeoutMillis: 30_000,
     // ⚠ **Aurora Serverless v2 を min 0 ACU で運用しているため、休止からの復帰に

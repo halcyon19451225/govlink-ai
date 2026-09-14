@@ -53,11 +53,14 @@ const PROJECT_MANAGED = new Set([
   "updated_at",
 ]);
 
-const KPI_MANAGED = new Set([
+/**
+ * 指標（旧 kpis）でこちらが値を決める列。
+ * 069 で目標（基準値・目標値・達成条件・期限）は `indicator_targets` に移ったので、
+ * ここには現れない。前期の目標は下の「② 目標」で作り直す。
+ */
+const INDICATOR_MANAGED = new Set([
   "id",
   "project_id",
-  "baseline_value",
-  "baseline_year",
   "previous_value",
   "previous_target",
   "goal_id",
@@ -200,9 +203,6 @@ export async function cloneNextPeriod(
     const ms = new Date(input.planStartDate).getTime() - new Date(source.plan_start_date).getTime();
     if (Number.isFinite(ms)) dayShift = Math.round(ms / 86_400_000);
   }
-  const baselineYear = source.plan_end_date
-    ? new Date(source.plan_end_date).getFullYear()
-    : null;
 
   // ── 1. projects ─────────────────────────────────
   const pCols = await copyColsOf(client, "projects", PROJECT_MANAGED);
@@ -216,40 +216,86 @@ export async function cloneNextPeriod(
   const newProjectId = newProj.rows[0]?.id;
   if (!newProjectId) return null;
 
-  // ── 2. KPI定義（実績は持ち込まず、前期実績を新しい基準値に）──
-  const kCols = await copyColsOf(client, "kpis", KPI_MANAGED);
+  // ── 2. 指標の定義（実績は持ち込まず、前期実績を新しい基準値に）──
+  //
+  //  069 以降、指標は3つに分かれている。複製の形も分かれる。
+  //    indicators        … 定義。そのまま運ぶ（どう測るかは変わらない）
+  //    indicator_targets … 目標。前期の目標を据え置きで置き直し、基準値は前期の最新実績にする
+  //    indicator_values  … 値の履歴。**運ばない**（前期の実績は前期のもの）
+  //
+  //  複製するのは計画の指標（origin='plan'）だけ。施策の対話から生まれた指標は、
+  //  施策そのものと一緒に次期計画で組み直す。
+  const iCols = await copyColsOf(client, "indicators", INDICATOR_MANAGED);
   const oldKpis = await client.query<{
     id: string;
     contributes_to_kpi_id: string | null;
-  }>(`SELECT id, contributes_to_kpi_id FROM kpis WHERE project_id = $1 ORDER BY created_at`, [
-    input.sourceProjectId,
-  ]);
+    latest_value: string | null;
+    target_value: string | null;
+    baseline_value: string | null;
+    achievement_condition: string | null;
+    target_deadline: string | null;
+  }>(
+    `SELECT i.id, i.contributes_to_kpi_id,
+            lv.value AS latest_value,
+            t.target_value, t.baseline_value, t.achievement_condition,
+            t.target_deadline::text AS target_deadline
+       FROM indicators i
+       LEFT JOIN indicator_targets t ON t.indicator_id = i.id AND t.scope = 'plan'
+       LEFT JOIN LATERAL (
+         SELECT v.value FROM indicator_values v
+          WHERE v.indicator_id = i.id AND v.scope = 'plan'
+            AND v.cohort_id IS NULL AND v.arm IS NULL
+          ORDER BY v.as_of DESC, v.computed_at DESC LIMIT 1
+       ) lv ON true
+      WHERE i.project_id = $1 AND i.origin = 'plan'
+      ORDER BY i.created_at`,
+    [input.sourceProjectId],
+  );
   const kpiMap = new Map<string, string>();
   for (const old of oldKpis.rows) {
     const ins = await client.query<{ id: string }>(
-      `INSERT INTO kpis (${q(kCols)}, project_id, baseline_value, baseline_year,
+      `INSERT INTO indicators (${q(iCols)}, project_id,
                          previous_value, previous_target, goal_id, contributes_to_kpi_id,
                          cloned_from_kpi_id, target_needs_review)
-       SELECT ${q(kCols)}, $1,
-              COALESCE(current, baseline_value),  -- baseline ← 前期の最新実績値
-              $2,
-              current,                             -- previous_value ← 前期実績
-              target,                              -- previous_target ← 前期目標
-              NULL, NULL, id, true                 -- target は据え置き＋要見直しフラグ
-       FROM kpis WHERE id = $3
+       SELECT ${q(iCols)}, $1,
+              $2::numeric,   -- previous_value ← 前期の最新実績
+              $3::numeric,   -- previous_target ← 前期の目標
+              NULL, NULL, id, true   -- 目標は据え置き＋要見直しフラグ
+       FROM indicators WHERE id = $4
        RETURNING id`,
-      [newProjectId, baselineYear, old.id],
+      [newProjectId, old.latest_value, old.target_value, old.id],
     );
     const newId = ins.rows[0]?.id;
-    if (newId) kpiMap.set(old.id, newId);
+    if (!newId) continue;
+    kpiMap.set(old.id, newId);
+
+    // 目標を置き直す。基準値は前期の最新実績（無ければ前期の基準値）、
+    // 基準日は前期計画の終期。目標値・達成条件・期限は据え置き（target_needs_review で促す）
+    const baseline = old.latest_value ?? old.baseline_value;
+    if (baseline !== null || old.target_value !== null) {
+      await client.query(
+        `INSERT INTO indicator_targets
+           (indicator_id, scope, baseline_value, baseline_as_of, target_value,
+            achievement_condition, target_deadline)
+         VALUES ($1, 'plan', $2::numeric, $3::date, $4::numeric, $5, $6::date)`,
+        [
+          newId,
+          baseline,
+          source.plan_end_date ?? null,
+          old.target_value,
+          old.achievement_condition ?? "gte",
+          old.target_deadline,
+        ],
+      );
+    }
   }
-  // KPI階層（contributes_to_kpi_id）を対応表で張り替える
+  // 指標の階層（contributes_to_kpi_id）を対応表で張り替える
   for (const old of oldKpis.rows) {
     if (!old.contributes_to_kpi_id) continue;
     const from = kpiMap.get(old.id);
     const to = kpiMap.get(old.contributes_to_kpi_id);
     if (from && to) {
-      await client.query(`UPDATE kpis SET contributes_to_kpi_id = $1 WHERE id = $2`, [to, from]);
+      await client.query(`UPDATE indicators SET contributes_to_kpi_id = $1 WHERE id = $2`, [to, from]);
     }
   }
 

@@ -20,6 +20,8 @@ import type {
   MeasureStep,
 } from "@/lib/measure/types";
 import { measureCommitGaps, describeMeasureGaps, activeApproaches } from "@/lib/measure/types";
+import { actorFromSession } from "@/lib/activity";
+import { createIndicatorTx, recordValueTx } from "@/lib/indicator/service";
 
 type Params = { params: { id: string; dialogueId: string } };
 
@@ -55,6 +57,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, "measure_design", "edit");
   if (deny) return deny;
+  if (!session) return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
 
   const row = await queryOne<DialogueRow>(
     `SELECT d.id, d.issue_hypothesis_id, d.current_step, d.messages,
@@ -99,6 +102,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
   const indicatorsByApproach = new Map(row.indicators.map((e) => [e.approach_id, e]));
   const costByApproach = new Map(row.costs.map((e) => [e.approach_id, e]));
 
+  const actor = actorFromSession(session, "dialogue", {
+    dialogue_kind: "measure",
+    dialogue_id: params.dialogueId,
+  });
   const result = await transaction(async (client) => {
     let created = 0;
     let updated = 0;
@@ -112,8 +119,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
      *   (1) existing_kpi_id が有効ならそれを使う
      *   (2) 同名（大文字小文字無視）のKPIが既にあればそれを使う
      *   (3) どちらも無ければ新規作成する
-     * 新規作成時は baseline を基準値と現在値の初期値に入れ、
-     * 達成条件・期限・指標タイプ（三層）も同時に登録する。
+     * 新規作成時は目標（基準値・目標値・達成条件・期限）を indicator_targets に置き、
+     * 基準値があればそれを最初の実績として indicator_values に1行積む。
      */
     const resolveKpi = async (
       draft: KpiDraft,
@@ -136,29 +143,37 @@ export async function POST(_req: NextRequest, { params }: Params) {
       );
       if (byLabel.rows[0]) return byLabel.rows[0].id;
 
-      const ins = await client.query<{ id: string }>(
-        `INSERT INTO kpis
-           (project_id, label, unit, target, current,
-            baseline_value, achievement_condition, target_deadline,
-            indicator_type, contributes_to_kpi_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         RETURNING id`,
-        [
-          params.id,
-          label,
-          draft.unit ?? "",
-          draft.target ?? 0,
-          draft.baseline ?? 0,
-          draft.baseline ?? null,
-          draft.condition ?? "gte",
-          draft.deadline ?? null,
-          indicatorType,
-          contributesTo,
-        ],
-      );
-      const id = ins.rows[0]?.id ?? null;
-      if (id) kpisCreated++;
-      return id;
+      // 069 以降、指標の作成は指標管理のサービス層を通す。
+      // AI の対話から生まれた指標でも、画面から登録したときと同じ経路・同じ履歴になる
+      // （actor はこの対話を確定した担当者、via='dialogue'。設計 §10-5）。
+      // origin は 'plan'。計画の指標一覧に並ぶ点は従来どおりで、
+      // 対話から来たことは activity_log の via で追える
+      const newIndicator = await createIndicatorTx(client, actor, params.id, {
+        label,
+        unit: draft.unit ?? "",
+        indicatorType,
+        origin: "plan",
+        contributesToId: contributesTo,
+        target: {
+          scope: "plan",
+          targetValue: draft.target ?? 0,
+          baselineValue: draft.baseline ?? null,
+          achievementCondition: draft.condition ?? "gte",
+          targetDeadline: draft.deadline ?? null,
+        },
+      });
+      // 基準値が示されていれば、それを最初の実績として履歴に積む
+      // （`current` という上書きされる1列は無い）
+      if (draft.baseline != null) {
+        await recordValueTx(client, actor, params.id, newIndicator.id, {
+          asOf: new Date().toISOString().slice(0, 10),
+          scope: "plan",
+          value: draft.baseline,
+          note: "施策構築の対話で登録した基準値",
+        });
+      }
+      kpisCreated++;
+      return newIndicator.id;
     };
 
     for (let i = 0; i < liveApproaches.length; i++) {

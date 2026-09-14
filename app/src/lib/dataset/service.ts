@@ -9,7 +9,6 @@
  * （庁内の変換ツールの出力 zip を非同期で取り込む）。ここでは箱の作成までを受け付ける。
  */
 import { randomUUID, createHash } from "node:crypto";
-import type { PoolClient } from "pg";
 import { query, queryOne, transaction } from "@/lib/db";
 import { uploadToStorage, downloadFromStorage } from "@/lib/storage";
 import type { AttributeDefinition, ColumnSpec, DatasetKind, KeyTypeDefinition } from "./types";
@@ -19,25 +18,12 @@ import { scanForMyNumber } from "./guard";
 import { isUsable, mergeDictionaries, validateDictionary } from "./dictionary";
 import { KEY_TYPE_CODE_RE, validateNormalization, type KeyNormalization } from "./keyTypes";
 
-// ── 操作主体 ────────────────────────────────────────────────
-
-export type ActivityVia =
-  | "ui"
-  | "bulk"
-  | "gap_analysis"
-  | "dialogue"
-  | "evaluation"
-  | "auto_tasks"
-  | "migration";
-
-export interface Actor {
-  /** user_roles.id。AI の操作でも、その対話の担当者 */
-  userRoleId: string | null;
-  municipalityId: string;
-  via: ActivityVia;
-  /** via='dialogue' のとき {dialogue_kind, dialogue_id, turn_no} */
-  dialogueRef?: Record<string, unknown>;
-}
+// ── 操作主体・操作履歴 ───────────────────────────────────────
+// 画面も AI も同じ関数を通り、同じ形で activity_log に残る（設計 §10-5）。
+// 実体は lib/activity.ts（指標側と共有する）
+export { logActivity, actorFromSession, systemActor } from "@/lib/activity";
+export type { Actor, ActivityVia } from "@/lib/activity";
+import { logActivity, type Actor } from "@/lib/activity";
 
 export class DatasetError extends Error {
   constructor(
@@ -114,37 +100,6 @@ export interface TemplateRow {
 // ── 上限（30 秒制限の内側で同期処理できる範囲） ───────────────
 export const AGGREGATE_MAX_BYTES = 5 * 1024 * 1024;
 export const AGGREGATE_MAX_ROWS = 50_000;
-
-// ── 操作履歴 ─────────────────────────────────────────────────
-
-export async function logActivity(
-  client: PoolClient | null,
-  entry: {
-    projectId: string | null;
-    actor: Actor;
-    entity: "dataset" | "dataset_version" | "attribute" | "key_type";
-    entityId: string;
-    action: "create" | "update" | "ingest" | "reject" | "download";
-    summary?: Record<string, unknown>;
-  },
-): Promise<void> {
-  const sql = `INSERT INTO activity_log
-      (project_id, municipality_id, actor, via, dialogue_ref, entity, entity_id, action, summary)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
-  const params = [
-    entry.projectId,
-    entry.actor.municipalityId,
-    entry.actor.userRoleId,
-    entry.actor.via,
-    entry.actor.dialogueRef ? JSON.stringify(entry.actor.dialogueRef) : null,
-    entry.entity,
-    entry.entityId,
-    entry.action,
-    JSON.stringify(entry.summary ?? {}),
-  ];
-  if (client) await client.query(sql, params);
-  else await query(sql, params);
-}
 
 // ── 参照 ─────────────────────────────────────────────────────
 
@@ -540,19 +495,6 @@ export async function latestVersionsByTemplate(projectId: string): Promise<
       ORDER BY d.name`,
     [projectId],
   );
-}
-
-// ── セッション → Actor ────────────────────────────────────────
-import type { Session } from "next-auth";
-
-/** API ルート用。画面からの操作は via='ui'。AI の確定処理は via='dialogue' と dialogueRef を渡す */
-export function actorFromSession(session: Session, via: ActivityVia = "ui", dialogueRef?: Record<string, unknown>): Actor {
-  return {
-    userRoleId: session.user?.userRoleId ?? null,
-    municipalityId: session.user?.municipalityId ?? "",
-    via,
-    ...(dialogueRef ? { dialogueRef } : {}),
-  };
 }
 
 // ── 属性辞書の解決（分野を固定しないための中心） ─────────────

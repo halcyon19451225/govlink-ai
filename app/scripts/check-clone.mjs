@@ -105,7 +105,11 @@ try {
   check("apply: サーバー側で再サニタイズ（クライアントを信じない）", applySrc.includes("sanitizeIntakeProposals"));
   check("apply: LM修正はreviseで改訂版を起こしてから（直接上書きしない）", applySrc.includes("reviseLogicModel") && applySrc.includes("前期引き継ぎの取込"));
   check("apply: 改善起票は source='handover'＋リネージFK", applySrc.includes("'handover'") && applySrc.includes("plan_handover_id"));
-  check("apply: 数値提案があるときだけ要見直しフラグを下ろす", applySrc.includes("target_needs_review = CASE WHEN"));
+  // 069 以降、目標は indicator_targets にあり、更新は指標管理のサービス層を通る。
+  // 「数値提案があるときだけフラグを下ろす」条件は、SQL の CASE から TS の分岐に移った
+  check("apply: 目標の更新はサービス層を通る", applySrc.includes("setTargetTx"));
+  check("apply: 数値提案があるときだけ要見直しフラグを下ろす",
+    /if \(p\.proposed_target != null\)[\s\S]{0,200}targetNeedsReview: false/.test(applySrc));
   check("apply: 適用後に consumed へ遷移", applySrc.includes("status = 'consumed'"));
   const cloneRoutePath = join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "clone-next-period", "route.ts");
   check("clone ルート: 1トランザクション（半端な計画を残さない）", ex(cloneRoutePath) && rf(cloneRoutePath, "utf-8").includes("transaction("));
@@ -142,16 +146,31 @@ try {
     );
     const srcId = proj.rows[0].id;
 
-    const k1 = await client.query(
-      `INSERT INTO kpis (project_id, label, target, current, unit, indicator_type, baseline_value)
-       VALUES ($1, '長期KPI', 100, 60, '%', 'outcome_long', 40) RETURNING id`,
-      [srcId],
-    );
-    const k2 = await client.query(
-      `INSERT INTO kpis (project_id, label, target, current, unit, indicator_type, contributes_to_kpi_id)
-       VALUES ($1, '短期KPI', 50, 20, '件', 'outcome_initial', $2) RETURNING id`,
-      [srcId, k1.rows[0].id],
-    );
+    // 069 以降、指標は3表に分かれている（定義・目標・値の履歴）。
+    // 読み出し側の検証は互換ビュー `kpis` のままで、ビューが正しく組めていることも一緒に見る
+    const mkIndicator = async (label, unit, type, target, baseline, current, contributesTo) => {
+      const r = await client.query(
+        `INSERT INTO indicators (project_id, label, unit, indicator_type, origin, contributes_to_kpi_id)
+         VALUES ($1, $2, $3, $4, 'plan', $5) RETURNING id`,
+        [srcId, label, unit, type, contributesTo ?? null],
+      );
+      const id = r.rows[0].id;
+      await client.query(
+        `INSERT INTO indicator_targets (indicator_id, scope, target_value, baseline_value, baseline_as_of)
+         VALUES ($1, 'plan', $2, $3, '2024-04-01')`,
+        [id, target, baseline],
+      );
+      if (current != null) {
+        await client.query(
+          `INSERT INTO indicator_values (indicator_id, as_of, scope, value, via)
+           VALUES ($1, '2026-03-31', 'plan', $2, 'ui')`,
+          [id, current],
+        );
+      }
+      return { rows: [{ id }] };
+    };
+    const k1 = await mkIndicator("長期KPI", "%", "outcome_long", 100, 40, 60, null);
+    const k2 = await mkIndicator("短期KPI", "件", "outcome_initial", 50, null, 20, k1.rows[0].id);
     await client.query(
       `INSERT INTO project_pdca_checkpoints (project_id, name, cycle_type, phase, scheduled_date, status, completed_at, completion_notes)
        VALUES ($1, '中間評価', 'annual', 'C', '2025-10-01', 'completed', now(), '完了メモ')`,

@@ -1,11 +1,29 @@
 export const dynamic = "force-dynamic";
 
+/**
+ * 計画の指標 1件の更新・削除。
+ *
+ * 069 以降、`kpis` は読み取り専用の互換ビューで、実体は
+ *   indicators（定義）／indicator_targets（目標）／indicator_values（値の履歴）
+ * に分かれている。**このルートは SQL を書かず、指標管理のサービス層を通す。**
+ * 画面からの操作も AI の確定処理も同じ関数を通り、activity_log に同じ形で残る（設計 §10-5）。
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
-import { query } from "@/lib/db";
+import { actorFromSession } from "@/lib/activity";
+import {
+  IndicatorError,
+  deleteIndicator,
+  listTargets,
+  setTarget,
+  updateIndicator,
+  type SetTargetInput,
+  type UpdateIndicatorInput,
+} from "@/lib/indicator/service";
 
 const patchSchema = z.object({
   label:                 z.string().min(1).optional(),
@@ -21,7 +39,23 @@ const patchSchema = z.object({
   contributes_to_kpi_id: z.string().uuid().nullable().optional(),
 });
 
-// PATCH: KPIを更新
+/**
+ * 旧 API の `baseline_year`（年の整数）を、目標が持つ基準日に写す。
+ * 互換ビューが `EXTRACT(YEAR FROM baseline_as_of)` で年を返すので、
+ * 年度の初日にしておくと同じ年が返り、往復しても値が動かない。
+ */
+const yearToAsOf = (y: number | null | undefined): string | null =>
+  y == null ? null : `${String(y).padStart(4, "0")}-04-01`;
+
+function errorResponse(e: unknown) {
+  if (e instanceof IndicatorError) {
+    return NextResponse.json({ data: null, error: e.message }, { status: e.status });
+  }
+  console.error("kpis/[kpiId]:", e);
+  return NextResponse.json({ data: null, error: "処理に失敗しました" }, { status: 500 });
+}
+
+// PATCH: 指標を更新（定義と目標を、それぞれの置き場所へ振り分ける）
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string; kpiId: string } }
@@ -42,39 +76,65 @@ export async function PATCH(
   if (!parsed.success) {
     return NextResponse.json({ data: null, error: parsed.error.issues[0]?.message ?? "バリデーションエラー" }, { status: 422 });
   }
+  const d = parsed.data;
 
-  const colMap: Record<string, string> = {
-    label: "label", target: "target", unit: "unit",
-    goal_id: "goal_id", indicator_type: "indicator_type",
-    previous_value: "previous_value",
-    achievement_condition: "achievement_condition",
-    target_deadline: "target_deadline",
-    baseline_value: "baseline_value",
-    baseline_year: "baseline_year",
-    contributes_to_kpi_id: "contributes_to_kpi_id",
-  };
+  // ① 定義（indicators）
+  const patch: UpdateIndicatorInput = {};
+  if (d.label !== undefined) patch.label = d.label;
+  if (d.unit !== undefined) patch.unit = d.unit;
+  if (d.goal_id !== undefined) patch.goalId = d.goal_id ?? null;
+  if (d.indicator_type !== undefined) patch.indicatorType = d.indicator_type;
+  if (d.contributes_to_kpi_id !== undefined) patch.contributesToId = d.contributes_to_kpi_id ?? null;
+  if (d.previous_value !== undefined) patch.previousValue = d.previous_value ?? null;
 
-  const sets: string[] = [];
-  const vals: unknown[] = [];
-  let i = 1;
-  for (const [k, col] of Object.entries(colMap)) {
-    if (k in parsed.data && (parsed.data as Record<string, unknown>)[k] !== undefined) {
-      sets.push(`${col} = $${i++}`);
-      vals.push((parsed.data as Record<string, unknown>)[k] ?? null);
+  // ② 目標（indicator_targets・計画スコープ）
+  //    PATCH なので、送られてこなかった項目は今の目標の値を残す
+  const touchesTarget =
+    d.target !== undefined || d.achievement_condition !== undefined ||
+    d.target_deadline !== undefined || d.baseline_value !== undefined ||
+    d.baseline_year !== undefined;
+
+  try {
+    const actor = actorFromSession(session, "ui");
+
+    if (Object.keys(patch).length > 0) {
+      await updateIndicator(actor, params.id, params.kpiId, patch);
     }
-  }
-  sets.push(`updated_at = now()`);
 
-  vals.push(params.kpiId, params.id);
-  await query(
-    `UPDATE kpis SET ${sets.join(", ")} WHERE id = $${i} AND project_id = $${i + 1}`,
-    vals
-  );
+    if (touchesTarget) {
+      const current = (await listTargets(params.kpiId)).find((t) => t.scope === "plan");
+      const next: SetTargetInput = {
+        scope: "plan",
+        targetValue: d.target !== undefined ? d.target : current ? Number(current.target_value) : null,
+        achievementCondition:
+          d.achievement_condition !== undefined
+            ? (d.achievement_condition ?? "gte")
+            : (current?.achievement_condition ?? "gte"),
+        targetDeadline:
+          d.target_deadline !== undefined ? (d.target_deadline ?? null) : (current?.target_deadline ?? null),
+        baselineValue:
+          d.baseline_value !== undefined
+            ? (d.baseline_value ?? null)
+            : current?.baseline_value != null
+              ? Number(current.baseline_value)
+              : null,
+        baselineAsOf:
+          d.baseline_year !== undefined
+            ? yearToAsOf(d.baseline_year)
+            : (current?.baseline_as_of ?? null),
+        note: current?.note ?? null,
+      };
+      if (next.targetValue != null && Number.isNaN(next.targetValue)) next.targetValue = null;
+      await setTarget(actor, params.id, params.kpiId, next);
+    }
+  } catch (e) {
+    return errorResponse(e);
+  }
 
   return NextResponse.json({ data: { id: params.kpiId }, error: null });
 }
 
-// DELETE: KPIを削除
+// DELETE: 指標を削除（目標・値の履歴も一緒に消える。操作は activity_log に残る）
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string; kpiId: string } }
@@ -86,10 +146,11 @@ export async function DELETE(
   if (outOfTenant) return outOfTenant;
   if (!session) return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
 
-  await query(
-    "DELETE FROM kpis WHERE id = $1 AND project_id = $2",
-    [params.kpiId, params.id]
-  );
+  try {
+    await deleteIndicator(actorFromSession(session, "ui"), params.id, params.kpiId);
+  } catch (e) {
+    return errorResponse(e);
+  }
 
   return NextResponse.json({ data: { id: params.kpiId }, error: null });
 }

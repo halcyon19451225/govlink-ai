@@ -6,6 +6,8 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
 import { transaction } from "@/lib/db";
+import { actorFromSession } from "@/lib/activity";
+import { recordValueTx } from "@/lib/indicator/service";
 
 const kpiUpdateSchema = z.object({
   id: z.string().uuid("KPI ID が不正です"),
@@ -53,6 +55,7 @@ export async function POST(req: NextRequest) {
 
 
   try {
+    const actor = actorFromSession(session, "ui");
     const postId = await transaction(async (client) => {
       // プロジェクトの存在確認
       const projectCheck = await client.query<{ id: string }>(
@@ -71,12 +74,18 @@ export async function POST(req: NextRequest) {
       if (!postResult.rows[0]) throw new Error("投稿の作成に失敗しました");
       const newPostId = postResult.rows[0].id;
 
-      // KPI 現在値を更新
+      // 指標の実績値を記録する。
+      // 069 以降、`current` という上書きされる1列は無い。**いつ時点の値か**を持つ履歴に積む
+      // （投稿に添えた実績なので、基準日は投稿日＝今日。設計 §9-4）
+      const asOf = new Date().toISOString().slice(0, 10);
       for (const update of kpiUpdates) {
-        await client.query(
-          "UPDATE kpis SET current = $1 WHERE id = $2 AND project_id = $3",
-          [update.current, update.id, projectId],
-        );
+        await recordValueTx(client, actor, projectId, update.id, {
+          asOf,
+          scope: "plan",
+          value: update.current,
+          note: "進捗投稿に添えて入力",
+          inputs: { post_id: newPostId },
+        });
       }
 
       return newPostId;

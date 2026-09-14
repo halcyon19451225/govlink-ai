@@ -2,14 +2,14 @@
 module: kpi-summary
 title: KPIサマリー
 menu_path: /projects/[id]/kpi-summary
-tables: [kpis, kpi_reports]
+tables: [indicators, indicator_targets, indicator_values, kpi_reports]
 apis: [/api/admin/kpi-reports]
 ai_tasks: []
-checks: [check:vocab]
-migrations: [001-020]
+checks: [check:vocab, check:indicator]
+migrations: [001-020, 069]
 upstream: [kpi-report]
 downstream: [program-evaluation]
-updated: 2026-08-26
+updated: 2026-09-14
 ---
 
 # KPIサマリー
@@ -31,7 +31,9 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  K[(kpis)] -.現在値・基準値・目標.-> S(サマリー表示<br/>参照のみ)
+  K[(indicators<br/>指標の定義)] -.-> S(サマリー表示<br/>参照のみ)
+  T[(indicator_targets<br/>基準値・目標値)] -.-> S
+  V[(indicator_values<br/>実績値の履歴)] -.最新の1行が現在値.-> S
   R[(kpi_reports)] -.報告履歴.-> S
 ```
 
@@ -43,6 +45,8 @@ flowchart TD
 ## ⑥ 用語と判定基準
 
 - **到達度**: 基準値からの前進量（目標の向きを考慮・全画面統一計算）
+- **現在値**: 実績値の履歴のうち、**基準日が最も新しい1行**の値。
+  同じ基準日で入れ直したときは、計算・入力が新しい方を採ります
 
 ## ⑦ 実装メモ
 
@@ -52,3 +56,4 @@ flowchart TD
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M3 初版
+- 2026-09-14 v2 — D3: KPI を指標管理に統合（目標と実績値が別の表に分かれた）

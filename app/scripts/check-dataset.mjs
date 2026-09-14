@@ -311,6 +311,9 @@ try {
   // ── 10. サービス層と API ─────────────────────────
   console.log("10. サービス層と API");
   const svc = read(join(APP_ROOT, "src", "lib", "dataset", "service.ts"));
+  // D3 で操作履歴の型と logActivity は lib/activity.ts に出した（指標管理と共有するため）。
+  // データセットのサービス層はそこから再輸出している
+  const act = read(join(APP_ROOT, "src", "lib", "activity.ts"));
   const apiDir = join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "datasets");
   const routes = [
     "route.ts",
@@ -329,8 +332,9 @@ try {
     check(`API ${r} は route 以外を export しない`, !/export function datasetErrorResponse/.test(src));
   }
   check("サービス層の書き込みはすべて activity_log に残す", (svc.match(/await logActivity\(/g) ?? []).length >= 7);
-  check("サービス層は Actor（via・担当者）を必ず受け取る", /export interface Actor/.test(svc) && /actor: Actor/.test(svc));
-  check("AI 経路でも actor はその対話の担当者（AI 自身を actor にする列が無い）", !/actor_is_ai|ai_actor/.test(svc));
+  check("サービス層は Actor（via・担当者）を必ず受け取る", /export interface Actor/.test(act) && /actor: Actor/.test(svc));
+  check("AI 経路でも actor はその対話の担当者（AI 自身を actor にする列が無い）",
+    !/actor_is_ai|ai_actor/.test(svc) && !/actor_is_ai|ai_actor/.test(act));
   check("集計データの版は1行でも失敗したら版全体を rejected にする", /版全体を rejected/.test(svc) && /rejected \? "rejected" : "validated"/.test(svc));
   check("個人番号様の値がある場合はファイルを保存しない", /guardHits\.length === 0\) \{\s*await uploadToStorage/.test(svc));
   check("個票の箱への CSV 取込は 501", /501,\s*\)/.test(svc));

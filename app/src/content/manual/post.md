@@ -2,14 +2,14 @@
 module: post
 title: 投稿（住民向け公開報告）
 menu_path: /projects/[id]/post
-tables: [posts, kpis]
+tables: [posts, indicators, indicator_values]
 apis: [/api/admin/posts, /api/ai/generate-summary]
 ai_tasks: [generation.summary]
 checks: [check:vocab]
-migrations: [001-020]
+migrations: [001-020, 069]
 upstream: [kpi-report]
 downstream: []
-updated: 2026-08-26
+updated: 2026-09-14
 ---
 
 # 投稿（住民向け公開報告）
@@ -32,10 +32,11 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  KR[(kpis<br/>実績)] -.本文の材料.-> ED(投稿の作成)
+  KR[(indicator_values<br/>実績値の履歴)] -.本文の材料.-> ED(投稿の作成)
   ED --> AI{{要約生成<br/>generation.summary}} --> H{確認して投稿}
   H --> T[(posts<br/>type: plan/progress/result・ai_summary)]
   T --> PUB(公開ページに表示)
+  H --> V[(indicator_values<br/>添えた実績値を1行積む)]
 ```
 
 ## ⑤ 操作手順
@@ -46,8 +47,11 @@ flowchart TD
 
 ## ⑦ 実装メモ
 
+- 投稿に添えた実績値は、069 以降**投稿日を基準日とする履歴の1行**として積まれる
+  （`lib/indicator/service.ts` の `recordValue`）。どの投稿から入った値かは `inputs` に残る
 - 関連する実装記録: `claude/coe-govlink.md`
 
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M3 初版
+- 2026-09-14 v2 — D3: KPI を指標管理に統合（現在値の上書きをやめた）

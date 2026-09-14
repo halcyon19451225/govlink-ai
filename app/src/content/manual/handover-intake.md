@@ -2,14 +2,14 @@
 module: handover-intake
 title: 前期引き継ぎの取り込み
 menu_path: /projects/[id]/handover-intake
-tables: [plan_handovers, logic_models, measure_designs, kpis, improvement_actions]
+tables: [plan_handovers, logic_models, measure_designs, indicators, indicator_targets, improvement_actions]
 apis: [/api/admin/projects/[id]/handover-intake, /api/admin/projects/[id]/clone-next-period]
 ai_tasks: [proposal.handover_intake]
-checks: [check:clone]
-migrations: [048]
+checks: [check:clone, check:indicator]
+migrations: [048, 069]
 upstream: [improvement-actions]
 downstream: [logic-model, measure-design]
-updated: 2026-08-26
+updated: 2026-09-14
 ---
 
 # 前期引き継ぎの取り込み
@@ -36,7 +36,7 @@ flowchart TD
   AI --> H{チェックボックスで選別<br/>一括適用ボタン}
   H --> LM[ロジックモデル: 改訂版を起こして適用]
   H --> MD[施策: B/D区画へ反映マークつき追記]
-  H --> K[KPI: 目標見直し＋要見直しフラグ解除]
+  H --> K[指標: 目標の見直し（indicator_targets）＋要見直しフラグ解除]
   H --> IA[改善: source=handover で起票]
   H --> DONE[plan_handovers → consumed]
 ```
@@ -64,3 +64,4 @@ flowchart TD
 ## ⑧ 更新履歴
 
 - 2026-08-26 v1 — M3 初版
+- 2026-09-14 v2 — D3: 目標の更新先が indicator_targets になった（指標管理に統合）

@@ -121,8 +121,12 @@ try {
     respSrc.includes("差し戻し理由を入力してください") &&
     respSrc.includes("受領済みの回答のみ取り込めます") &&
     respSrc.includes("取り込み済みです"));
-  check("取り込み: 既存kpi-reports承認と同じ動作（approved登録＋current更新）",
-    respSrc.includes("'approved'") && respSrc.includes("UPDATE kpis SET current"));
+  // 069 以降、実績値は `current` の上書きではなく指標の履歴に積む（基準日つき）。
+  // 「承認扱いで登録し、実績値を反映する」という動作自体は変わらない
+  check("取り込み: 既存kpi-reports承認と同じ動作（approved登録＋実績値の記録）",
+    respSrc.includes("'approved'") && respSrc.includes("recordValueTx"));
+  check("取り込み: 実績値は基準日つきで履歴に積む（上書きしない）",
+    respSrc.includes("asOf") && !respSrc.includes("UPDATE kpis SET"));
 
   const pubSrc = readFileSync(join(APP_ROOT, "src", "app", "api", "public", "report", "[token]", "route.ts"), "utf8");
   check("公開フォーム: 受領後は修正不可・締切後は受付終了・回答サニタイズ",

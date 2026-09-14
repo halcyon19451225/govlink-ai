@@ -8,6 +8,8 @@ import { requireProjectAccess } from "@/lib/tenant";
 import { query, queryOne, transaction } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { kpiImportRows, sanitizeQuestions, sanitizeTargets } from "@/lib/report/types";
+import { actorFromSession } from "@/lib/activity";
+import { recordValueTx } from "@/lib/indicator/service";
 
 type Params = { params: { id: string; requestId: string; responseId: string } };
 
@@ -36,6 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (outOfTenant) return outOfTenant;
   const deny = await requireModulePermission(session, params.id, MODULE, "edit");
   if (deny) return deny;
+  if (!session) return NextResponse.json({ data: null, error: "認証が必要です" }, { status: 401 });
 
   let raw: unknown;
   try {
@@ -133,6 +136,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const target = sanitizeTargets(row.targets).find((t) => t.target_key === row.target_key);
   const period = `${row.fiscal_year ?? new Date().getFullYear()}年度 ${row.kind === "annual" ? "年次" : "計画期間"}実績報告`;
 
+  // 報告の対象年度末を基準日にする（年度が無ければ取り込んだ日）
+  const asOf = row.fiscal_year
+    ? `${row.fiscal_year + 1}-03-31`
+    : new Date().toISOString().slice(0, 10);
+  const actor = actorFromSession(session, "ui");
+
   const imported = await transaction(async (client) => {
     let n = 0;
     for (const r of rows) {
@@ -154,11 +163,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           reviewer,
         ],
       );
-      await client.query(`UPDATE kpis SET current = $1 WHERE id = $2 AND project_id = $3`, [
-        r.value,
-        r.kpi_id,
-        params.id,
-      ]);
+      // 069 以降、実績値は履歴に積む（`current` の上書きは無い）。
+      // 基準日は報告の対象年度末。年度が分からなければ取り込んだ日
+      await recordValueTx(client, actor, params.id, r.kpi_id, {
+        asOf,
+        scope: "plan",
+        value: r.value,
+        note: `実績報告「${row.title}」より取り込み（設問: ${r.label}）`,
+        inputs: { report_request_id: params.requestId, report_response_id: params.responseId },
+      });
       n++;
     }
     await client.query(`UPDATE report_responses SET imported_at = now() WHERE id = $1`, [params.responseId]);
