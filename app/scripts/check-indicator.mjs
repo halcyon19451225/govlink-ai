@@ -279,6 +279,20 @@ try {
     check("src のどこも互換ビュー kpis を SQL で参照していない", offenders.length === 0,
       `${offenders.length} ファイル。lib/indicator/read.ts の PLAN_INDICATORS を使うこと`);
   }
+  {
+    const migDir = join(REPO_ROOT, "infra", "migrations");
+    const drop = readdirSync(migDir).filter((f) => /^071/.test(f)).map((f) => read(join(migDir, f))).join("\n");
+    check("互換ビューを落とす migration（071）がある", /DROP VIEW IF EXISTS kpis/.test(drop));
+    check("071 は measure_indicators の古い列も落とす",
+      /ALTER TABLE measure_indicators DROP COLUMN IF EXISTS kpi_id/.test(drop));
+    // ここは順序を間違えると本番の画面が落ちる。**手順そのものをファイルに書かせる**
+    check("071 に「デプロイしてから当てる」と書いてある（順序が逆）",
+      /先にデプロイしてから当てる/.test(drop),
+      "落とすのは動いているコードが使っているもの。先に当てると旧コードが動く間ずっと落ちる");
+  }
+  check("実 DB の検査も互換ビューを使っていない",
+    !/FROM kpis\b/.test(read(join(APP_ROOT, "scripts", "check-indicator-service.mjs"))) &&
+    !/FROM kpis\b/.test(read(join(APP_ROOT, "scripts", "check-clone.mjs"))));
   check("テナント確認の子テーブルも実体を指す",
     /indicators:\s+"indicators"/.test(read(join(SRC, "lib", "tenant.ts"))) &&
     !/kpis:\s+"kpis"/.test(read(join(SRC, "lib", "tenant.ts"))));

@@ -241,14 +241,16 @@ try {
     const nk = (await client.query(
       `SELECT label, target::float AS target, baseline_value::float AS b, previous_value::float AS pv,
               previous_target::float AS pt, target_needs_review, cloned_from_kpi_id, contributes_to_kpi_id
-       FROM kpis WHERE project_id = $1 ORDER BY label`, [newId])).rows;
+       FROM indicators i
+        LEFT JOIN indicator_targets t ON t.indicator_id = i.id AND t.scope = 'plan'
+       WHERE i.project_id = $1 AND i.origin = 'plan' ORDER BY i.label`, [newId])).rows;
     const nLong = nk.find((r) => r.label === "長期KPI");
     const nShort = nk.find((r) => r.label === "短期KPI");
     check("KPI: baseline ← 前期の最新実績値", nLong?.b === 60 && nShort?.b === 20);
     check("KPI: previous_value/target に前期値を退避", nLong?.pv === 60 && nLong?.pt === 100);
     check("KPI: target据え置き＋要見直しフラグ", nLong?.target === 100 && nk.every((r) => r.target_needs_review === true));
     check("KPI: 系譜（cloned_from_kpi_id）", nLong?.cloned_from_kpi_id === k1.rows[0].id);
-    const newLongId = (await client.query(`SELECT id FROM kpis WHERE project_id=$1 AND label='長期KPI'`, [newId])).rows[0].id;
+    const newLongId = (await client.query(`SELECT id FROM indicators WHERE project_id=$1 AND label='長期KPI'`, [newId])).rows[0].id;
     check("KPI: 階層（contributes_to_kpi_id）を新IDへ張替え", nShort?.contributes_to_kpi_id === newLongId);
 
     // チェックポイント: 日付シフト・状態リセット
@@ -262,7 +264,7 @@ try {
       `SELECT version, is_current, status, cloned_from_logic_model_id, cloned_from_project_id, initial_outcomes, edges, name
        FROM logic_models WHERE project_id = $1`, [newId])).rows[0];
     check("LM: 新計画の第1版（is_current・draft・系譜）", nlm.version === 1 && nlm.is_current === true && nlm.status === "draft" && nlm.cloned_from_project_id === srcId);
-    const newShortId = (await client.query(`SELECT id FROM kpis WHERE project_id=$1 AND label='短期KPI'`, [newId])).rows[0].id;
+    const newShortId = (await client.query(`SELECT id FROM indicators WHERE project_id=$1 AND label='短期KPI'`, [newId])).rows[0].id;
     const io = nlm.initial_outcomes;
     check("LM: 要素のkpi_idsを新IDへ張替え・対応なしIDは落とす", Array.isArray(io) && io[0].kpi_ids.length === 1 && io[0].kpi_ids[0] === newShortId);
     check("LM: 因果エッジ・名称など内容は保持", Array.isArray(nlm.edges) && nlm.edges[0].from === "a1" && nlm.name === "検証LM");
@@ -277,7 +279,7 @@ try {
 
     // 実績・過程は持ち込まれない
     const nEval = (await client.query(`SELECT count(*)::int AS n FROM program_evaluations WHERE project_id = $1`, [newId])).rows[0].n;
-    const nRep = (await client.query(`SELECT count(*)::int AS n FROM kpi_reports WHERE kpi_id IN (SELECT id FROM kpis WHERE project_id = $1)`, [newId])).rows[0].n;
+    const nRep = (await client.query(`SELECT count(*)::int AS n FROM kpi_reports WHERE kpi_id IN (SELECT id FROM indicators WHERE project_id = $1)`, [newId])).rows[0].n;
     check("実績（評価・KPI報告）は持ち込まれない", nEval === 0 && nRep === 0);
 
     await client.query("ROLLBACK"); // テストデータは残さない

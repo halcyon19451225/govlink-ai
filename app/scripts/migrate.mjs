@@ -92,9 +92,9 @@ async function run() {
         ["pdca_checkpoint_defs 件数", "SELECT COUNT(*) FROM pdca_checkpoint_defs"],
         ["projects 件数（既存保持確認）", "SELECT COUNT(*) FROM projects"],
         ["logic_models 件数",     "SELECT COUNT(*) FROM logic_models"],
-        ["kpis 件数",             "SELECT COUNT(*) FROM kpis"],
-        ["kpis.indicator_type 存在確認",
-          "SELECT column_name FROM information_schema.columns WHERE table_name='kpis' AND column_name='indicator_type'"],
+        ["指標 件数",             "SELECT COUNT(*) FROM indicators"],
+        ["indicators.indicator_type 存在確認",
+          "SELECT column_name FROM information_schema.columns WHERE table_name='indicators' AND column_name='indicator_type'"],
         ["plan_templates_legacy 存在確認",
           "SELECT COUNT(*) FROM plan_templates_legacy"],
       ];

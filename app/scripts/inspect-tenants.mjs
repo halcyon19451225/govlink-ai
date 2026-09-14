@@ -107,7 +107,7 @@ try {
   console.log("\n■ 政策ごとの中身（0 ばかりなら「作っただけ」）");
   const proj = await client.query(`
     SELECT m.name AS tenant, p.title, to_char(p.created_at,'YYYY-MM-DD') AS created,
-           (SELECT count(*) FROM kpis           k WHERE k.project_id = p.id) AS kpis,
+           (SELECT count(*) FROM indicators     k WHERE k.project_id = p.id AND k.origin = 'plan') AS kpis,
            (SELECT count(*) FROM project_goals  g WHERE g.project_id = p.id) AS goals,
            (SELECT count(*) FROM logic_models   l WHERE l.project_id = p.id) AS logic,
            (SELECT count(*) FROM documents      d WHERE d.project_id = p.id) AS docs,

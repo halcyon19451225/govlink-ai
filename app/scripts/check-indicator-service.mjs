@@ -12,7 +12,8 @@
  *   ② 値は積むだけ。**同じ基準日で計算し直しても上書きしない**（古い値も残る）
  *   ③ 最新値は「基準日が最大のうち、計算が最新」で決まる
  *   ④ 人（via='ui'）と AI（via='dialogue'）で、**残るものが同じ形になる**
- *   ⑤ 互換ビュー `kpis` が、目標と最新値を組んで旧来の列を返す／書き込みは失敗する
+ *   ⑤ 読み取りの共通部品（PLAN_INDICATORS）が、目標と最新値を組んで旧来の列を返す
+ *      （071 で互換ビュー kpis は落とした。正本は lib/indicator/read.ts の1か所）
  *   ⑥ 目標はスコープ（計画／主要施策／取組）で分かれ、同じスコープなら置き換わる
  *
  * 最後に一時データを消す（municipalities の CASCADE）。
@@ -48,9 +49,15 @@ const check = (name, cond) => { if (cond) passed++; else { failed++; console.err
 
 const work = mkdtempSync(join(tmpdir(), "indicatorsvc-"));
 const bundle = join(APP_ROOT, ".check-indicatorsvc.mjs");
+const readBundle = join(APP_ROOT, ".check-indicatorsvc-read.mjs");
 execFileSync("npx", ["--no-install", "esbuild", join(APP_ROOT, "src", "lib", "indicator", "service.ts"),
   "--bundle", "--format=esm", "--platform=node", "--target=es2022", "--packages=external",
   `--alias:@=${join(APP_ROOT, "src")}`, `--outfile=${bundle}`],
+  { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT });
+// 読み取りの共通部品も実物から取る（写した文字列で検査すると、写した側が古くなっても気づけない）
+execFileSync("npx", ["--no-install", "esbuild", join(APP_ROOT, "src", "lib", "indicator", "read.ts"),
+  "--bundle", "--format=esm", "--platform=node", "--target=es2022", "--packages=external",
+  `--alias:@=${join(APP_ROOT, "src")}`, `--outfile=${readBundle}`],
   { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT });
 
 const pg = require("pg");
@@ -67,6 +74,7 @@ const PROJECT = "00000000-0000-4000-8000-0000000d3002";
 
 try {
   const svc = await import(pathToFileURL(bundle).href);
+  const { PLAN_INDICATORS } = await import(pathToFileURL(readBundle).href);
   await q(`INSERT INTO municipalities (id, name, slug, prefecture) VALUES ($1, 'check-indicatorsvc', 'check-indicatorsvc', '-') ON CONFLICT (id) DO NOTHING`, [MUNI]);
   await q(`INSERT INTO projects (id, municipality_id, title) VALUES ($1, $2, 'check-indicatorsvc') ON CONFLICT (id) DO NOTHING`, [PROJECT, MUNI]);
 
@@ -144,17 +152,21 @@ try {
     baselineValue: 50, baselineAsOf: "2025-04-01", targetDeadline: "2028-03-31",
   });
 
-  // ── 5. 互換ビュー ─────────────────────────────────
-  console.log("5. 互換ビュー kpis");
+  // ── 5. 読み取りの共通部品 ─────────────────────────
+  //   071 で互換ビュー kpis は落とした。旧来の形（label / target / current …）が要る
+  //   読み取りは、lib/indicator/read.ts の PLAN_INDICATORS **1か所**が組み立てる。
+  //   ここでは、その組み立てが実データで正しいことを確かめる
+  //   （文字列を写して確かめると、写した側が古くなっても気づけないので、実物を読む）。
+  console.log("5. 読み取りの共通部品（PLAN_INDICATORS）");
   const view = await q(`SELECT label, target::float AS target, current::float AS current, achievement_condition,
                                baseline_value::float AS baseline_value, baseline_year
-                          FROM kpis WHERE project_id = $1 AND label = '検証指標A'`, [PROJECT]);
+                          FROM ${PLAN_INDICATORS} WHERE project_id = $1 AND label = '検証指標A'`, [PROJECT]);
   check("旧来の列（target / current）を組んで返す", view[0]?.target === 85 && view[0]?.current === 63);
   check("基準値・基準年も返す", view[0]?.baseline_value === 50 && view[0]?.baseline_year === 2025);
-  let viewWriteFailed = false;
-  try { await q(`UPDATE kpis SET current = 1 WHERE project_id = $1`, [PROJECT]); }
-  catch { viewWriteFailed = true; }
-  check("ビューには書き込めない（切替漏れは実行時に必ず失敗する）", viewWriteFailed);
+  check("達成条件も返す", view[0]?.achievement_condition != null);
+  const droppedView = await q(
+    `SELECT to_regclass('public.kpis') IS NULL AS gone`, []);
+  check("互換ビュー kpis は残っていない（正本が2つに戻っていない）", droppedView[0]?.gone === true);
 
   // ── 6. 一覧 ───────────────────────────────────────
   console.log("6. 一覧");
@@ -282,6 +294,7 @@ try {
   await pool.end().catch(() => {});
   rmSync(work, { recursive: true, force: true });
   if (existsSync(bundle)) unlinkSync(bundle);
+  if (existsSync(readBundle)) unlinkSync(readBundle);
 }
 
 console.log(`\ncheck:indicatorsvc — ${passed} passed, ${failed} failed`);
