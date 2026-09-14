@@ -1,9 +1,15 @@
 export const dynamic = "force-dynamic";
 
+/**
+ * データセット管理（D2）— 箱と版
+ * 設計: claude/coe-dataset-model.md §4・§12。画面内の説明文は src/content/manual/datasets.md と同じ趣旨で書く。
+ */
 import { notFound } from "next/navigation";
-import { query, queryOne } from "@/lib/db";
-import DatasetsClient from "./DatasetsClient";
+import { queryOne } from "@/lib/db";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { listDatasets, listTemplates } from "@/lib/dataset/service";
+import { CARE_INSURANCE_DICTIONARY } from "@/lib/dataset/dictionary";
+import DatasetsClient, { type DictionaryEntry } from "./DatasetsClient";
 
 interface ProjectRow {
   id: string;
@@ -11,67 +17,20 @@ interface ProjectRow {
   plan_type: string | null;
 }
 
-interface DatasetDef {
-  id: string;
-  display_name: string;
-  description: string;
-  data_format: string;
-  required_columns: string[];
-  plan_types: string[];
-  used_by_modules: string[];
-  ai_analysis_types: string[];
-  data_sensitivity: string;
-  update_frequency: string;
-  source_description: string;
-}
-
-interface ProjectDataset {
-  id: string;
-  project_id: string;
-  dataset_def_id: string;
-  file_name: string;
-  s3_key: string;
-  file_size_bytes: number | null;
-  uploaded_by: string | null;
-  uploaded_at: string;
-  survey_year: number | null;
-  status: string;
-  validation_errors: unknown;
-  row_count: number | null;
-  metadata: unknown;
-}
-
-export default async function DatasetsPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする
-  // （claude/coe-tenant-isolation.md A-3）
+export default async function DatasetsPage({ params }: { params: { id: string } }) {
+  // テナント境界。他自治体の政策 UUID を直接開かれても 404 にする（claude/coe-tenant-isolation.md A-3）
   await assertProjectPage(params.id);
-  const project = await queryOne<ProjectRow>(
-    "SELECT id, title, plan_type FROM projects WHERE id = $1",
-    [params.id],
-  );
+  const project = await queryOne<ProjectRow>("SELECT id, title, plan_type FROM projects WHERE id = $1", [params.id]);
   if (!project) notFound();
 
-  const defs = await query<DatasetDef>(
-    `SELECT * FROM dataset_definitions
-     WHERE $1 = ANY(plan_types) OR 'custom' = ANY(plan_types)
-     ORDER BY id`,
-    [project.plan_type ?? "custom"],
-  );
+  const [datasets, templates] = await Promise.all([listDatasets(project.id), listTemplates(project.plan_type)]);
+  const dictionary: DictionaryEntry[] = CARE_INSURANCE_DICTIONARY.filter((d) => d.cloudAllowed).map((d) => ({
+    key: d.key,
+    label: d.label,
+    description: d.description,
+    role: d.role,
+    valueType: d.valueType,
+  }));
 
-  const uploaded = await query<ProjectDataset>(
-    "SELECT * FROM project_datasets WHERE project_id = $1 ORDER BY uploaded_at DESC",
-    [params.id],
-  );
-
-  return (
-    <DatasetsClient
-      project={project}
-      defs={defs}
-      uploaded={uploaded}
-    />
-  );
+  return <DatasetsClient project={project} initialDatasets={datasets} templates={templates} dictionary={dictionary} />;
 }

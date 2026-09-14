@@ -6,6 +6,7 @@ import { z } from "zod";
 import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
+import { latestVersionsByTemplate } from "@/lib/dataset/service";
 import { query, queryOne } from "@/lib/db";
 import { getKnowledgeContext } from "@/lib/knowledge-context";
 import { requireModulePermission } from "@/lib/permissions";
@@ -65,23 +66,23 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // ── モード1: データセットから自動抽出・gap_analyses 登録 ──
   if ("from_datasets" in parsed.data) {
-    const datasets = await query<{
-      id: string;
-      dataset_def_id: string;
-      file_name: string;
-      s3_key: string;
-      survey_year: number | null;
-      display_name: string;
-      description: string;
-    }>(
-      `SELECT pd.id, pd.dataset_def_id, pd.file_name, pd.s3_key, pd.survey_year,
-              dd.display_name, dd.description
-       FROM project_datasets pd
-       JOIN dataset_definitions dd ON dd.id = pd.dataset_def_id
-       WHERE pd.project_id = $1
-       ORDER BY pd.uploaded_at DESC`,
-      [params.id],
+    // D2: project_datasets → 箱ごとの最新の有効な版（datasets / dataset_versions）
+    const templateNames = new Map(
+      (await query<{ id: string; display_name: string; description: string }>(
+        `SELECT id, display_name, description FROM dataset_definitions`,
+      )).map((t) => [t.id, t]),
     );
+    const datasets = (await latestVersionsByTemplate(params.id))
+      .filter((v) => v.kind === "aggregate" && v.storage_path)
+      .map((v) => ({
+        id: v.version_id,
+        dataset_def_id: v.template_id ?? v.dataset_id,
+        file_name: v.file_name ?? v.name,
+        s3_key: v.storage_path as string,
+        survey_year: Number(v.as_of.slice(0, 4)) || null,
+        display_name: v.name,
+        description: (v.template_id && templateNames.get(v.template_id)?.description) || "",
+      }));
 
     if (datasets.length === 0) {
       return NextResponse.json(

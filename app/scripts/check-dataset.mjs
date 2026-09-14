@@ -244,8 +244,43 @@ try {
   check("066 の辞書投入は共通辞書（municipality_id IS NULL）だけを更新する", /WHERE attribute_definitions\.municipality_id IS NULL/.test(mig));
   check("activity_log の via の語彙が閉じている", /via\s+TEXT NOT NULL CHECK \(via IN \('ui','bulk','gap_analysis','dialogue','evaluation','auto_tasks','migration'\)\)/.test(mig));
 
-  // ── 9. マニュアル・サイドバー ────────────────────
-  console.log("9. マニュアル");
+  // ── 9. D2: サービス層・API・旧表の廃止 ──────────
+  console.log("9. D2: サービス層と API");
+  const svc = read(join(APP_ROOT, "src", "lib", "dataset", "service.ts"));
+  const apiDir = join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "datasets");
+  const routes = [
+    "route.ts",
+    "[datasetId]/route.ts",
+    "[datasetId]/versions/route.ts",
+    "[datasetId]/versions/[versionId]/route.ts",
+    "[datasetId]/versions/[versionId]/download/route.ts",
+  ].map((r) => [r, read(join(apiDir, r))]);
+  for (const [r, src] of routes) {
+    check(`API ${r} が存在する`, src.length > 0);
+    check(`API ${r} がテナント境界を通す`, /requireProjectAccess\(session, params\.id\)/.test(src));
+    check(`API ${r} がモジュール権限を見る`, /requireModulePermission\(session, params\.id, "dataset_manager"/.test(src));
+    check(`API ${r} は SQL を直接書かずサービス層を呼ぶ`, !/INSERT INTO|UPDATE |DELETE FROM/.test(src) && /@\/lib\/dataset\/service/.test(src));
+    check(`API ${r} は route 以外を export しない`, !/export function datasetErrorResponse/.test(src));
+  }
+  check("サービス層の書き込みはすべて activity_log に残す（関数ごとに logActivity）",
+    (svc.match(/await logActivity\(/g) ?? []).length >= 5);
+  check("サービス層は Actor（via・担当者）を必ず受け取る", /export interface Actor/.test(svc) && /actor: Actor/.test(svc));
+  check("AI 経路でも actor はその対話の担当者（AI 自身を actor にする列が無い）", !/actor_is_ai|ai_actor/.test(svc));
+  check("集計データの版は1行でも失敗したら版全体を rejected にする", /版全体を rejected/.test(svc) && /rejected \? "rejected" : "validated"/.test(svc));
+  check("個人番号様の値がある場合はファイルを保存しない", /guardHits\.length === 0\) \{\s*await uploadToStorage/.test(svc));
+  check("個票の箱への CSV 取込は 501", /501,\s*\)/.test(svc));
+  const srcFiles = execFileSync("grep", ["-rl", "project_datasets", join(APP_ROOT, "src"), "--include=*.ts", "--include=*.tsx"], { encoding: "utf8" })
+    .split("\n").filter(Boolean).filter((f) => !f.includes("/content/manual/"));
+  const stale = srcFiles.filter((f) => /FROM project_datasets|INTO project_datasets|UPDATE project_datasets/.test(read(f)));
+  check("src に project_datasets を読む SQL が残っていない", stale.length === 0);
+  const mig067 = read(join(REPO_ROOT, "infra", "migrations", "067_drop_project_datasets.sql"));
+  check("067 が project_datasets を落とす（移行漏れがあれば止まる）", /DROP TABLE project_datasets/.test(mig067) && /RAISE EXCEPTION/.test(mig067) && /legacy:/.test(mig067));
+  const csv = read(join(APP_ROOT, "src", "lib", "dataset", "csv.ts"));
+  check("CSV は UTF-8 で読めなければ Shift_JIS", /fatal: true/.test(csv) && /shift_jis/.test(csv));
+  check("check:datasetsvc（実 DB 検査）が存在する", existsSync(join(APP_ROOT, "scripts", "check-dataset-service.mjs")));
+
+  // ── 10. マニュアル・サイドバー ────────────────────
+  console.log("10. マニュアル");
   const manual = read(join(APP_ROOT, "src", "content", "manual", "datasets.md"));
   check("datasets.md が箱と版・個票・鍵方式を説明している",
     /箱/.test(manual) && /版/.test(manual) && /個票/.test(manual) && /鍵/.test(manual) && /対応表/.test(manual));

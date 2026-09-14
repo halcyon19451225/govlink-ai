@@ -1,5 +1,6 @@
 import "server-only";
 import { type PoolClient } from "pg";
+import { latestVersionsByTemplate } from "@/lib/dataset/service";
 import { query } from "@/lib/db";
 import type { ArtifactType } from "./artifact-types";
 
@@ -112,19 +113,16 @@ export async function resolveArtifactIds(
 }
 
 /**
- * project_datasets から source_datasets_snapshot 用の辞書を作る。
+ * データセットの版から source_datasets_snapshot 用の辞書を作る。
  * gap_analysis などが「どのデータセットを使ったか」を記録するために呼ぶ。
  */
 export async function buildDatasetsSnapshot(
   projectId: string,
 ): Promise<Record<string, string>> {
-  const rows = await query<{ dataset_def_id: string; uploaded_at: string }>(
-    `SELECT dataset_def_id, uploaded_at::text FROM project_datasets WHERE project_id = $1`,
-    [projectId],
-  );
+  // D2: project_datasets → 箱ごとの最新の有効な版（キーは旧 dataset_def_id ＝ 箱の template_id）
   const snapshot: Record<string, string> = {};
-  for (const r of rows) {
-    snapshot[r.dataset_def_id] = r.uploaded_at;
+  for (const v of await latestVersionsByTemplate(projectId)) {
+    snapshot[v.template_id ?? v.dataset_id] = v.uploaded_at;
   }
   return snapshot;
 }

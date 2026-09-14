@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
+import { latestVersionsByTemplate } from "@/lib/dataset/service";
 import { query, queryOne } from "@/lib/db";
 
 type Params = { params: { id: string } };
@@ -56,14 +57,11 @@ async function buildLineageFlat(projectId: string): Promise<LineageResponse> {
 
   if (rows.length === 0) return { nodes: [], edges: [] };
 
-  // 陳腐化チェック用: 現在の project_datasets.uploaded_at を取得
-  const datasets = await query<{ dataset_def_id: string; uploaded_at: string }>(
-    `SELECT dataset_def_id, uploaded_at::text FROM project_datasets WHERE project_id = $1`,
-    [projectId],
-  );
+  // 陳腐化チェック用: 現在の版の uploaded_at を取得
+  // D2: project_datasets → 箱ごとの最新の有効な版（キーは旧 dataset_def_id ＝ 箱の template_id）
   const currentUploads: Record<string, string> = {};
-  for (const ds of datasets) {
-    currentUploads[ds.dataset_def_id] = ds.uploaded_at;
+  for (const v of await latestVersionsByTemplate(projectId)) {
+    currentUploads[v.template_id ?? v.dataset_id] = v.uploaded_at;
   }
 
   // 全 artifact ID のセット（存在チェック用）

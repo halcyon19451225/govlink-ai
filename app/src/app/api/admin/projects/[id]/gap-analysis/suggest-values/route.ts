@@ -6,6 +6,7 @@ import { aiCreateMessage } from "@/lib/ai/gateway";
 import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
+import { latestVersionsByTemplate } from "@/lib/dataset/service";
 import { downloadFromStorage } from "@/lib/storage";
 import { requireModulePermission } from "@/lib/permissions";
 
@@ -49,14 +50,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // データセットを取得
-  const datasets = await query<{
-    id: string; dataset_def_id: string; file_name: string;
-    storage_path: string; survey_year: number | null;
-  }>(
-    `SELECT id, dataset_def_id, file_name, storage_path, survey_year
-     FROM project_datasets WHERE project_id = $1`,
-    [params.id]
-  );
+  // D2: project_datasets は箱＋版（datasets / dataset_versions）に置き換わった。
+  // 箱ごとの最新の有効な版を読む（設計 claude/coe-dataset-model.md §4）。
+  // ※ この「AI が CSV を読んで現状値を推測する」方式自体は D4 で指標管理に置き換わる
+  const datasets = (await latestVersionsByTemplate(params.id))
+    .filter((v) => v.kind === "aggregate" && v.storage_path)
+    .map((v) => ({
+      id: v.version_id,
+      dataset_def_id: v.template_id ?? v.dataset_id,
+      file_name: v.file_name ?? v.name,
+      storage_path: v.storage_path as string,
+      survey_year: Number(v.as_of.slice(0, 4)) || null,
+    }));
 
   if (datasets.length === 0) {
     return NextResponse.json({ data: null, error: "データセットが登録されていません" }, { status: 400 });

@@ -46,7 +46,8 @@
     "check:ratelimit": "node scripts/check-rate-limit.mjs",
     "check:security": "npm run check:register && npm run check:identity && npm run check:tenant && npm run check:ordoadmin && npm run check:ratelimit && npm run check:provisioning",
     "check:provisioning": "node scripts/check-provisioning.mjs",
-    "check:dataset": "node scripts/check-dataset.mjs"
+    "check:dataset": "node scripts/check-dataset.mjs",
+    "check:datasetsvc": "node scripts/check-dataset-service.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

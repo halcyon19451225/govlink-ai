@@ -2,11 +2,11 @@
 module: datasets
 title: データセット管理
 menu_path: /projects/[id]/datasets
-tables: [datasets, dataset_versions, dataset_rows, attribute_definitions, observations, subjects, sid_aliases, cohorts, activity_log, dataset_definitions, project_datasets]
-apis: [/api/admin/projects/[id]/datasets]
+tables: [datasets, dataset_versions, dataset_rows, attribute_definitions, observations, subjects, sid_aliases, cohorts, activity_log, dataset_definitions]
+apis: [/api/admin/projects/[id]/datasets, /api/admin/projects/[id]/datasets/[datasetId], /api/admin/projects/[id]/datasets/[datasetId]/versions, /api/admin/projects/[id]/datasets/[datasetId]/versions/[versionId], /api/admin/projects/[id]/datasets/[datasetId]/versions/[versionId]/download]
 ai_tasks: []
-checks: [check:vocab, check:dataset]
-migrations: [010s, 066]
+checks: [check:vocab, check:dataset, check:datasetsvc]
+migrations: [010s, 066, 067]
 upstream: []
 downstream: [gap-analysis, asis-analysis, service-volume, measure-design, work-evaluation, measure-evaluation]
 updated: 2026-09-14
@@ -113,10 +113,12 @@ flowchart TD
   observations（五つ組）/ subjects / sid_aliases（仮名の別名）/ cohorts / cohort_members / activity_log
 - 純関数: `src/lib/dataset/`（キー種別・sid 導出・個人番号ガード・辞書・粗化・k 検定・五つ組展開）。
   庁内の変換ツールと Coe の取込口が同じコードを使う
-- 旧 project_datasets は 066 で箱＋版へ移行済み（表は D2 で API を切り替えてから落とす）
+- 旧 project_datasets は 066 で箱＋版へ移行し、067 で廃止した（ギャップ分析・リネージ・成果物記録は「箱ごとの最新の有効な版」を読む）
+- サービス層 `src/lib/dataset/service.ts` — 画面（API）も AI も同じ関数を通り、`activity_log` に同じ形で残る。集計データの版は同期取込（5 MB・50,000 行まで）。1行でも検証に失敗した版は「無効」として記録し、行は取り込まない
 - 設計書: `claude/coe-dataset-model.md`（第Ⅰ部）。法的整理: `claude/coe-cohort-etl-plan.md`
 
 ## ⑧ 更新履歴
 
+- 2026-09-14 v3 — D2: 箱・版の画面と API、集計データの同期取込（列定義検証・個人番号ガード・Shift_JIS）、project_datasets の廃止（067）
 - 2026-09-14 v2 — D1: 箱・版・個票（五つ組）・属性辞書・鍵方式（migration 066・lib/dataset・check:dataset）
 - 2026-08-26 v1 — M3 初版
