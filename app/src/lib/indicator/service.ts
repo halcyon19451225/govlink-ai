@@ -17,6 +17,8 @@
 import type { PoolClient } from "pg";
 import { query, queryOne, transaction } from "@/lib/db";
 import { logActivity, type Actor } from "@/lib/activity";
+import { computeIndicator } from "./engine";
+import { validateSpec, type IndicatorSpec, type Missing } from "./spec";
 
 /**
  * 既に走っているトランザクションの中から呼ぶための入口。
@@ -222,6 +224,8 @@ export interface CreateIndicatorInput {
   indicatorType?: string;
   origin?: IndicatorOrigin;
   calcType?: CalcType;
+  /** 算出の設定（タイプごと）。手入力なら不要。lib/indicator/spec.ts の validateSpec を通すこと */
+  spec?: Record<string, unknown>;
   timeGranularity?: "day" | "month" | "fiscal_year";
   dataSource?: string | null;
   frequency?: string | null;
@@ -288,8 +292,8 @@ export async function createIndicatorTx(
       `INSERT INTO indicators
          (project_id, label, unit, description, indicator_type, origin, calc_type, time_granularity,
           data_source, frequency, base_day, goal_id, contributes_to_kpi_id,
-          previous_value, previous_target, target_needs_review)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+          previous_value, previous_target, target_needs_review, spec)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING id, project_id, label, unit, description, calc_type, spec, time_granularity,
                  data_source, frequency, base_day, origin, indicator_type, goal_id,
                  contributes_to_kpi_id, cloned_from_kpi_id, target_needs_review,
@@ -301,6 +305,7 @@ export async function createIndicatorTx(
         input.dataSource ?? null, input.frequency ?? null, input.baseDay ?? null,
         input.goalId ?? null, input.contributesToId ?? null,
         input.previousValue ?? null, input.previousTarget ?? null, input.targetNeedsReview === true,
+        JSON.stringify(input.spec ?? {}),
       ],
     );
     const created = r.rows[0]!;
@@ -571,4 +576,94 @@ export async function assignToMeasure(
       summary: { assigned_to_measure_indicator: measureIndicatorId },
     });
   });
+}
+
+// ── 算出（指標エンジンを呼んで、結果を履歴に積む） ─────────
+
+export interface ComputeAndRecordOk {
+  ok: true;
+  indicatorId: string;
+  label: string;
+  value: number;
+  valueRow: IndicatorValueRow;
+}
+export interface ComputeAndRecordNg {
+  ok: false;
+  indicatorId: string;
+  label: string;
+  /** 何をいつ時点で上げてほしいか（構造。画面も AI も同じものを読む。設計 §9-5） */
+  missing: Missing[];
+}
+export type ComputeAndRecordResult = ComputeAndRecordOk | ComputeAndRecordNg;
+
+/**
+ * 「最新値の確認」— 指標を1つ計算して、値を履歴に1行積む。
+ *
+ * **計算（engine）と記録（recordValue）を分けている。** 画面の「確認」ボタン・一括取得・
+ * ギャップ分析・AI の対話は、どれもこの関数を呼ぶので、残るものが同じ形になる（設計 §10-5）。
+ * 手入力型（manual）は計算しない — 人が入れるものなので、そのまま返す。
+ */
+export async function computeAndRecord(
+  actor: Actor,
+  projectId: string,
+  indicatorId: string,
+  asOf: string,
+  opts: { scope?: TargetScope; measureDesignId?: string | null; measureWorkId?: string | null } = {},
+): Promise<ComputeAndRecordResult> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) throw new IndicatorError("基準日は YYYY-MM-DD で指定してください");
+  const ind = await getIndicator(projectId, indicatorId);
+  if (!ind) throw new IndicatorError("指標が見つかりません", 404);
+  if (ind.calc_type === "manual") {
+    throw new IndicatorError("この指標は手入力です。値を直接入力してください", 400);
+  }
+  const errs = validateSpec(ind.spec);
+  if (errs.length > 0) throw new IndicatorError(`指標の設定が未完成です: ${errs[0]}`, 400);
+
+  const result = await computeIndicator(projectId, ind.spec as unknown as IndicatorSpec, asOf);
+  if (!result.ok) {
+    return { ok: false, indicatorId, label: ind.label, missing: result.missing };
+  }
+  const valueRow = await recordValue(actor, projectId, indicatorId, {
+    asOf,
+    ...(opts.scope ? { scope: opts.scope } : {}),
+    ...(opts.measureDesignId !== undefined ? { measureDesignId: opts.measureDesignId } : {}),
+    ...(opts.measureWorkId !== undefined ? { measureWorkId: opts.measureWorkId } : {}),
+    value: result.value,
+    numerator: result.numerator,
+    denominator: result.denominator,
+    n: result.n,
+    inputs: result.inputs as unknown as Record<string, unknown>,
+  });
+  return { ok: true, indicatorId, label: ind.label, value: result.value, valueRow };
+}
+
+/**
+ * 一括取得。指標を順に計算し、**成功した分だけ履歴に積む**（失敗は不足として返す）。
+ * 計算式型は他の指標の値に依存するので、**それ以外を先に**計算する。
+ */
+export async function computeMany(
+  actor: Actor,
+  projectId: string,
+  indicatorIds: string[],
+  asOf: string,
+): Promise<ComputeAndRecordResult[]> {
+  const rows = await query<{ id: string; calc_type: CalcType }>(
+    `SELECT id, calc_type FROM indicators WHERE project_id = $1 AND id = ANY($2::uuid[])`,
+    [projectId, indicatorIds],
+  );
+  const order = [...rows].sort((a, b) => Number(a.calc_type === "formula") - Number(b.calc_type === "formula"));
+  const out: ComputeAndRecordResult[] = [];
+  for (const r of order) {
+    try {
+      out.push(await computeAndRecord(actor, projectId, r.id, asOf));
+    } catch (e) {
+      const ind = await getIndicator(projectId, r.id);
+      out.push({
+        ok: false, indicatorId: r.id, label: ind?.label ?? "",
+        missing: [{ reason: "dependency_missing", indicatorId: r.id, neededAsOf: asOf,
+          ...(e instanceof IndicatorError ? { indicatorLabel: e.message } : {}) }],
+      });
+    }
+  }
+  return out;
 }

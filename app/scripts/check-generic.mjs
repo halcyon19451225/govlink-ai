@@ -77,6 +77,12 @@ const CORE_PATHS = [
   // D3: 指標管理。指標は分野を問わない仕組みなので、ここも分野の語彙を持たない
   "lib/indicator/service.ts",
   "lib/activity.ts",
+  // D4: 指標エンジンと画面
+  "lib/indicator/spec.ts",
+  "lib/indicator/engine.ts",
+  "lib/indicator/http.ts",
+  "app/api/admin/projects/[id]/indicators",
+  "app/(admin)/projects/[id]/indicators",
 ];
 
 function filesUnder(rel) {
@@ -98,7 +104,7 @@ function filesUnder(rel) {
 // ── 1. コアに分野の語彙が無いこと ───────────────────
 console.log("1. コアに分野の語彙が無いこと");
 const coreFiles = CORE_PATHS.flatMap(filesUnder);
-check("コアの対象ファイルが見つかる", coreFiles.length >= 15, `見つかったのは ${coreFiles.length} 件`);
+check("コアの対象ファイルが見つかる", coreFiles.length >= 22, `見つかったのは ${coreFiles.length} 件`);
 let leaks = 0;
 for (const f of coreFiles) {
   const src = read(f);

@@ -172,6 +172,111 @@ try {
     (await q(`SELECT count(*)::int AS n FROM indicator_values WHERE indicator_id = $1`, [b.id]))[0].n === 0);
   check("削除しても履歴は残る",
     (await q(`SELECT count(*)::int AS n FROM activity_log WHERE entity_id = $1`, [b.id]))[0].n > 0);
+  // ── 8. 指標エンジン（D4）実データで計算する ─────────
+  console.log("8. 指標エンジン");
+  // 集計データの箱を1つ作り、2つの版（2025 と 2026）を入れる
+  const boxId = (await q(
+    `INSERT INTO datasets (project_id, kind, name, schema, time_granularity)
+     VALUES ($1, 'aggregate', '検証データ',
+             '[{"name":"区分","role":"dimension","type":"text"},
+               {"name":"時点","role":"time","type":"fiscal_year"},
+               {"name":"対象","role":"measure","type":"int"},
+               {"name":"該当","role":"measure","type":"int"}]'::jsonb, 'fiscal_year')
+     RETURNING id`, [PROJECT]))[0].id;
+  const mkVersion = async (asOfDate, rows) => {
+    const vid = (await q(
+      `INSERT INTO dataset_versions (dataset_id, as_of, status, row_count) VALUES ($1, $2::date, 'validated', $3) RETURNING id`,
+      [boxId, asOfDate, rows.length]))[0].id;
+    let n = 0;
+    for (const r of rows) {
+      await q(`INSERT INTO dataset_rows (dataset_version_id, row_no, dims, period, measures) VALUES ($1, $2, $3, $4::date, $5)`,
+        [vid, ++n, JSON.stringify(r.dims), asOfDate, JSON.stringify(r.measures)]);
+    }
+    return vid;
+  };
+  const v2025 = await mkVersion("2025-03-31", [
+    { dims: { 区分: "X" }, measures: { 対象: 100, 該当: 20 } },
+    { dims: { 区分: "Y" }, measures: { 対象: 100, 該当: 40 } },
+  ]);
+  const v2026 = await mkVersion("2026-03-31", [
+    { dims: { 区分: "X" }, measures: { 対象: 200, 該当: 30 } },
+    { dims: { 区分: "Y" }, measures: { 対象: 200, 該当: 50 } },
+  ]);
+
+  const sum = await svc.createIndicator(human, PROJECT, {
+    label: "検証・合計", unit: "人", calcType: "aggregate",
+    spec: { type: "aggregate", datasetId: boxId, measure: "対象", method: "sum" },
+  });
+  const rate = await svc.createIndicator(human, PROJECT, {
+    label: "検証・割合", unit: "", calcType: "aggregate",
+    spec: { type: "aggregate", datasetId: boxId, measure: "該当", method: "rate", denominator: "対象" },
+  });
+  const filtered = await svc.createIndicator(human, PROJECT, {
+    label: "検証・絞り込み", unit: "人", calcType: "aggregate",
+    spec: { type: "aggregate", datasetId: boxId, measure: "該当", method: "sum", filters: [{ key: "区分", in: ["X"] }] },
+  });
+
+  const r1 = await svc.computeAndRecord(human, PROJECT, sum.id, "2026-03-31");
+  check("集計型: 合計が出る", r1.ok && r1.value === 400);
+  check("使った版が履歴に残る", r1.ok && r1.valueRow.inputs?.versions?.[0]?.datasetVersionId === v2026);
+  const r2 = await svc.computeAndRecord(human, PROJECT, rate.id, "2026-03-31");
+  check("集計型: 割合が出る（分子・分母も残る）",
+    r2.ok && r2.value === 0.2 && Number(r2.valueRow.numerator) === 80 && Number(r2.valueRow.denominator) === 400);
+  const r3 = await svc.computeAndRecord(human, PROJECT, filtered.id, "2026-03-31");
+  check("集計型: 絞り込みが効く", r3.ok && r3.value === 30);
+
+  // 基準日を遡ると、その時点以前で最新の版が選ばれる
+  const r4 = await svc.computeAndRecord(human, PROJECT, sum.id, "2025-12-31");
+  check("基準日以前で最も新しい版を使う", r4.ok && r4.value === 200 && r4.valueRow.inputs.versions[0].datasetVersionId === v2025);
+  check("基準日ごとに履歴が並ぶ（上書きしない）",
+    (await svc.listValues(sum.id)).length === 2);
+
+  // どの版より前の基準日は「不足」— 何をいつ時点で上げるかが返る
+  const r5 = await svc.computeAndRecord(human, PROJECT, sum.id, "2020-03-31");
+  check("版が無い基準日は不足として返る", !r5.ok && r5.missing[0].reason === "no_version_before_as_of");
+  check("不足に「今ある最新の時点」が入る", !r5.ok && r5.missing[0].latestAvailableAsOf === "2026-03-31");
+  check("不足のときは履歴に積まない", (await svc.listValues(sum.id)).length === 2);
+
+  // 無い列を指すと、列が無いこととして返る
+  const badCol = await svc.createIndicator(human, PROJECT, {
+    label: "検証・無い列", calcType: "aggregate",
+    spec: { type: "aggregate", datasetId: boxId, measure: "存在しない列", method: "sum" },
+  });
+  const r6 = await svc.computeAndRecord(human, PROJECT, badCol.id, "2026-03-31");
+  check("無い列は column_missing として返る", !r6.ok && r6.missing[0].reason === "column_missing");
+
+  // 計算式型
+  const formula = await svc.createIndicator(human, PROJECT, {
+    label: "検証・式", unit: "％", calcType: "formula",
+    spec: { type: "formula", expression: `{ind:${rate.id}} * 100` },
+  });
+  const r7 = await svc.computeAndRecord(human, PROJECT, formula.id, "2026-03-31");
+  check("計算式型: 他の指標の同じ基準日の値から計算する", r7.ok && r7.value === 20);
+  check("計算式型: 参照した指標の値も履歴に残る", r7.ok && r7.valueRow.inputs.indicators?.[0]?.indicatorId === rate.id);
+  const r8 = await svc.computeAndRecord(human, PROJECT, formula.id, "2025-12-31");
+  check("計算式型: 参照先の値が無い基準日は dependency_missing",
+    !r8.ok && r8.missing[0].reason === "dependency_missing");
+
+  // 経年比較型は個票が要る
+  const longi = await svc.createIndicator(human, PROJECT, {
+    label: "検証・経年", calcType: "longitudinal",
+    spec: { type: "longitudinal", datasetId: boxId, attrKey: "x.y", monthsBack: 12, order: ["a", "b"], improvedWhen: "same_or_earlier" },
+  });
+  const r9 = await svc.computeAndRecord(human, PROJECT, longi.id, "2026-03-31");
+  check("経年比較型は集計データでは計算できない", !r9.ok);
+
+  // 手入力型は計算しない
+  let manualRejected = false;
+  try { await svc.computeAndRecord(human, PROJECT, a.id, "2026-03-31"); } catch (e) { manualRejected = e.status === 400; }
+  check("手入力型に計算を求めたら断る", manualRejected);
+
+  // 一括取得（計算式型はあとに回されること）
+  const bulk = await svc.computeMany({ ...human, via: "bulk" }, PROJECT, [formula.id, sum.id, rate.id], "2026-03-31");
+  check("一括: 全部計算できる", bulk.every((r) => r.ok));
+  check("一括: 計算式型でも値が出る（依存を先に計算している）",
+    bulk.find((r) => r.indicatorId === formula.id)?.value === 20);
+  const viaBulk = await q(`SELECT via FROM indicator_values WHERE indicator_id = $1 ORDER BY computed_at DESC LIMIT 1`, [sum.id]);
+  check("一括で取った値は経路が bulk で残る", viaBulk[0].via === "bulk");
 } finally {
   await pool.query(`DELETE FROM municipalities WHERE id = $1`, [MUNI]).catch(() => {});
   await pool.end().catch(() => {});

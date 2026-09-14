@@ -21,9 +21,11 @@
  *   node scripts/check-indicator.mjs
  */
 
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync, mkdtempSync, rmSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = resolve(here, "..");
@@ -129,6 +131,103 @@ check("互換ビュー kpis を置く", /CREATE OR REPLACE VIEW kpis AS/.test(mi
 check("互換ビューは計画の指標だけを返す", /WHERE i\.origin = 'plan'/.test(mig));
 check("旧列（target/current）を落とす", /DROP COLUMN IF EXISTS current/.test(mig));
 check("再実行できる（存在チェック付き）", /IF NOT EXISTS|to_regclass/.test(mig));
+
+// ── 7. 指標エンジンの設定検証（D4・純関数を実際に動かす）──
+console.log("7. 設定（spec）の検証");
+const work = mkdtempSync(join(tmpdir(), "indicator-"));
+try {
+  const file = join(work, "spec.mjs");
+  execFileSync("npx", ["--no-install", "esbuild", join(SRC, "lib", "indicator", "spec.ts"),
+    "--bundle", "--format=esm", "--platform=node", "--target=es2022", `--alias:@=${SRC}`, `--outfile=${file}`],
+    { stdio: ["ignore", "ignore", "pipe"], cwd: APP_ROOT });
+  const m = await import(pathToFileURL(file).href);
+
+  const DS = "11111111-1111-4111-8111-111111111111";
+  const IND1 = "22222222-2222-4222-8222-222222222222";
+  const IND2 = "33333333-3333-4333-8333-333333333333";
+
+  // 4タイプが通ること
+  check("集計型の設定が通る", m.validateSpec({ type: "aggregate", datasetId: DS, measure: "件数", method: "sum" }).length === 0);
+  check("割合は分母を指定できる", m.validateSpec({ type: "aggregate", datasetId: DS, measure: "a", method: "rate", denominator: "b" }).length === 0);
+  check("割合以外で分母を指定したら落ちる", m.validateSpec({ type: "aggregate", datasetId: DS, measure: "a", method: "sum", denominator: "b" }).length > 0);
+  check("経年比較型の設定が通る",
+    m.validateSpec({ type: "longitudinal", datasetId: DS, attrKey: "x.y", monthsBack: 12, order: ["a", "b"], improvedWhen: "same_or_earlier" }).length === 0);
+  check("経年比較: 値の並びが1つだけなら落ちる",
+    m.validateSpec({ type: "longitudinal", datasetId: DS, attrKey: "x.y", monthsBack: 12, order: ["a"], improvedWhen: "same_or_earlier" }).length > 0);
+  check("経年比較: 並びの重複を弾く",
+    m.validateSpec({ type: "longitudinal", datasetId: DS, attrKey: "x.y", monthsBack: 12, order: ["a", "a"], improvedWhen: "same_or_earlier" }).length > 0);
+  check("経年比較: 比べる時点の範囲を強制する",
+    m.validateSpec({ type: "longitudinal", datasetId: DS, attrKey: "x.y", monthsBack: 0, order: ["a", "b"], improvedWhen: "same_or_earlier" }).length > 0);
+  check("クロス集計型の設定が通る",
+    m.validateSpec({ type: "cross", datasetId: DS, conditions: [{ key: "x.y", in: ["1"] }], method: "count" }).length === 0);
+  check("クロス集計: 条件が無ければ落ちる", m.validateSpec({ type: "cross", datasetId: DS, conditions: [], method: "count" }).length > 0);
+  check("未知のタイプは落ちる", m.validateSpec({ type: "regression" }).length > 0);
+  check("データセット未指定は落ちる", m.validateSpec({ type: "aggregate", measure: "a", method: "sum" }).length > 0);
+
+  // 個票が要るタイプが宣言されていること（画面の注意書きの根拠）
+  check("個票が要るタイプが宣言されている", m.NEEDS_INDIVIDUAL.has("longitudinal") && m.NEEDS_INDIVIDUAL.has("cross") && !m.NEEDS_INDIVIDUAL.has("aggregate"));
+
+  // 計算式の構文限定パーサ
+  check("計算式が通る", m.validateSpec({ type: "formula", expression: `{ind:${IND1}} / {ind:${IND2}} * 100` }).length === 0);
+  check("計算式: 指標の参照が無い式は落ちる", m.validateSpec({ type: "formula", expression: "1 + 2" }).length > 0);
+  check("計算式: 関数呼び出しは書けない", m.validateSpec({ type: "formula", expression: `sum({ind:${IND1}})` }).length > 0);
+  check("計算式: 任意のコードは書けない", m.validateSpec({ type: "formula", expression: "process.exit(1)" }).length > 0);
+  check("計算式: 閉じていない括弧は落ちる", m.validateSpec({ type: "formula", expression: `({ind:${IND1}} + 1` }).length > 0);
+  const parsed = m.parseFormula(`({ind:${IND1}} + 2) / {ind:${IND2}}`);
+  check("計算式: 参照している指標を取り出せる", parsed.ok && parsed.refs.length === 2);
+  check("計算式: 掛け算・割り算が先に効く",
+    m.evalFormula(m.parseFormula(`{ind:${IND1}} + {ind:${IND2}} * 2`).node, new Map([[IND1, 1], [IND2, 3]])) === 7);
+  check("計算式: 括弧が効く",
+    m.evalFormula(m.parseFormula(`({ind:${IND1}} + {ind:${IND2}}) * 2`).node, new Map([[IND1, 1], [IND2, 3]])) === 8);
+  check("計算式: 0 で割ったら値を出さない",
+    m.evalFormula(m.parseFormula(`{ind:${IND1}} / {ind:${IND2}}`).node, new Map([[IND1, 1], [IND2, 0]])) === null);
+  check("計算式: 値が揃わなければ値を出さない",
+    m.evalFormula(m.parseFormula(`{ind:${IND1}} / {ind:${IND2}}`).node, new Map([[IND1, 1]])) === null);
+  check("計算式: 参照している指標 ID を spec から取れる",
+    m.referencedIndicatorIds({ type: "formula", expression: `{ind:${IND1}} * 2` })[0] === IND1);
+
+  // 不足エラー5種が説明文になること（画面も AI も同じものを読む）
+  console.log("8. 不足の案内");
+  const reasons = ["no_version_before_as_of", "attr_missing", "column_missing", "too_few_rows", "dependency_missing"];
+  for (const reason of reasons) {
+    const text = m.describeMissing({ reason, datasetName: "検証データ", neededAsOf: "2026-03-31", attrKey: "x.y", column: "c", indicatorLabel: "指標A" });
+    check(`不足「${reason}」が日本語の案内になる`, typeof text === "string" && text.length > 5);
+  }
+  check("不足の案内に基準日が入る（いつ時点のものを上げるか分かる）",
+    m.describeMissing({ reason: "no_version_before_as_of", datasetName: "D", neededAsOf: "2026-03-31", latestAvailableAsOf: "2025-03-31" }).includes("2026-03-31"));
+  check("不足の案内に、今あるうち一番新しい時点も入る",
+    m.describeMissing({ reason: "no_version_before_as_of", datasetName: "D", neededAsOf: "2026-03-31", latestAvailableAsOf: "2025-03-31" }).includes("2025-03-31"));
+
+  // エンジンの規律（テキスト検査）
+  console.log("9. 指標エンジン");
+  const eng = read(join(SRC, "lib", "indicator", "engine.ts"));
+  check("版は基準日以前で最も新しい有効な版を選ぶ", /status = 'validated' AND as_of <= \$2::date/.test(eng) && /ORDER BY as_of DESC/.test(eng));
+  check("使った版を必ず返す（あとから追えるように）", /inputs/.test(eng) && /datasetVersionId/.test(eng));
+  check("エンジンは値を履歴に積まない（積むのはサービス層）", !/INSERT INTO indicator_values/.test(eng));
+  check("経年比較・クロスは集計データを拒む", /ds\.kind !== "individual"/.test(eng));
+  check("人数が少なすぎるときは値を出さない", /MIN_DENOMINATOR/.test(eng) && /too_few_rows/.test(eng));
+  check("絞り込みの値はパラメータで渡す（SQL に埋め込まない）", !/\$\{f\.in\}/.test(eng) && /params\.push\(f\.in\)/.test(eng));
+
+  // 画面・API
+  console.log("10. 画面と API");
+  const listApi = read(join(SRC, "app", "api", "admin", "projects", "[id]", "indicators", "route.ts"));
+  const computeApi = read(join(SRC, "app", "api", "admin", "projects", "[id]", "indicators", "[indicatorId]", "compute", "route.ts"));
+  const gapApi = read(join(SRC, "app", "api", "admin", "projects", "[id]", "gap-analysis", "indicator-values", "route.ts"));
+  const client = read(join(SRC, "app", "(admin)", "projects", "[id]", "indicators", "IndicatorsClient.tsx"));
+  check("一覧 API がテナント境界と権限を通る", /requireProjectAccess/.test(listApi) && /requireModulePermission/.test(listApi));
+  check("登録 API が設定を検証してから登録する", /validateSpec/.test(listApi));
+  check("算出 API は不足を 200 で返す（エラーにしない）", /ok: false/.test(computeApi) && !/status: 400 \}\);\s*\}\s*$/.test(computeApi));
+  check("算出 API が不足に説明文を添える", /describeMissing/.test(computeApi));
+  check("ギャップ分析が登録指標から現状値を取る", /computeMany/.test(gapApi) && /gap_analysis/.test(gapApi));
+  check("ギャップ分析の画面のボタンが「登録指標から」になっている",
+    read(join(SRC, "app", "(admin)", "projects", "[id]", "gap-analysis", "GapAnalysisClient.tsx")).includes("登録指標から現状値を取得"));
+  check("画面が4つのタイプの説明を持つ", /CALC_HELP/.test(client));
+  check("画面が「同じ基準日でも上書きしない」ことを説明する", /上書き|消えません/.test(client));
+  check("画面が不足からデータセット管理へ導く", /datasets/.test(client));
+  check("メニューに指標管理がある", read(join(SRC, "components", "ProjectSidebar.tsx")).includes('path: "indicators"'));
+} finally {
+  rmSync(work, { recursive: true, force: true });
+}
 
 // ── まとめ ───────────────────────────────────────────
 console.log(`\ncheck:indicator — ${passed} passed, ${failed} failed`);

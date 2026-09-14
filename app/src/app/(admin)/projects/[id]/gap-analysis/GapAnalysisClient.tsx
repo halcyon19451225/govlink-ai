@@ -196,7 +196,58 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
   const setCurrentValue = (kpiId: string, val: string) =>
     setCurrentValues((p) => ({ ...p, [kpiId]: val }));
 
-  // ─── データセットから現状値を取得 ──────────────────────────────────────────
+  // ─── 登録指標から現状値を取得（D4）──────────────────────────────────────
+  //
+  // 指標管理に登録された「どう測るか」で機械的に計算する。**計算した値は履歴に積まれる**ので、
+  // ここで出した現状値と、KPI 一覧・評価で見える値が同じものになる。
+  // 計算できないものは「どのデータセットをいつ時点で上げるか」の案内として並べる。
+
+  const [indicatorMissing, setIndicatorMissing] = useState<
+    { indicatorId: string; label: string; items: { message?: string; datasetId?: string }[] }[]
+  >([]);
+
+  const handleIndicatorValues = async () => {
+    setSuggestLoading(true);
+    setSuggestError(null);
+    setIndicatorMissing([]);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/gap-analysis/indicator-values`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = (await res.json()) as {
+        data: {
+          asOf: string;
+          values: Array<{ kpi_id: string; current_value: number; source: string }>;
+          missing: { indicatorId: string; label: string; items: { message?: string; datasetId?: string }[] }[];
+        } | null;
+        error: string | null;
+      };
+      if (!res.ok || !json.data) {
+        setSuggestError(json.error ?? "取得に失敗しました");
+        return;
+      }
+      const newValues: Record<string, string> = { ...currentValues };
+      const newHints: Record<string, string> = { ...sourceHints };
+      for (const item of json.data.values) {
+        newValues[item.kpi_id] = String(item.current_value);
+        newHints[item.kpi_id] = item.source;
+      }
+      setCurrentValues(newValues);
+      setSourceHints(newHints);
+      setIndicatorMissing(json.data.missing);
+      if (json.data.values.length === 0 && json.data.missing.length === 0) {
+        setSuggestError("計算できる指標が登録されていません。指標管理で登録してください");
+      }
+    } catch {
+      setSuggestError("通信エラーが発生しました");
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
+  // ─── AI にデータセットから推測させる（補助・D4 で副次的な手段になった）──────
 
   const handleSuggestValues = async () => {
     setSuggestLoading(true);
@@ -369,15 +420,26 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={handleSuggestValues}
+            onClick={handleIndicatorValues}
             disabled={suggestLoading}
             className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl border transition-colors hover:border-cyan-400 hover:text-cyan-400 disabled:opacity-40"
             style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+            title="指標管理に登録された算出方法で計算します。計算した値は履歴に残ります"
           >
             {suggestLoading ? (
               <span className="inline-block w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-            ) : "📊"}
-            データセットから現状値を取得
+            ) : "📐"}
+            登録指標から現状値を取得
+          </button>
+          <button
+            type="button"
+            onClick={handleSuggestValues}
+            disabled={suggestLoading}
+            className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border transition-colors hover:border-slate-400 disabled:opacity-40"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+            title="指標が未登録のときの補助。AI が CSV を読んで推測するため、値は必ず確認してください"
+          >
+            📊 AI に推測させる（補助）
           </button>
           <div className="neu-button-wrap">
             <button
@@ -399,6 +461,22 @@ export default function GapAnalysisClient({ project, kpis, initialGaps, projectI
       {/* エラー・成功メッセージ */}
       {suggestError && (
         <div className="text-sm text-red-400 bg-red-400/10 px-4 py-2 rounded-lg">{suggestError}</div>
+      )}
+      {/* 計算できなかった指標の案内。何をいつ時点で上げればよいかを具体的に出す（設計 §9-5） */}
+      {indicatorMissing.length > 0 && (
+        <div className="text-sm bg-amber-400/10 px-4 py-3 rounded-lg space-y-1">
+          <p className="text-amber-300 font-medium">
+            まだ計算できない指標が {indicatorMissing.length} 件あります
+          </p>
+          {indicatorMissing.map((m) => (
+            <p key={m.indicatorId} style={{ color: "var(--text-secondary)" }}>
+              ・<strong>{m.label}</strong>: {m.items[0]?.message ?? "データが不足しています"}
+            </p>
+          ))}
+          <a href={`/projects/${projectId}/datasets`} className="inline-block mt-1 text-indigo-400 hover:text-indigo-300">
+            データセット管理で必要なデータを上げる →
+          </a>
+        </div>
       )}
       {analyzeError && (
         <div className="text-sm text-red-400 bg-red-400/10 px-4 py-2 rounded-lg">{analyzeError}</div>

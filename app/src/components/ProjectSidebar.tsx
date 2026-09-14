@@ -15,6 +15,7 @@ const NAV_ITEMS = [
     items: [
       { id: "overview",        label: "計画概要",          icon: "📋", path: "" },
       { id: "datasets",        label: "データセット管理",    icon: "🗄️", path: "datasets" },
+      { id: "indicators",      label: "指標管理",            icon: "📐", path: "indicators" },
       { id: "gap-analysis",    label: "ギャップ分析",        icon: "📊", path: "gap-analysis" },
       // 現状整理(As-Is)・課題仮説設定はメニューから外した（2026-09）。
       //   ギャップ分析の一覧に KPI ごとの「📝 現状整理」「💡 課題仮説」ボタン（状態バッジ付き）が
