@@ -6,6 +6,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
             kr.status, kr.reported_by, kr.reported_by_name,
             kr.reviewed_by, kr.reviewed_at::text, kr.created_at::text
      FROM kpi_reports kr
-     JOIN kpis k ON k.id = kr.kpi_id
+     JOIN ${PLAN_INDICATORS} k ON k.id = kr.kpi_id
      WHERE ${conditions.join(" AND ")}
      ORDER BY kr.created_at DESC`,
     values,

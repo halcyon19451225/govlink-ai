@@ -7,6 +7,7 @@ import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest, { params }: Params) {
             current::float AS current, target::float AS target,
             baseline_value::float AS baseline_value,
             achievement_condition, contributes_to_kpi_id
-     FROM kpis
+     FROM ${PLAN_INDICATORS}
      WHERE project_id = $1 AND contributes_to_kpi_id = ANY($2::uuid[])
      ORDER BY created_at`,
     [params.id, parentIds],

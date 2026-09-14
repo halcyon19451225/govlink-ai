@@ -7,6 +7,7 @@ import ImprovementActionsClient, {
 } from "./ImprovementActionsClient";
 import { assertProjectPage } from "@/lib/tenant-page";
 import type { ImprovementAction } from "@/lib/improvement/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 export default async function ImprovementActionsPage({
   params,
@@ -43,7 +44,7 @@ export default async function ImprovementActionsPage({
       [params.id],
     ).catch(() => [] as ImprovementAction[]),
     query<ReflectOption>(
-      "SELECT id, label AS label FROM kpis WHERE project_id = $1 ORDER BY created_at",
+      `SELECT id, label AS label FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ).catch(() => [] as ReflectOption[]),
     query<ReflectOption>(

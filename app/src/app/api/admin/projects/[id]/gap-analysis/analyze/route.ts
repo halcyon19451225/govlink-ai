@@ -8,6 +8,7 @@ import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       `SELECT id, label, target::float, unit, achievement_condition,
               baseline_value::float AS baseline_value,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline, goal_id
-       FROM kpis WHERE id = $1 AND project_id = $2`,
+       FROM ${PLAN_INDICATORS} WHERE id = $1 AND project_id = $2`,
       [kpi_id, params.id]
     );
   } else {
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       `SELECT id, label, target::float, unit, achievement_condition,
               baseline_value::float AS baseline_value,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline, goal_id
-       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id]
     );
   }

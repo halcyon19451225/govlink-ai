@@ -7,6 +7,7 @@ import { requireProjectAccess } from "@/lib/tenant";
 import { queryOne } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { turnStateOf, type TurnColumns } from "@/lib/ai/asyncTurn";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; dialogueId: string } };
 
@@ -28,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
             d.created_at::text, d.updated_at::text,
             k.label AS kpi_label
      FROM issue_dialogues d
-     LEFT JOIN kpis k ON k.id = d.kpi_id
+     LEFT JOIN ${PLAN_INDICATORS} k ON k.id = d.kpi_id
      WHERE d.id = $1 AND d.project_id = $2`,
     [params.dialogueId, params.id],
   );

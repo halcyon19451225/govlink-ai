@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 import { normalizeIndicatorType } from "@/lib/outcome/tiers";
 import type { EvalKpiRow, EvalResultRow, ImprovementRow } from "@/lib/plan/docx";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 /**
  * 評価報告書（PL3 A①）の実データ表 — docx出力・印刷ビュー・GET応答で共用。
@@ -28,7 +29,7 @@ export async function gatherEvalTables(projectId: string): Promise<EvalTables> {
     }>(
       `SELECT label, unit, target::float AS target, current::float AS current,
               baseline_value::float AS baseline_value, indicator_type, achievement_condition
-       FROM kpis WHERE project_id = $1 ORDER BY created_at LIMIT 50`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at LIMIT 50`,
       [projectId],
     ),
     query<{ measure: string | null; evaluation_tier: string; fiscal_year: number | null; result: string | null }>(

@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import KpiSummaryClient from "./KpiSummaryClient";
 import type { AchievementCondition } from "@/lib/stats/achievement";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow { id: string; title: string }
 
@@ -48,7 +49,7 @@ export default async function KpiSummaryPage({ params }: { params: { id: string 
               baseline_value::float AS baseline_value,
               achievement_condition,
               COALESCE(indicator_type, 'process') AS indicator_type
-       FROM kpis WHERE project_id = $1 ORDER BY id`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY id`,
       [params.id],
     ),
     query<ReportRow>(
@@ -56,7 +57,7 @@ export default async function KpiSummaryPage({ params }: { params: { id: string 
               kr.reported_value::float, kr.report_period, kr.comment,
               kr.status, kr.reported_by, kr.reported_by_name, kr.created_at::text
        FROM kpi_reports kr
-       JOIN kpis k ON k.id = kr.kpi_id
+       JOIN ${PLAN_INDICATORS} k ON k.id = kr.kpi_id
        WHERE kr.project_id = $1
        ORDER BY kr.created_at DESC`,
       [params.id],

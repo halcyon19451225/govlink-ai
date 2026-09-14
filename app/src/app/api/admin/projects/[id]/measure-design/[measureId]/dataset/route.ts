@@ -35,6 +35,7 @@ import {
 } from "@/lib/measure/dataset";
 import { fundingMismatchYears } from "@/lib/measure/indicators";
 import { normalizeMeasure } from "@/lib/measure/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; measureId: string } };
 
@@ -297,7 +298,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     target: number | null;
   }>(
     `SELECT k.id, k.label, k.unit, k.current::float AS current, k.target::float AS target
-       FROM kpis k
+       FROM ${PLAN_INDICATORS} k
        JOIN issue_hypotheses h ON h.id = $1
        JOIN issue_dialogues d ON d.id = h.issue_dialogue_id AND d.kpi_id = k.id
       WHERE k.project_id = $2

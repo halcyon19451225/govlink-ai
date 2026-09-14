@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import EvidencesClient from "./EvidencesClient";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow {
   id: string;
@@ -31,7 +32,7 @@ export default async function EvidencesPage({ params }: { params: { id: string }
 
   const [kpis, documents] = await Promise.all([
     query<KpiRow>(
-      "SELECT id, label FROM kpis WHERE project_id = $1 ORDER BY created_at",
+      `SELECT id, label FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
     query<DocumentRow>(

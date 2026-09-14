@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import EbpmClient from "./EbpmClient";
 import type { AchievementCondition } from "@/lib/stats/achievement";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow { id: string; title: string }
 interface KpiRow {
@@ -42,7 +43,7 @@ export default async function EbpmPage({ params }: { params: { id: string } }) {
     query<KpiRow>(
       `SELECT id, label, target::float AS target, current::float AS current, unit,
               baseline_value::float AS baseline_value, achievement_condition
-       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
     query<EvidenceRow>(
@@ -61,7 +62,7 @@ export default async function EbpmPage({ params }: { params: { id: string } }) {
       `SELECT bv.id, bv.kpi_id, bv.source, bv.label, bv.value::float AS value,
               bv.unit, bv.year
        FROM benchmark_values bv
-       JOIN kpis k ON k.id = bv.kpi_id
+       JOIN ${PLAN_INDICATORS} k ON k.id = bv.kpi_id
        WHERE k.project_id = $1
        ORDER BY bv.fetched_at DESC`,
       [params.id],

@@ -16,6 +16,7 @@ import {
   type ReportQuestion,
   type ReportTarget,
 } from "@/lib/report/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -154,7 +155,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const kpis =
     kpiIds.length > 0
       ? await query<{ id: string; label: string; unit: string }>(
-          `SELECT id, label, unit FROM kpis WHERE project_id = $1 AND id = ANY($2::uuid[])`,
+          `SELECT id, label, unit FROM ${PLAN_INDICATORS} WHERE project_id = $1 AND id = ANY($2::uuid[])`,
           [params.id, kpiIds],
         )
       : [];

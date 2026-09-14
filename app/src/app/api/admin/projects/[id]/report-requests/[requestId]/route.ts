@@ -9,6 +9,7 @@ import { requireProjectAccess } from "@/lib/tenant";
 import { query, queryOne, transaction } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { sanitizeQuestions, sanitizeTargets } from "@/lib/report/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; requestId: string } };
 
@@ -160,7 +161,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (d.form_def !== undefined) {
     // 実在ID検証のため現行のKPI・施策集合で再サニタイズ
     const [kpis, measures] = await Promise.all([
-      query<{ id: string }>(`SELECT id FROM kpis WHERE project_id = $1`, [params.id]),
+      query<{ id: string }>(`SELECT id FROM ${PLAN_INDICATORS} WHERE project_id = $1`, [params.id]),
       query<{ id: string }>(`SELECT id FROM measure_designs WHERE project_id = $1`, [params.id]),
     ]);
     const questions = sanitizeQuestions(

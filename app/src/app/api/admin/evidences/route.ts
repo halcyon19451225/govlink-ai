@@ -6,6 +6,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 const bodySchema = z.object({
   projectId: z.string().uuid("project_id が不正です"),
@@ -64,8 +65,8 @@ export async function GET(req: NextRequest) {
             e.ai_validity,
             e.created_at::text
      FROM evidences e
-     LEFT JOIN kpis ok  ON ok.id  = e.output_kpi_id
-     LEFT JOIN kpis ock ON ock.id = e.outcome_kpi_id
+     LEFT JOIN ${PLAN_INDICATORS} ok  ON ok.id  = e.output_kpi_id
+     LEFT JOIN ${PLAN_INDICATORS} ock ON ock.id = e.outcome_kpi_id
      WHERE e.project_id = $1
      ORDER BY e.created_at DESC`,
     [projectId],

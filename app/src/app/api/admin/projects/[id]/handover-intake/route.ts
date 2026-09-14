@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -52,7 +53,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       `SELECT id, label, unit, target::float AS target,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline,
               target_needs_review, indicator_type, cloned_from_kpi_id
-       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
   ]);

@@ -6,6 +6,7 @@ import { normalizeMeasure, type MeasureDesign } from "@/lib/measure/types";
 import type { ScoreboardKpi } from "@/lib/outcome/tiers";
 import MeasureDesignClient, { type MeasureFocus } from "./MeasureDesignClient";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 // 施策構築（EBPM）— E1: データセットの器と一覧・詳細
 // 設計: claude/coe-ebpm-plan.md
@@ -54,14 +55,14 @@ async function loadFocus(
   kpiId: string,
 ): Promise<MeasureFocus | null> {
   const kpi = await queryOne<ScoreboardKpi>(
-    `SELECT ${SCOREBOARD_COLS} FROM kpis WHERE id = $1 AND project_id = $2`,
+    `SELECT ${SCOREBOARD_COLS} FROM ${PLAN_INDICATORS} WHERE id = $1 AND project_id = $2`,
     [kpiId, projectId],
   ).catch(() => null);
   if (!kpi) return null;
 
   const [contributors, related, plan] = await Promise.all([
     query<ScoreboardKpi>(
-      `SELECT ${SCOREBOARD_COLS} FROM kpis
+      `SELECT ${SCOREBOARD_COLS} FROM ${PLAN_INDICATORS}
         WHERE project_id = $1 AND contributes_to_kpi_id = $2
         ORDER BY created_at`,
       [projectId, kpiId],
@@ -137,13 +138,13 @@ export default async function MeasureDesignPage({
               k.label AS kpi_label
        FROM issue_hypotheses h
        LEFT JOIN issue_dialogues d ON d.id = h.issue_dialogue_id
-       LEFT JOIN kpis k ON k.id = d.kpi_id
+       LEFT JOIN ${PLAN_INDICATORS} k ON k.id = d.kpi_id
        WHERE h.project_id = $1
        ORDER BY k.label NULLS LAST, h.priority_rank NULLS LAST, h.created_at`,
       [params.id],
     ).catch(() => [] as HypothesisRow[]),
     query<KpiRow>(
-      `SELECT id, label, unit, indicator_type FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+      `SELECT id, label, unit, indicator_type FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ).catch(() => [] as KpiRow[]),
   ]);

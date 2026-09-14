@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import PostForm, { type KpiForForm } from "./PostForm";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow {
   id: string;
@@ -26,7 +27,7 @@ export default async function PostReportPage({
 
   const kpis = await query<KpiForForm>(
     `SELECT id, label, target::float AS target, current::float AS current, unit
-     FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+     FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
     [project.id],
   );
 

@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
   //   かつては検査が無く、他テナントの KPI にベンチマーク値を注入できた
   //   （評価の根拠データの汚染。claude/coe-tenant-isolation.md §10）
   if (kpiId) {
-    const denied = await requireChildRowAccess(session, "kpis", kpiId);
+    const denied = await requireChildRowAccess(session, "indicators", kpiId);
     if (denied) return denied;
   }
 

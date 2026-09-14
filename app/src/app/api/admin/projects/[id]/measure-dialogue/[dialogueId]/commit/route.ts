@@ -22,6 +22,7 @@ import type {
 import { measureCommitGaps, describeMeasureGaps, activeApproaches } from "@/lib/measure/types";
 import { actorFromSession } from "@/lib/activity";
 import { createIndicatorTx, recordValueTx } from "@/lib/indicator/service";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; dialogueId: string } };
 
@@ -129,7 +130,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     ): Promise<string | null> => {
       if (draft.existing_kpi_id) {
         const ex = await client.query<{ id: string }>(
-          `SELECT id FROM kpis WHERE id = $1 AND project_id = $2`,
+          `SELECT id FROM ${PLAN_INDICATORS} WHERE id = $1 AND project_id = $2`,
           [draft.existing_kpi_id, params.id],
         );
         if (ex.rows[0]) return ex.rows[0].id;
@@ -138,7 +139,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       if (!label) return null;
 
       const byLabel = await client.query<{ id: string }>(
-        `SELECT id FROM kpis WHERE project_id = $1 AND lower(label) = lower($2) LIMIT 1`,
+        `SELECT id FROM ${PLAN_INDICATORS} WHERE project_id = $1 AND lower(label) = lower($2) LIMIT 1`,
         [params.id, label],
       );
       if (byLabel.rows[0]) return byLabel.rows[0].id;

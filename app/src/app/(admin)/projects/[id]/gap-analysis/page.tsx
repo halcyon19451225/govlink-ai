@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import GapAnalysisClient from "./GapAnalysisClient";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow {
   id: string;
@@ -57,7 +58,7 @@ export default async function GapAnalysisPage({
               to_char(k.target_deadline, 'YYYY-MM-DD') AS target_deadline,
               k.goal_id,
               g.title AS goal_title
-       FROM kpis k
+       FROM ${PLAN_INDICATORS} k
        LEFT JOIN project_goals g ON g.id = k.goal_id
        WHERE k.project_id = $1
        ORDER BY k.created_at`,

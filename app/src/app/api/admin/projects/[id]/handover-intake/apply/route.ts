@@ -14,6 +14,7 @@ import { listTargets, setTargetTx, updateIndicatorTx } from "@/lib/indicator/ser
 import { reviseLogicModel } from "@/lib/logicmodel/revise";
 import { LM_ELEMENT_SECTIONS } from "@/lib/plan/clone";
 import { sanitizeIntakeProposals, type IntakeProposal } from "@/lib/plan/handoverIntake";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // サーバー側で再サニタイズ（実在IDのセットで検証）
   const [measureRows, kpiRows] = await Promise.all([
     query<{ id: string }>(`SELECT id FROM measure_designs WHERE project_id = $1`, [params.id]),
-    query<{ id: string }>(`SELECT id FROM kpis WHERE project_id = $1`, [params.id]),
+    query<{ id: string }>(`SELECT id FROM ${PLAN_INDICATORS} WHERE project_id = $1`, [params.id]),
   ]);
   const { proposals } = sanitizeIntakeProposals(
     { proposals: parsed.data.proposals },

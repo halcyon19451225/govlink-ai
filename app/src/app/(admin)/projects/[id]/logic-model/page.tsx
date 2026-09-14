@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { query, queryOne } from "@/lib/db";
 import LogicModelEditorClient from "./LogicModelEditorClient";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface LogicModelRow {
   id: string;
@@ -87,7 +88,7 @@ export default async function LogicModelPage({
       `SELECT id, label, target::float AS target, current::float AS current, unit,
               baseline_value::float AS baseline_value,
               achievement_condition, indicator_type, contributes_to_kpi_id
-       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
   ]);

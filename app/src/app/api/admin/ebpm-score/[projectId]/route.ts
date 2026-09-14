@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/tenant";
 import { query } from "@/lib/db";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface KpiRow {
   target: number;
@@ -37,7 +38,7 @@ export async function GET(
     query<KpiRow>(
       `SELECT target::float AS target, current::float AS current,
               baseline_value::float AS baseline_value, achievement_condition
-       FROM kpis WHERE project_id = $1`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1`,
       [projectId],
     ),
     query<EvidenceRow>(

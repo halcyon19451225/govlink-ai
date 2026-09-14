@@ -10,6 +10,7 @@ import { requireModulePermission } from "@/lib/permissions";
 import { kpiImportRows, sanitizeQuestions, sanitizeTargets } from "@/lib/report/types";
 import { actorFromSession } from "@/lib/activity";
 import { recordValueTx } from "@/lib/indicator/service";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; requestId: string; responseId: string } };
 
@@ -121,7 +122,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (row.imported_at) {
     return NextResponse.json({ data: null, error: "この回答は取り込み済みです" }, { status: 409 });
   }
-  const kpiRows2 = await query<{ id: string }>(`SELECT id FROM kpis WHERE project_id = $1`, [params.id]);
+  const kpiRows2 = await query<{ id: string }>(`SELECT id FROM ${PLAN_INDICATORS} WHERE project_id = $1`, [params.id]);
   const questions = sanitizeQuestions(row.form_def, new Set(kpiRows2.map((k) => k.id)), new Set<string>());
   const rows = kpiImportRows(
     questions,

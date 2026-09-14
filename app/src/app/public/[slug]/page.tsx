@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow {
   id: string;
@@ -86,7 +87,7 @@ export default async function PublicProjectPage({
     query<KpiRow>(
       `SELECT id, label, target::float AS target, current::float AS current, unit,
               baseline_value::float AS baseline_value, achievement_condition
-       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [project.id],
     ),
     query<PostRow>(

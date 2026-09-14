@@ -5,6 +5,7 @@ import { query, queryOne } from "@/lib/db";
 import AsisAnalysisClient, { type AsisRecord } from "./AsisAnalysisClient";
 import { EMPTY_SWOT, EMPTY_CROSS } from "@/lib/asis/types";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface KpiRow {
   id: string;
@@ -36,13 +37,13 @@ export default async function AsisAnalysisPage({
               a.created_at::text, a.updated_at::text,
               k.label AS kpi_label
        FROM asis_analyses a
-       LEFT JOIN kpis k ON k.id = a.kpi_id
+       LEFT JOIN ${PLAN_INDICATORS} k ON k.id = a.kpi_id
        WHERE a.project_id = $1
        ORDER BY a.created_at DESC`,
       [params.id, JSON.stringify(EMPTY_SWOT), JSON.stringify(EMPTY_CROSS)],
     ),
     query<KpiRow>(
-      "SELECT id, label, unit FROM kpis WHERE project_id = $1 ORDER BY created_at",
+      `SELECT id, label, unit FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
   ]);

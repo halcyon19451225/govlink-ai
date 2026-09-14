@@ -121,7 +121,9 @@ const CHILD_TABLES = {
   schedule_tasks:    "schedule_tasks",
   documents:         "documents",
   project_schedules: "project_schedules",
-  kpis:              "kpis",
+  // 069 で kpis は indicators に吸収された。互換ビューではなく実体を見る
+  // （ビューは D7 で落とす。ここが残っていると、そのとき黙ってテナント確認が壊れる）
+  indicators:        "indicators",
 } as const;
 
 export type ChildTable = keyof typeof CHILD_TABLES;

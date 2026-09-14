@@ -249,6 +249,40 @@ try {
   check("クロス集計型: 件数と割合を選べる", /setCrossMethod\(/.test(client));
   check("クロス集計型: 割合のときだけ分母の条件を出す", /crossMethod === "rate"/.test(client));
   check("クロス集計型: 小セル抑制を画面でも伝える", /5人を下回る/.test(client));
+  // ── 読み取りの切替（②）──────────────────────────────
+  //   069 の互換ビュー `kpis` は D7 で落とす。落とした瞬間に画面が白くなる、を避けるため、
+  //   **新しいコードがビューを参照しないこと**を構造で固定する。
+  //   共通の副問い合わせ（lib/indicator/read.ts の PLAN_INDICATORS）だけが実体を組み立てる。
+  console.log("12. 読み取りが互換ビューを経由しないこと");
+  const readLib = read(join(SRC, "lib", "indicator", "read.ts"));
+  check("共通の副問い合わせ PLAN_INDICATORS がある", /export const PLAN_INDICATORS/.test(readLib));
+  check("PLAN_INDICATORS は実体（indicators / indicator_targets / indicator_values）を読む",
+    /FROM indicators i/.test(readLib) && /indicator_targets/.test(readLib) && /indicator_values/.test(readLib));
+  check("PLAN_INDICATORS は計画の指標だけを返す（施策の指標を混ぜない）",
+    /WHERE i\.origin = 'plan'/.test(readLib));
+  {
+    // コメントは除く（read.ts の説明文に旧い書き方の例が載っている）
+    const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const offenders = [];
+    const walk = (dir) => {
+      for (const e of readdirSync(dir)) {
+        if (e === "node_modules" || e === ".next") continue;
+        const p2 = join(dir, e);
+        if (statSync(p2).isDirectory()) walk(p2);
+        else if (/\.tsx?$/.test(p2) && /(FROM|JOIN|INTO|UPDATE)\s+kpis\b/.test(strip(read(p2)))) {
+          offenders.push(relative(APP_ROOT, p2));
+        }
+      }
+    };
+    walk(SRC);
+    for (const f of offenders) console.error(`  ✗ ${f}: 互換ビュー kpis を SQL で参照している`);
+    check("src のどこも互換ビュー kpis を SQL で参照していない", offenders.length === 0,
+      `${offenders.length} ファイル。lib/indicator/read.ts の PLAN_INDICATORS を使うこと`);
+  }
+  check("テナント確認の子テーブルも実体を指す",
+    /indicators:\s+"indicators"/.test(read(join(SRC, "lib", "tenant.ts"))) &&
+    !/kpis:\s+"kpis"/.test(read(join(SRC, "lib", "tenant.ts"))));
+
   check("設定は spec の検証（validateSpec）にそのまま渡る形で組む",
     /cleanFilters\(/.test(client) && /improvedWhen,/.test(client));
 } finally {

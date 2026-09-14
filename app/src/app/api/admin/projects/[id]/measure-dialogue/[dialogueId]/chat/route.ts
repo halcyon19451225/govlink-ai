@@ -72,6 +72,7 @@ import type {
   MeasureMessage,
   MeasureStep,
 } from "@/lib/measure/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; dialogueId: string } };
 
@@ -346,7 +347,7 @@ async function runTurn(params: Params["params"], token: string): Promise<void> {
   try {
     existingKpis = await query<ExistingKpiSummary>(
       `SELECT id, label, unit, target::float AS target, indicator_type
-       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     );
   } catch {

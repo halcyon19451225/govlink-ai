@@ -21,6 +21,7 @@ import { gatherEvalTables } from "@/lib/plan/evalData";
 import { OVERVIEW_SLIDES, deckTargetOf, measureSlideDefs, type DeckTarget } from "@/lib/plan/deck";
 import { LM_ELEMENT_SECTIONS } from "@/lib/plan/clone";
 import { normalizeIndicatorType, OUTCOME_TIER_META, isOutcomeTier } from "@/lib/outcome/tiers";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -114,7 +115,7 @@ async function buildPlanPrompt(projectId: string): Promise<PromptParts | null> {
     query<{ label: string; unit: string; target: number | null; baseline_value: number | null; indicator_type: string | null; target_deadline: string | null }>(
       `SELECT label, unit, target::float AS target, baseline_value::float AS baseline_value,
               indicator_type, to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline
-       FROM kpis WHERE project_id = $1 ORDER BY created_at LIMIT 30`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at LIMIT 30`,
       [projectId],
     ),
     query<{ title: string; root_cause: string | null; description: string | null }>(
@@ -424,7 +425,7 @@ async function buildDeckPrompt(
     const [kpisLong, hyps, measures, checkpoints] = await Promise.all([
       query<{ label: string; unit: string; target: number | null; indicator_type: string | null }>(
         `SELECT label, unit, target::float AS target, indicator_type
-         FROM kpis WHERE project_id = $1 ORDER BY created_at LIMIT 30`,
+         FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at LIMIT 30`,
         [projectId],
       ),
       query<{ title: string; root_cause: string | null }>(

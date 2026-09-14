@@ -7,6 +7,7 @@ import ScheduleTabs from "./ScheduleTabs";
 import PdcaDashboardClient from "../pdca/PdcaDashboardClient";
 import type { PdcaCheckpoint } from "../pdca/page";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow {
   id: string;
@@ -58,7 +59,7 @@ export default async function SchedulePage({
 
   const [kpis, phases, tasks, pdcaCheckpoints, measures, improvementLinks, checkpointStats] = await Promise.all([
     query<KpiRow>(
-      "SELECT label, target::float AS target, unit FROM kpis WHERE project_id = $1 ORDER BY created_at",
+      `SELECT label, target::float AS target, unit FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
     query<PhaseRow>(

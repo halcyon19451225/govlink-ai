@@ -19,6 +19,7 @@ import {
   upsertCorpusEvidence,
 } from "@/lib/corpus/server";
 import { EFFECT_DIRECTION_META, isEffectDirection } from "@/lib/measure/experimentResult";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; measureId: string } };
 
@@ -91,7 +92,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       unit: string | null;
       target: number | null;
     }>(
-      `SELECT id, label, unit, target::float AS target FROM kpis WHERE id = ANY($1::uuid[])`,
+      `SELECT id, label, unit, target::float AS target FROM ${PLAN_INDICATORS} WHERE id = ANY($1::uuid[])`,
       [kpiIds],
     );
     const byId = new Map(kpis.map((k) => [k.id, k]));

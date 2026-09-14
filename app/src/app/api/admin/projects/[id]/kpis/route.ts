@@ -9,6 +9,7 @@ import { query, queryOne } from "@/lib/db";
 import { inferTierFromHorizon } from "@/lib/outcome/tiers";
 import { actorFromSession } from "@/lib/activity";
 import { IndicatorError, createIndicator } from "@/lib/indicator/service";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 const achievementConditionEnum = z.enum(["lte", "lt", "gte", "gt", "eq"]);
 
@@ -48,7 +49,7 @@ export async function GET(
             contributes_to_kpi_id,
             to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline,
             created_at
-     FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+     FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
     [params.id]
   );
   return NextResponse.json({ data: kpis, error: null });

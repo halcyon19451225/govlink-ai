@@ -8,6 +8,7 @@ import { requireProjectAccess } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { turnStateOf, type TurnColumns } from "@/lib/ai/asyncTurn";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; asisId: string } };
 
@@ -26,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
             a.turn_status, a.turn_error, a.turn_started_at::text AS turn_started_at,
             a.created_at::text, a.updated_at::text, k.label AS kpi_label
      FROM asis_analyses a
-     LEFT JOIN kpis k ON k.id = a.kpi_id
+     LEFT JOIN ${PLAN_INDICATORS} k ON k.id = a.kpi_id
      WHERE a.id = $1 AND a.project_id = $2`,
     [params.asisId, params.id],
   );

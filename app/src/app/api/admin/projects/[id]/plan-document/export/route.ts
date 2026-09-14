@@ -23,6 +23,7 @@ import {
   type PlanDocLayout,
 } from "@/lib/plan/docx";
 import { normalizeIndicatorType } from "@/lib/outcome/tiers";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }>(
       `SELECT label, unit, target::float AS target, baseline_value::float AS baseline_value,
               indicator_type, to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline
-       FROM kpis WHERE project_id = $1 ORDER BY created_at LIMIT 50`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at LIMIT 50`,
       [params.id],
     ),
     query<{

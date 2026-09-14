@@ -8,6 +8,7 @@ import { authOptions } from "@/lib/auth";
 import { checkLimit, incrementAiUsage } from "@/lib/plan-limits";
 import { query } from "@/lib/db";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 const bodySchema = z.object({
   projectId: z.string().uuid("projectId が不正です"),
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
     }>(
       `SELECT label, target::float AS target, current::float AS current, unit,
               baseline_value::float AS baseline_value, achievement_condition
-       FROM kpis WHERE project_id = $1`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1`,
       [projectId],
     ),
     query<{ title: string; evidence_type: string; strength: number; description: string | null }>(

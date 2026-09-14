@@ -2,6 +2,7 @@ import "server-only";
 import { queryOne } from "@/lib/db";
 import type { CrossAnalysis, SwotData } from "@/lib/asis/types";
 import type { IssueKpiContext } from "./prompt";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 export interface AsisSource {
   asis_analysis_id: string | null;
@@ -68,7 +69,7 @@ export async function fetchIssueKpiContext(
             g.current_value::float AS current_value,
             g.gap_value::float     AS gap_value,
             g.trend                AS trend
-     FROM kpis k
+     FROM ${PLAN_INDICATORS} k
      LEFT JOIN gap_analyses g ON g.kpi_id = k.id AND g.project_id = $2
      WHERE k.id = $1 AND k.project_id = $2`,
     [kpiId, projectId],

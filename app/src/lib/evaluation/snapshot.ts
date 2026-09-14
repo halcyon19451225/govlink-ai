@@ -5,6 +5,7 @@ import {
   type AchievementCondition,
 } from "@/lib/stats/achievement";
 import { normalizeIndicatorType } from "@/lib/outcome/tiers";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 /**
  * 評価に紐づくKPIの実績スナップショット。
@@ -48,7 +49,7 @@ export async function buildKpiSnapshot(
             current::float AS current, target::float AS target,
             baseline_value::float AS baseline_value,
             achievement_condition, indicator_type
-     FROM kpis
+     FROM ${PLAN_INDICATORS}
      WHERE project_id = $1 AND id = ANY($2::uuid[])`,
     [projectId, kpiIds],
   );

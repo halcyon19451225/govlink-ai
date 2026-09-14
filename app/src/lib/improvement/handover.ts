@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import { getFlow, type FlowDecisionPath } from "@/lib/evaluation/flow";
 import { calcAchievement, type AchievementCondition } from "@/lib/stats/achievement";
 import { normalizeIndicatorType } from "@/lib/outcome/tiers";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 /**
  * 次期計画への引き継ぎパッケージ。
@@ -80,7 +81,7 @@ export async function assemblePackage(projectId: string): Promise<HandoverPackag
               current::float AS current, target::float AS target,
               achievement_condition,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline
-       FROM kpis
+       FROM ${PLAN_INDICATORS}
        WHERE project_id = $1
          AND indicator_type IN ('outcome_intermediate', 'outcome_mid', 'outcome_long')
        ORDER BY created_at`,

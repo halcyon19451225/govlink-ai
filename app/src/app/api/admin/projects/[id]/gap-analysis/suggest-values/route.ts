@@ -9,6 +9,7 @@ import { query } from "@/lib/db";
 import { latestVersionsByTemplate } from "@/lib/dataset/service";
 import { downloadFromStorage } from "@/lib/storage";
 import { requireModulePermission } from "@/lib/permissions";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // プロジェクトのKPI一覧を取得
   const kpis = await query<{ id: string; label: string; unit: string }>(
-    `SELECT id, label, unit FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+    `SELECT id, label, unit FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
     [params.id]
   );
 

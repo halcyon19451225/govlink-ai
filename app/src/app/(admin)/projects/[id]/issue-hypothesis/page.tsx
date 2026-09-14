@@ -8,6 +8,7 @@ import IssueHypothesisClient, {
   type KpiRow,
 } from "./IssueHypothesisClient";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 export default async function IssueHypothesisPage({
   params,
@@ -37,13 +38,13 @@ export default async function IssueHypothesisPage({
               d.created_at::text, d.updated_at::text,
               k.label AS kpi_label
        FROM issue_dialogues d
-       LEFT JOIN kpis k ON k.id = d.kpi_id
+       LEFT JOIN ${PLAN_INDICATORS} k ON k.id = d.kpi_id
        WHERE d.project_id = $1
        ORDER BY d.created_at DESC`,
       [params.id],
     ),
     query<KpiRow>(
-      "SELECT id, label, unit FROM kpis WHERE project_id = $1 ORDER BY created_at",
+      `SELECT id, label, unit FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
     query<CommittedHypothesis>(

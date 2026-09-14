@@ -3,6 +3,7 @@ import { query } from "@/lib/db";
 import KpiReportForm from "./KpiReportForm";
 import type { AchievementCondition } from "@/lib/stats/achievement";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface KpiRow {
   id: string;
@@ -31,7 +32,7 @@ export default async function KpiReportPage({ params }: { params: { id: string }
             baseline_value::float AS baseline_value,
             achievement_condition,
             COALESCE(indicator_type, 'process') AS indicator_type
-     FROM kpis WHERE project_id = $1 ORDER BY id`,
+     FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY id`,
     [params.id],
   );
 

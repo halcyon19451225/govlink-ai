@@ -56,6 +56,7 @@ import {
   validateSelectionEchoes,
 } from "@/lib/issue/types";
 import type { CrossAnalysis, SwotData } from "@/lib/asis/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; dialogueId: string } };
 
@@ -379,7 +380,7 @@ const ROW_SQL = `SELECT d.id, d.kpi_id, d.gap_analysis_id, d.asis_analysis_id,
             a.cross_analysis       AS asis_cross
      FROM issue_dialogues d
      JOIN projects p ON p.id = d.project_id
-     LEFT JOIN kpis k          ON k.id = d.kpi_id
+     LEFT JOIN ${PLAN_INDICATORS} k          ON k.id = d.kpi_id
      LEFT JOIN gap_analyses g  ON g.id = d.gap_analysis_id
      LEFT JOIN asis_analyses a ON a.id = d.asis_analysis_id
      WHERE d.id = $1 AND d.project_id = $2`;

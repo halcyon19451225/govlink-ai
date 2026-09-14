@@ -10,6 +10,7 @@ import { requireModulePermission } from "@/lib/permissions";
 import { issueOpenerMessage, type IssueKpiContext } from "@/lib/issue/prompt";
 import { fetchAsisSource, fetchIssueKpiContext, pickProblemSeeds } from "@/lib/issue/context";
 import { EMPTY_ISSUE_DATA } from "@/lib/issue/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest, { params }: Params) {
             d.created_at::text, d.updated_at::text,
             k.label AS kpi_label
      FROM issue_dialogues d
-     LEFT JOIN kpis k ON k.id = d.kpi_id
+     LEFT JOIN ${PLAN_INDICATORS} k ON k.id = d.kpi_id
      WHERE d.project_id = $1
      ORDER BY d.created_at DESC`,
     [params.id],

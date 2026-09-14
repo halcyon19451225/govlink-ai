@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow {
   id: string;
@@ -62,7 +63,7 @@ export async function GET(
     const [kpis, posts] = await Promise.all([
       query<KpiRow>(
         `SELECT id, label, target::float AS target, current::float AS current, unit
-         FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+         FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
         [project.id],
       ),
       query<PostRow>(

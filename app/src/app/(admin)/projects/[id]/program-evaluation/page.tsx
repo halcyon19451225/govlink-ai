@@ -9,6 +9,7 @@ import ProgramEvaluationClient from "./ProgramEvaluationClient";
 import OutcomeScoreboard from "@/components/outcome/OutcomeScoreboard";
 import type { ScoreboardKpi } from "@/lib/outcome/tiers";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProgramEvalRow {
   id: string;
@@ -102,7 +103,7 @@ export default async function ProgramEvaluationPage({
               previous_value::float AS previous_value,
               baseline_value::float AS baseline_value,
               achievement_condition, indicator_type
-       FROM kpis WHERE project_id = $1`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1`,
       [params.id],
     ).catch(() => []),
     query<{ id: string; activities: unknown; major_policy: string | null; version: number }>(
@@ -120,7 +121,7 @@ export default async function ProgramEvaluationPage({
               baseline_value::float AS baseline_value, baseline_year,
               achievement_condition, indicator_type, contributes_to_kpi_id,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline
-       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ).catch(() => [] as ScoreboardKpi[]),
     // 施策構築（EBPM）で確定した施策。評価ウィザードの「評価する施策」と

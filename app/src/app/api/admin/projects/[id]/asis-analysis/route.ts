@@ -9,6 +9,7 @@ import { query, queryOne } from "@/lib/db";
 import { requireModulePermission } from "@/lib/permissions";
 import { openerMessage, type KpiContext } from "@/lib/asis/prompt";
 import { EMPTY_SWOT, EMPTY_CROSS } from "@/lib/asis/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -31,7 +32,7 @@ async function fetchKpiContext(
             to_char(k.target_deadline, 'YYYY-MM-DD') AS target_deadline,
             g.current_value::float AS current_value,
             g.gap_value::float     AS gap_value
-     FROM kpis k
+     FROM ${PLAN_INDICATORS} k
      LEFT JOIN gap_analyses g ON g.kpi_id = k.id AND g.project_id = $2
      WHERE k.id = $1 AND k.project_id = $2`,
     [kpiId, projectId],
@@ -83,7 +84,7 @@ export async function GET(req: NextRequest, { params }: Params) {
             a.messages, a.swot, a.cross_analysis,
             a.created_at::text, a.updated_at::text, k.label AS kpi_label
      FROM asis_analyses a
-     LEFT JOIN kpis k ON k.id = a.kpi_id
+     LEFT JOIN ${PLAN_INDICATORS} k ON k.id = a.kpi_id
      WHERE a.project_id = $1
      ORDER BY a.created_at DESC`,
     [params.id],

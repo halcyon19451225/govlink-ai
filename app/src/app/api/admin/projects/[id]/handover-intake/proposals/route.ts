@@ -11,6 +11,7 @@ import { requireModulePermission } from "@/lib/permissions";
 import { aiCreateMessage } from "@/lib/ai/gateway";
 import { sanitizeIntakeProposals } from "@/lib/plan/handoverIntake";
 import { LM_ELEMENT_SECTIONS } from "@/lib/plan/clone";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string } };
 
@@ -117,7 +118,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     ),
     query<{ id: string; label: string; target: number; unit: string; target_needs_review: boolean }>(
       `SELECT id, label, target::float AS target, unit, target_needs_review
-       FROM kpis WHERE project_id = $1 ORDER BY created_at LIMIT 50`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at LIMIT 50`,
       [params.id],
     ),
     queryOne<Record<string, unknown>>(

@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import ProjectOverviewClient from "./ProjectOverviewClient";
 import HandoverIntakeBanner from "@/components/plan/HandoverIntakeBanner";
 import { assertProjectPage } from "@/lib/tenant-page";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 interface ProjectRow {
   id: string;
@@ -90,7 +91,7 @@ export default async function AdminProjectDetailPage({
               baseline_value::float AS baseline_value, baseline_year,
               contributes_to_kpi_id,
               to_char(target_deadline, 'YYYY-MM-DD') AS target_deadline
-       FROM kpis WHERE project_id = $1 ORDER BY created_at`,
+       FROM ${PLAN_INDICATORS} WHERE project_id = $1 ORDER BY created_at`,
       [params.id],
     ),
     query<PlanDocRow>(

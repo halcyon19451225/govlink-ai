@@ -39,6 +39,7 @@ import {
   type InternalItem,
   type SwotData,
 } from "@/lib/asis/types";
+import { PLAN_INDICATORS } from "@/lib/indicator/read";
 
 type Params = { params: { id: string; asisId: string } };
 
@@ -65,7 +66,7 @@ const ROW_SQL = `SELECT a.id, a.kpi_id, a.title, a.status, a.current_step,
             g.gap_value::float       AS kpi_gap_value
      FROM asis_analyses a
      JOIN projects p ON p.id = a.project_id
-     LEFT JOIN kpis k ON k.id = a.kpi_id
+     LEFT JOIN ${PLAN_INDICATORS} k ON k.id = a.kpi_id
      LEFT JOIN gap_analyses g ON g.kpi_id = a.kpi_id AND g.project_id = a.project_id
      WHERE a.id = $1 AND a.project_id = $2`;
 
