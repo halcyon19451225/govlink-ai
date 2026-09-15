@@ -69,6 +69,8 @@ const CORE_PATHS = [
   "lib/dataset/observations.ts",
   "lib/dataset/aggregateSchema.ts",
   "lib/dataset/csv.ts",
+  // 設定パック（庁内ツールへ渡す決めごと）。分野の語彙を持たず、辞書は解決済みを受け取る
+  "lib/dataset/configPack.ts",
   "lib/dataset/service.ts",
   "lib/dataset/http.ts",
   "lib/dataset/index.ts",

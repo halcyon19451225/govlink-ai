@@ -107,8 +107,83 @@ try {
   check("sid は S + 20 文字", a.sid.length === 21 && a.sid.startsWith("S"));
   check("Crockford Base32（I L O U を含まない）", !/[ILOU]/.test(a.sid.slice(1)));
   check("鍵 ID は 8 桁の16進", /^[0-9a-f]{8}$/.test(m.keyId(K1)) && m.keyId(K1) !== m.keyId(K2));
+
+  // ── 2-2. 庁内ツール（Flow）との突き合わせ ────────
+  //
+  // ここが一致しなくなると、**同じ人が別の sid になる**。しかも取込は通るので
+  // 気づかない（別人が増えたようにしか見えない）。だから固定値で凍結する。
+  // 変えるときは Flow 側と同時に変え、既存の個票はローテーション扱い（設計 §6-3）。
+  console.log("2-2. 庁内ツールとの突き合わせ");
+  check("連結は「長さ4バイト（BE）＋UTF-8」",
+    m.joinParts(["p-1111", "atena", "0000001234"]).toString("hex") ===
+      "00000006702d31313131000000056174656e610000000a30303030303031323334");
+  check("区切りではないので ('ab','c') と ('a','bc') が別の入力になる",
+    m.joinParts(["ab", "c"]).toString("hex") !== m.joinParts(["a", "bc"]).toString("hex"));
+  const FLOW_KEY = Buffer.from("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=", "base64");
+  check("固定値の sid が Flow と一致する（S + 20 文字）",
+    m.sidFromParts(FLOW_KEY, "p-1111", "atena", "0000001234") === "SQM97CJEV63C2W5SJ26GB");
+  check("deriveSid も同じ経路を通る（正規化を挟んでも一致）",
+    m.deriveSid(K1, P1, "atena", R, "00012345").sid ===
+      m.sidFromParts(K1, P1, "atena", "00012345"));
+  check("計画 ID の大文字小文字で sid が変わらない",
+    m.sidFromParts(K1, P1.toUpperCase(), "atena", "1") === m.sidFromParts(K1, P1, "atena", "1"));
   check("生成した鍵は 32 バイトで毎回異なる", m.generateKey().length === 32 && !m.generateKey().equals(m.generateKey()));
   check("16進の往復", m.keyFromHex(m.keyToHex(K2)).equals(K2) && m.keyFromHex("zz") === null);
+
+  // ── 2-3. 設定パック ──────────────────────────────
+  //
+  // 庁内ツールと Coe が別々に決めごとを持つと必ずずれる。正本は Coe だけに置き、
+  // 書き出して持っていく。ずれたときに**黙って通さない**ことまでを検査する。
+  console.log("2-3. 設定パック");
+  const packDict = [
+    { key: "demo.sex", label: "性別", description: "", valueType: "code", codes: { M: "男性", F: "女性" },
+      role: "quasi_identifier", timeGranularity: "static", cloudAllowed: true, sourceHints: ["性別"],
+      generalization: { priority: 1, levels: [{ label: "まとめる", collapseTo: "*" }] } },
+    { key: "id.name", label: "氏名", description: "", valueType: "code", role: "neutral",
+      timeGranularity: "static", cloudAllowed: false, sourceHints: ["氏名"] },
+    { key: "local.area", label: "地区", description: "", valueType: "code", role: "quasi_identifier",
+      timeGranularity: "static", cloudAllowed: true, localCodes: true, sourceHints: ["地区", "性別"] },
+  ];
+  const packInput = {
+    project: { id: P1, name: "計画", planType: null },
+    municipality: { id: "m1", name: "市", prefecture: "県" },
+    datasets: [{ id: "d1", name: "箱", kind: "individual" }],
+    keyTypes: [{ code: "atena", label: "宛名番号", description: "", normalization: { style: "digits", zeroPad: 10 }, isPrimary: true }],
+    attributes: packDict,
+    domain: null,
+    generatedAt: "2026-09-15T00:00:00.000Z",
+  };
+  const p = m.buildConfigPack(packInput);
+  check("鍵も鍵 ID もパックに入らない", !/key_id|secret|private_key|"key_hex"/.test(JSON.stringify(p)));
+  check("辞書の版が入る", p.dictionary.version === m.DICTIONARY_VERSION && p.pack_version === m.CONFIG_PACK_VERSION);
+  check("粗化のはしごは値の対応表で渡す（規則名ではない）",
+    p.dictionary.attrs.find((a) => a.key === "demo.sex").coarsen.levels[0].collapse_to === "*");
+  check("持ち出せない属性も辞書には載る（載せた上で cloud_allowed=false で止める）",
+    p.dictionary.attrs.find((a) => a.key === "id.name").cloud_allowed === false);
+  check("値の語彙が自治体ごとの属性は印がつく",
+    p.dictionary.attrs.find((a) => a.key === "local.area").local_codes === true);
+  check("対応づけの初期値は持ち出せる属性だけ", p.mapping_seed["氏名"] === undefined);
+  check("同じ列名を2つの属性が名乗ったら初期値にしない（人が選ぶ）", p.mapping_seed["性別"] === undefined);
+  check("競合しない列名は初期値になる", p.mapping_seed["地区"] === "local.area");
+  check("k と ℓ をパックが運ぶ", p.anonymity.k === m.DEFAULT_ANONYMITY.k && p.anonymity.l === m.DEFAULT_ANONYMITY.l);
+  check("digest は決定的（作成時刻では変わらない）",
+    m.buildConfigPack({ ...packInput, generatedAt: "2030-01-01T00:00:00.000Z" }).digest === p.digest);
+  check("中身が変われば digest が変わる",
+    m.buildConfigPack({ ...packInput, keyTypes: [] }).digest !== p.digest);
+  check("辞書の版が同じなら通る", m.checkPackCompatibility({ dictionary_version: m.DICTIONARY_VERSION }).ok === true);
+  check("古い辞書で作られた個票は断る",
+    m.checkPackCompatibility({ dictionary_version: m.DICTIONARY_VERSION - 1 }).reason === "older_dictionary");
+  check("新しすぎる辞書も断る",
+    m.checkPackCompatibility({ dictionary_version: m.DICTIONARY_VERSION + 1 }).reason === "newer_dictionary");
+  check("版が書いていなければ断る（既定で通さない）",
+    m.checkPackCompatibility({}).reason === "missing");
+  check("パックの形式が新しすぎれば断る",
+    m.checkPackCompatibility({ dictionary_version: m.DICTIONARY_VERSION, pack_version: m.CONFIG_PACK_VERSION + 1 }).reason === "unknown_pack_version");
+  const packRoute = read(join(APP_ROOT, "src", "app", "api", "admin", "projects", "[id]", "datasets", "config-pack", "route.ts"));
+  check("書き出しの API がサービス層を通る", /buildProjectConfigPack/.test(packRoute));
+  check("書き出しは閲覧だけの人には出さない", /"dataset_manager", "edit"/.test(packRoute));
+  check("書き出しも activity_log に残る（いつの決めごとで変換したかを追う）",
+    /entity: "config_pack"/.test(read(join(APP_ROOT, "src", "lib", "dataset", "service.ts"))));
 
   // ── 3. 個人番号ガード ────────────────────────────
   console.log("3. 個人番号ガード");

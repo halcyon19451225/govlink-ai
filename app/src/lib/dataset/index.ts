@@ -15,4 +15,5 @@ export * from "./anonymity";
 export * from "./observations";
 export * from "./aggregateSchema";
 export * from "./csv";
+export * from "./configPack";
 export * from "./domains";

@@ -18,6 +18,8 @@ import { parseCsv } from "./csv";
 import { scanForMyNumber } from "./guard";
 import { isUsable, mergeDictionaries, validateDictionary } from "./dictionary";
 import { KEY_TYPE_CODE_RE, validateNormalization, type KeyNormalization } from "./keyTypes";
+import { buildConfigPack, type ConfigPack } from "./configPack";
+import { packFor } from "./domains";
 
 // ── 操作主体・操作履歴 ───────────────────────────────────────
 // 画面も AI も同じ関数を通り、同じ形で activity_log に残る（設計 §10-5）。
@@ -759,4 +761,62 @@ export async function createKeyType(actor: Actor, projectId: string | null, inpu
     municipalityId: saved.municipality_id,
     isPrimary: saved.is_primary,
   };
+}
+
+// ── 設定パック（庁内の変換ツールへ渡す決めごと） ─────────────
+//
+// 変換ツールは Coe に繋がらない。辞書・キー種別・粗化のはしご・k/ℓ を
+// 人が二重に入力すると必ずずれるので、**正本はここだけ**にして書き出す。
+// 鍵は入らない（Coe は鍵を持たない）。
+//
+// ダウンロードも activity_log に残す。「いつの決めごとで変換したか」が
+// あとから追えないと、個票の再検定の結果が説明できなくなる。
+
+export async function buildProjectConfigPack(
+  actor: Actor,
+  projectId: string,
+  municipalityId: string,
+): Promise<ConfigPack> {
+  const project = await queryOne<{ id: string; title: string; plan_type: string | null }>(
+    `SELECT id, title, plan_type FROM projects WHERE id = $1`,
+    [projectId],
+  );
+  if (!project) throw new DatasetError("計画が見つかりません", 404);
+  const muni = await queryOne<{ id: string; name: string; prefecture: string }>(
+    `SELECT id, name, prefecture FROM municipalities WHERE id = $1`,
+    [municipalityId],
+  );
+  if (!muni) throw new DatasetError("自治体が見つかりません", 404);
+
+  const [attributes, keyTypes, datasets] = await Promise.all([
+    resolveDictionary(projectId, municipalityId),
+    listKeyTypes(municipalityId),
+    query<{ id: string; name: string; kind: string }>(
+      `SELECT id, name, kind FROM datasets WHERE project_id = $1 ORDER BY kind, name`,
+      [projectId],
+    ),
+  ]);
+  const pack = packFor(project.plan_type);
+
+  const built = buildConfigPack({
+    project: { id: project.id, name: project.title, planType: project.plan_type },
+    municipality: { id: muni.id, name: muni.name, prefecture: muni.prefecture },
+    datasets,
+    keyTypes,
+    attributes,
+    domain: pack ? { planType: pack.planType, label: pack.label } : null,
+    generatedAt: new Date().toISOString(),
+  });
+
+  await logActivity(null, {
+    projectId, actor, entity: "config_pack", entityId: projectId, action: "download",
+    summary: {
+      digest: built.digest,
+      dictionary_version: built.dictionary.version,
+      pack_version: built.pack_version,
+      attrs: built.dictionary.attrs.length,
+      key_types: built.key_types.length,
+    },
+  });
+  return built;
 }

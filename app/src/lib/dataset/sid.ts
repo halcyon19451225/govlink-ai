@@ -1,7 +1,13 @@
 /**
  * 仮名 ID（sid）の導出 — 設計: claude/coe-dataset-model.md §6-2・§6-3・§6-5
  *
- *   sid = "S" + base32crockford( HMAC-SHA256( K, project_id ‖ key_type_code ‖ 正規化キー ) )[:20]
+ *   sid = "S" + base32crockford( HMAC-SHA256( K, join(project_id, key_type_code, 正規化キー) ) )[:20]
+ *
+ * join は **長さ（4 バイト・ビッグエンディアン）＋ UTF-8 バイト列** を順に並べる。
+ * 区切り文字で繋ぐと ("ab","c") と ("a","bc") が同じ入力になってしまう。
+ * 別人が同じ sid になるということなので、区切りではなく長さで分ける。
+ * project_id は小文字にしてから連結する（Coe の UUID は常に小文字だが、
+ * 大文字で渡ってきたときに庁内ツールと違う sid が出ないようにする）。
  *
  * - K は自治体ごとに1本の 256 bit 乱数。**庁内にしか存在しない。** Coe は keyId だけを持つ
  * - 同じ人からは常に同じ sid が出るので、対応表を持たない（失われたら最悪、が無い）
@@ -40,6 +46,38 @@ export function base32Crockford(buf: Uint8Array): string {
   }
   if (bits > 0) out += CROCKFORD[(value << (5 - bits)) & 31];
   return out;
+}
+
+/**
+ * 連結。各要素を「長さ（4 バイト・ビッグエンディアン）＋ UTF-8 バイト列」で並べる。
+ * **庁内の変換ツール（Flow）と同じ方式。片方だけ変えると同じ人から別の sid が出る。**
+ * 要素は 4 GiB 未満（実際には数十バイト）。
+ */
+export function joinParts(parts: readonly string[]): Buffer {
+  const chunks: Buffer[] = [];
+  for (const part of parts) {
+    const body = Buffer.from(part, "utf8");
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(body.length, 0);
+    chunks.push(len, body);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * 導出の本体。**形式検査をしない**ので、通常は deriveSid を使う。
+ * これを直接呼ぶのは庁内ツールとの突き合わせ（固定値でのつき合わせ）のときだけ。
+ */
+export function sidFromParts(
+  key: Uint8Array,
+  projectId: string,
+  keyTypeCode: string,
+  normalizedKey: string,
+): string {
+  const mac = createHmac("sha256", key)
+    .update(joinParts([projectId.toLowerCase(), keyTypeCode, normalizedKey]))
+    .digest();
+  return SID_PREFIX + base32Crockford(mac).slice(0, SID_LENGTH);
 }
 
 /** 鍵を生成する（CSPRNG）。人がパスフレーズを決める方式にはしない */
@@ -89,14 +127,7 @@ export function deriveSid(
   if (!KEY_TYPE_CODE_RE.test(keyTypeCode)) return { ok: false, reason: "bad_key_type" };
   const norm = normalizeKey(rule, rawKey);
   if (!norm.ok) return { ok: false, reason: norm.reason };
-  const mac = createHmac("sha256", key)
-    .update(projectId.toLowerCase())
-    .update(" ")
-    .update(keyTypeCode)
-    .update(" ")
-    .update(norm.value)
-    .digest();
-  const sid = SID_PREFIX + base32Crockford(mac).slice(0, SID_LENGTH);
+  const sid = sidFromParts(key, projectId, keyTypeCode, norm.value);
   return { ok: true, sid, normalizedKey: norm.value };
 }
 

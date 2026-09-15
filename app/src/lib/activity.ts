@@ -43,7 +43,9 @@ export type ActivityEntity =
   /** 対象群 */
   | "cohort"
   /** 実験の割付（生成したら動かせない。設計 §5-3） */
-  | "experiment_assignment";
+  | "experiment_assignment"
+  /** 庁内の変換ツールへ渡す設定パック（いつの決めごとで変換したかを追うため） */
+  | "config_pack";
 
 export type ActivityAction =
   | "create"

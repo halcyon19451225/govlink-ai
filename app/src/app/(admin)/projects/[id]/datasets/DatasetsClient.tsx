@@ -161,6 +161,19 @@ export default function DatasetsClient({
         <div className="flex gap-2 flex-shrink-0">
           <button className={btnGhost} style={{ borderColor: "var(--border)" }} onClick={() => setShowDict(true)}>属性辞書</button>
           <button className={btnGhost} style={{ borderColor: "var(--border)" }} onClick={() => setShowKeys(true)}>庁内キーの語彙</button>
+          {/*
+            個票の変換は庁内の端末で行う。辞書・キー種別・粗化のはしご・k/ℓ を
+            人が二重に入力すると必ずずれるので、Coe の決めごとを書き出して持っていく。
+            鍵はこのファイルに入らない（鍵は庁内にしかない）
+          */}
+          <a
+            className={btnGhost}
+            style={{ borderColor: "var(--border)" }}
+            href={`${base}/config-pack`}
+            title="庁内の変換ツールに読み込ませる設定ファイル。鍵は入りません"
+          >
+            設定を書き出す
+          </a>
           {!selected && <button className={btnPrimary} onClick={() => setShowCreate(true)}>＋ 箱を作る</button>}
         </div>
       </div>
