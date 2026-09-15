@@ -791,8 +791,8 @@ export async function buildProjectConfigPack(
   const [attributes, keyTypes, datasets] = await Promise.all([
     resolveDictionary(projectId, municipalityId),
     listKeyTypes(municipalityId),
-    query<{ id: string; name: string; kind: string }>(
-      `SELECT id, name, kind FROM datasets WHERE project_id = $1 ORDER BY kind, name`,
+    query<{ id: string; name: string; kind: string; schema: unknown }>(
+      `SELECT id, name, kind, schema FROM datasets WHERE project_id = $1 ORDER BY kind, name`,
       [projectId],
     ),
   ]);

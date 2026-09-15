@@ -29,7 +29,13 @@ export const DEFAULT_ANONYMITY = { k: 10, l: 2 } as const;
 export interface ConfigPackInput {
   project: { id: string; name: string; planType: string | null };
   municipality: { id: string; name: string; prefecture: string };
-  datasets: ReadonlyArray<{ id: string; name: string; kind: string }>;
+  datasets: ReadonlyArray<{
+    id: string;
+    name: string;
+    kind: string;
+    /** individual なら { attr_keys }、aggregate なら列定義。箱が受け取れる形 */
+    schema: unknown;
+  }>;
   keyTypes: readonly KeyTypeDefinition[];
   attributes: readonly AttributeDefinition[];
   /** 分野パックの表示名（無ければ null） */
@@ -43,7 +49,15 @@ export interface ConfigPack {
   municipality: { id: string; name: string; prefecture: string };
   project: { id: string; name: string; plan_type: string | null };
   domain: { plan_type: string; label: string } | null;
-  datasets: Array<{ id: string; name: string; kind: string }>;
+  datasets: Array<{
+    id: string;
+    name: string;
+    /** aggregate / individual */
+    kind: string;
+    /** 個票の箱は attr_keys（受け取れる属性キー）、集計の箱は columns（列定義） */
+    attr_keys?: string[];
+    columns?: unknown[];
+  }>;
   key_types: Array<{
     code: string;
     label: string;
@@ -156,7 +170,21 @@ export function buildConfigPack(input: ConfigPackInput): ConfigPack {
     municipality: input.municipality,
     project: { id: input.project.id, name: input.project.name, plan_type: input.project.planType },
     domain: input.domain ? { plan_type: input.domain.planType, label: input.domain.label } : null,
-    datasets: input.datasets.map((d) => ({ id: d.id, name: d.name, kind: d.kind })),
+    datasets: input.datasets.map((d) => {
+      const schema = d.schema as { attr_keys?: unknown; } | unknown[] | null;
+      const attrKeys = schema && !Array.isArray(schema) && Array.isArray(schema.attr_keys)
+        ? (schema.attr_keys as string[])
+        : null;
+      return {
+        id: d.id,
+        name: d.name,
+        kind: d.kind,
+        // 箱が何を受け取れるかを渡す。渡さないと変換ツールが辞書の全属性を並べてしまい、
+        // その箱に入らない属性まで対応づけられてしまう
+        ...(attrKeys ? { attr_keys: [...attrKeys].sort() } : {}),
+        ...(Array.isArray(schema) ? { columns: schema } : {}),
+      };
+    }),
     key_types: [...input.keyTypes]
       .sort((a, b) => a.code.localeCompare(b.code))
       .map((t) => ({

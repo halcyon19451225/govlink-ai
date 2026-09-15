@@ -147,7 +147,8 @@ try {
   const packInput = {
     project: { id: P1, name: "計画", planType: null },
     municipality: { id: "m1", name: "市", prefecture: "県" },
-    datasets: [{ id: "d1", name: "箱", kind: "individual" }],
+    datasets: [{ id: "d1", name: "箱", kind: "individual", schema: { attr_keys: ["local.area", "demo.sex"] } },
+                { id: "d2", name: "集計", kind: "aggregate", schema: [{ name: "年度", role: "time", type: "fiscal_year" }] }],
     keyTypes: [{ code: "atena", label: "宛名番号", description: "", normalization: { style: "digits", zeroPad: 10 }, isPrimary: true }],
     attributes: packDict,
     domain: null,
@@ -165,6 +166,9 @@ try {
   check("対応づけの初期値は持ち出せる属性だけ", p.mapping_seed["氏名"] === undefined);
   check("同じ列名を2つの属性が名乗ったら初期値にしない（人が選ぶ）", p.mapping_seed["性別"] === undefined);
   check("競合しない列名は初期値になる", p.mapping_seed["地区"] === "local.area");
+  check("個票の箱は受け取れる属性キーを運ぶ（並びは安定）",
+    JSON.stringify(p.datasets[0].attr_keys) === JSON.stringify(["demo.sex", "local.area"]));
+  check("集計の箱は列定義を運ぶ", p.datasets[1].columns.length === 1 && p.datasets[1].attr_keys === undefined);
   check("k と ℓ をパックが運ぶ", p.anonymity.k === m.DEFAULT_ANONYMITY.k && p.anonymity.l === m.DEFAULT_ANONYMITY.l);
   check("digest は決定的（作成時刻では変わらない）",
     m.buildConfigPack({ ...packInput, generatedAt: "2030-01-01T00:00:00.000Z" }).digest === p.digest);
