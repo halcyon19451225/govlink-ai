@@ -57,7 +57,7 @@ interface SourceRow {
 }
 
 interface LogEntry {
-  kind: "new" | "known" | "rejected" | "error" | "info";
+  kind: "new" | "known" | "rejected" | "error" | "info" | "empty";
   title: string;
   url?: string;
   note?: string;
@@ -113,6 +113,7 @@ const LOG_KIND_META: Record<LogEntry["kind"], { label: string; color: string }> 
   rejected: { label: "却下", color: "#f59e0b" },
   error: { label: "失敗", color: "#ef4444" },
   info: { label: "情報", color: "#818cf8" },
+  empty: { label: "0件", color: "#94a3b8" },
 };
 
 interface EditState {
