@@ -315,6 +315,19 @@ try {
   check("jages_press: parserVersion をv2に更新（修正の再処理が効く）", (adapters.HARVEST_ADAPTERS.jages_press.parserVersion ?? 1) >= 2);
   check("engine: 差分ハッシュにパーサ版数を混ぜる（アダプタ修正で再処理）", engineSrc.includes("adapter.parserVersion ?? 1"));
 
+  // FIX-HARVEST（2026-09-19）— 自動収集が一度も回っていなかった件の再発防止
+  const writeEnvSrc = readFileSync(join(APP_ROOT, "scripts", "write-env.mjs"), "utf-8");
+  check("write-env: CORPUS_CRON_KEY を実行時へ渡している（無いと cron 入口が常に 500）", writeEnvSrc.includes("CORPUS_CRON_KEY: process.env.CORPUS_CRON_KEY"));
+  check("write-env: ESTAT_APP_ID を実行時へ渡している", writeEnvSrc.includes("ESTAT_APP_ID: process.env.ESTAT_APP_ID"));
+  const wfPath = join(APP_ROOT, "..", ".github", "workflows", "corpus-harvest.yml");
+  check("起動側（定期実行のワークフロー）が存在し、鍵つきで cron 入口を叩く", existsSync(wfPath) && readFileSync(wfPath, "utf-8").includes("/api/cron/corpus-harvest") && readFileSync(wfPath, "utf-8").includes("x-cron-key") && /schedule:\s*\n\s*- cron:/.test(readFileSync(wfPath, "utf-8")));
+  check("engine: 積み残しがある間はハッシュを確定させない", /unfinished \? `\$\{BACKLOG_PREFIX\}\$\{contentHash\}` : contentHash/.test(engineSrc) && engineSrc.includes("hasBacklog || itemErrors > 0"));
+  check("engine: 積み残しソースは頻度を待たず再巡回の対象になる", engineSrc.includes("s.last_content_hash LIKE 'backlog:%'"));
+  check("engine: 抽出0件のアイテムを明細に残す（同じ先頭N件で詰まらない）", engineSrc.includes('kind: "empty"') && engineSrc.includes("loadSettledUrls"));
+  check("engine: 結果が出なかった記憶はパーサ版数で区切る", engineSrc.includes("(e->>'pv')::int"));
+  const nextCfg = readFileSync(join(APP_ROOT, "next.config.mjs"), "utf-8");
+  check("next.config: cron 入口のトレースに @napi-rs（pdfjs の DOMMatrix 供給元）を含める", /'\/api\/cron\/corpus-harvest': \['\.\/node_modules\/@napi-rs/.test(nextCfg));
+
   // mhlw_grants: /project/{id} リンクの抽出とPDF解決
   const mhlwHtml = `
     <a href="/project/180181">介護予防の効果検証に関する研究（令和5年度 総括研究報告書）</a>

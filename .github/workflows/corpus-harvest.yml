@@ -1,0 +1,56 @@
+# コーパスの自動収集を定期起動する — FIX-HARVEST（2026-09-19）
+#
+# 設計（claude/coe-x7-pdca-design.md §2）では EventBridge Scheduler → Lambda だったが、
+# 起動側が一度も作られず、自動収集は「今すぐ収集」を押したときしか動いていなかった。
+# やることは「鍵を付けて POST し、remaining > 0 なら繰り返す」だけなので、
+# AWS に部品を増やさずここで回す。
+#
+# 必要な設定（リポジトリの Settings → Secrets and variables → Actions）:
+#   secret  CORPUS_CRON_KEY … Amplify の環境変数 CORPUS_CRON_KEY と同じ値
+#   variable COE_BASE_URL   … 省略時は https://main.d28aydpmu6jocl.amplifyapp.com
+#
+# ルートは1回の呼び出しで「期限が来たソースを1つ」だけ処理する。
+# 1晩に回す上限は MAX_CALLS（ソース数 11 より少し多め）。
+name: corpus-harvest
+
+on:
+  schedule:
+    - cron: "17 18 * * *" # 毎日 03:17 JST
+  workflow_dispatch: {}
+
+concurrency:
+  group: corpus-harvest
+  cancel-in-progress: false
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: 期限が来たソースを順に収集する
+        env:
+          CORPUS_CRON_KEY: ${{ secrets.CORPUS_CRON_KEY }}
+          BASE_URL: ${{ vars.COE_BASE_URL || 'https://main.d28aydpmu6jocl.amplifyapp.com' }}
+          MAX_CALLS: "15"
+        run: |
+          set -u
+          if [ -z "${CORPUS_CRON_KEY:-}" ]; then
+            echo "::error::secret CORPUS_CRON_KEY が未設定です"; exit 1
+          fi
+          i=0
+          while [ "$i" -lt "$MAX_CALLS" ]; do
+            i=$((i+1))
+            code=$(curl -sS -m 330 -o body.json -w '%{http_code}' -X POST \
+              -H "x-cron-key: ${CORPUS_CRON_KEY}" "${BASE_URL}/api/cron/corpus-harvest" || echo 000)
+            echo "--- call ${i}: HTTP ${code}"
+            # 応答に鍵は含まれない。件名レベルの集計だけを出す
+            jq -c '{error, skipped: .data.skipped, remaining: .data.remaining,
+                    source: .data.processed.sourceName, status: .data.processed.status,
+                    found: .data.processed.itemsFound, new: .data.processed.itemsNew}' body.json || cat body.json
+            if [ "$code" != "200" ]; then
+              echo "::error::収集の呼び出しに失敗しました（HTTP ${code}）"; exit 1
+            fi
+            remaining=$(jq -r '.data.remaining // 0' body.json)
+            [ "$remaining" -gt 0 ] || break
+            sleep 5
+          done

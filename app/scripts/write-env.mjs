@@ -23,6 +23,11 @@ const env = {
   GITHUB_SECRET: process.env.GITHUB_SECRET,
   CONTACT_EMAIL: process.env.CONTACT_EMAIL,
   LICENSE_API_KEY: process.env.LICENSE_API_KEY,
+  // ⚠ ここに無い変数は、Amplify コンソールに設定しても実行時には渡らない。
+  //   CORPUS_CRON_KEY が抜けていたため /api/cron/corpus-harvest は常に 500 を返し、
+  //   自動収集は一度も動いていなかった（2026-09-19）。
+  CORPUS_CRON_KEY: process.env.CORPUS_CRON_KEY,
+  ESTAT_APP_ID: process.env.ESTAT_APP_ID,
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
   STRIPE_LIGHT_PRICE_ID: process.env.STRIPE_LIGHT_PRICE_ID,

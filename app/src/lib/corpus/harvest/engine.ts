@@ -61,6 +61,8 @@ const DUE_CONDITION = `
     s.last_crawled_at IS NULL
     OR (s.crawl_frequency = 'weekly'  AND s.last_crawled_at < now() - interval '7 days')
     OR (s.crawl_frequency = 'monthly' AND s.last_crawled_at < now() - interval '30 days')
+    -- 積み残しのあるソース（下の BACKLOG_PREFIX）は頻度を待たず翌日に続きを処理する
+    OR (s.last_content_hash LIKE 'backlog:%' AND s.last_crawled_at < now() - interval '20 hours')
   )
   AND NOT EXISTS (
     SELECT 1 FROM corpus_harvest_runs r
@@ -100,6 +102,47 @@ export async function countPendingReview(): Promise<number> {
 
 /** 検収残がこの件数を超えたらスケジュール巡回を一時停止する（手動実行は可） */
 export const REVIEW_BACKLOG_LIMIT = 2000;
+
+/**
+ * 積み残しの印 — FIX-HARVEST（2026-09-19）
+ *
+ * かつては run の最後に必ず last_content_hash を保存していた。1回の上限（5件など）で
+ * 切った残りや失敗したアイテムがあっても保存するので、次の run は
+ * 「一覧ページに変化なし」で即終了し、**「残りは次回」の次回が永久に来なかった**
+ * （BEST 56件中5件・JAGES 147件中5件で止まっていた）。
+ * 積み残しがある間は、ハッシュにこの接頭辞を付けて保存する。接頭辞つきの値は
+ * 計算したハッシュと一致しないので次回も処理に進み、DUE_CONDITION が翌日に拾う。
+ */
+const BACKLOG_PREFIX = "backlog:";
+
+/** 同じアイテムの失敗をこの回数見たら、以後は拾わない（画像PDFなど直らない失敗で詰まらせない） */
+const MAX_ITEM_ERRORS = 3;
+
+/**
+ * 過去の run で「結果が出なかった」アイテムの URL を集める。
+ *
+ * 抽出0件・スクリーニング足切りのアイテムは corpus_evidence に行が残らないため、
+ * 既知判定を素通りして**毎回同じ先頭 N 件が選ばれ、後ろのアイテムに永久に届かない**。
+ * 専用テーブルは足さず、run の明細ログ（件名レベルで残している）を記憶として使う。
+ * アダプタのパーサ版数が上がったら忘れる（直した抽出ロジックで拾い直すため）。
+ */
+async function loadSettledUrls(sourceId: string, parserVersion: number): Promise<Set<string>> {
+  const rows = await query<{ url: string; kind: string; n: string }>(
+    `SELECT e->>'url' AS url, e->>'kind' AS kind, count(*)::text AS n
+     FROM corpus_harvest_runs r, jsonb_array_elements(r.log) e
+     WHERE r.source_id = $1
+       AND e->>'kind' IN ('empty', 'rejected', 'error')
+       AND e ? 'url'
+       AND COALESCE((e->>'pv')::int, 1) = $2
+     GROUP BY 1, 2`,
+    [sourceId, parserVersion],
+  );
+  const settled = new Set<string>();
+  for (const r of rows) {
+    if (r.kind === "error" ? Number(r.n) >= MAX_ITEM_ERRORS : true) settled.add(r.url);
+  }
+  return settled;
+}
 
 // ─── 取得の小道具 ─────────────────────────────────────────
 
@@ -373,10 +416,12 @@ interface SourceRow {
 }
 
 type LogEntry = {
-  kind: "new" | "known" | "rejected" | "error" | "info";
+  kind: "new" | "known" | "rejected" | "error" | "info" | "empty";
   title: string;
   url?: string;
   note?: string;
+  /** アダプタのパーサ版数。loadSettledUrls が「どの版の判断か」を見分けるために残す */
+  pv?: number;
 };
 
 export interface HarvestSummary {
@@ -581,8 +626,15 @@ export async function runHarvest(
   }
 
   const isPdfToKnowledge = adapter.mode === "pdf_to_knowledge";
+  const pv = adapter.parserVersion ?? 1;
+  const settledUrls = await loadSettledUrls(source.id, pv);
+  let itemsSettled = 0;
   const newItems: HarvestListItem[] = [];
   for (const item of items) {
+    if (settledUrls.has(item.url)) {
+      itemsSettled++;
+      continue;
+    }
     const sourceKey = makeAutoSourceKey(adapter.key, item.stableId);
     // 既知判定: アダプタAは corpus_evidence、アダプタBは knowledge_documents（原本保全済みか）
     const existing = isPdfToKnowledge
@@ -602,7 +654,14 @@ export async function runHarvest(
     newItems.push(item);
   }
 
+  if (itemsSettled > 0) {
+    log.push({
+      kind: "info",
+      title: `過去の run で結果が出なかった${itemsSettled}件は対象外（抽出0件・足切り・失敗${MAX_ITEM_ERRORS}回）`,
+    });
+  }
   const capped = newItems.slice(0, adapter.itemLimitPerRun);
+  const hasBacklog = newItems.length > capped.length;
   if (newItems.length > capped.length) {
     // 上限で落とした分は黙って切らずに明細へ残す（次回のrunで処理される）
     log.push({
@@ -628,7 +687,7 @@ export async function runHarvest(
       const body = await fetchItemText(item.url);
       pagesFetched++;
       if (!body.text.trim()) {
-        log.push({ kind: "error", title: item.title, url: item.url, note: "本文テキストが空（画像PDFの可能性）" });
+        log.push({ kind: "error", title: item.title, url: item.url, note: "本文テキストが空（画像PDFの可能性）", pv });
         itemErrors++;
         continue;
       }
@@ -645,6 +704,7 @@ export async function runHarvest(
             title: item.title,
             url: item.url,
             note: `スクリーニング足切り: ${screen.reason}`,
+            pv,
           });
           continue;
         }
@@ -654,7 +714,7 @@ export async function runHarvest(
       inputTokens += first.inputTokens;
       outputTokens += first.outputTokens;
       if (first.parseError) {
-        log.push({ kind: "error", title: item.title, url: item.url, note: "AI応答の解析に失敗" });
+        log.push({ kind: "error", title: item.title, url: item.url, note: "AI応答の解析に失敗", pv });
         itemErrors++;
         continue;
       }
@@ -710,7 +770,17 @@ export async function runHarvest(
 
       itemsRejected += rejected.length;
       for (const r of rejected) {
-        log.push({ kind: "rejected", title: r.title, url: item.url, note: r.reason });
+        log.push({ kind: "rejected", title: r.title, url: item.url, note: r.reason, pv });
+      }
+      if (rows.length === 0 && rejected.length === 0) {
+        // 何も残さないと既知判定を素通りし、次回も同じアイテムが先頭に来る（loadSettledUrls）
+        log.push({
+          kind: "empty",
+          title: item.title,
+          url: item.url,
+          note: "効果検証・調査研究の記載を抽出できませんでした（0件）",
+          pv,
+        });
       }
 
       let seq = 0;
@@ -742,6 +812,7 @@ export async function runHarvest(
         title: item.title,
         url: item.url,
         note: e instanceof Error ? e.message : String(e),
+        pv,
       });
     }
   }
@@ -756,10 +827,12 @@ export async function runHarvest(
   }
 
   // 5. ソースの巡回記録と run 集計
+  //    積み残し（上限で切った残り・失敗したアイテム）がある間はハッシュを確定させない
+  const unfinished = hasBacklog || itemErrors > 0;
   await query(
     `UPDATE corpus_sources SET last_crawled_at = now(), last_content_hash = $2, updated_at = now()
      WHERE id = $1`,
-    [source.id, contentHash],
+    [source.id, unfinished ? `${BACKLOG_PREFIX}${contentHash}` : contentHash],
   );
   if (itemErrors > 0) {
     errorSummary = `${itemErrors}件のアイテム処理に失敗（明細はログ参照）`;
