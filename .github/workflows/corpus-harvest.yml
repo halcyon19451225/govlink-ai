@@ -41,12 +41,21 @@ jobs:
           while [ "$i" -lt "$MAX_CALLS" ]; do
             i=$((i+1))
             code=$(curl -sS -m 330 -o body.json -w '%{http_code}' -X POST \
-              -H "x-cron-key: ${CORPUS_CRON_KEY}" "${BASE_URL}/api/cron/corpus-harvest" || echo 000)
+              -H "x-cron-key: ${CORPUS_CRON_KEY}" "${BASE_URL}/api/cron/corpus-harvest") || code=000
             echo "--- call ${i}: HTTP ${code}"
             # 応答に鍵は含まれない。件名レベルの集計だけを出す
             jq -c '{error, skipped: .data.skipped, remaining: .data.remaining,
                     source: .data.processed.sourceName, status: .data.processed.status,
                     found: .data.processed.itemsFound, new: .data.processed.itemsNew}' body.json || cat body.json
+            # 504 は失敗ではない。Amplify の手前（CloudFront）は応答を約30〜60秒しか待たないが、
+            # 収集は1ソースに1分以上かかる。打ち切られるのは応答だけで、サーバー側の処理は
+            # 最後まで走り、run も記録される（2026-09-19 の初回実行で確認: CiNii 68秒・新規3件）。
+            # 実行中のソースは30分間は再選択されないので、少し待って次のソースへ進む。
+            if [ "$code" = "504" ] || [ "$code" = "000" ]; then
+              echo "::notice::call ${i}: 応答待ちが打ち切られました（HTTP ${code}）。サーバー側の処理は継続します"
+              sleep 120
+              continue
+            fi
             if [ "$code" != "200" ]; then
               echo "::error::収集の呼び出しに失敗しました（HTTP ${code}）"; exit 1
             fi
